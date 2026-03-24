@@ -1,3 +1,67 @@
+# data folder should be downloaded from google drive
 data/
+
+# Virtual environments
 venv/
+.venv/
+env/
+.env/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Type checking
+.mypy_cache/
+.pytype/
+.pyre/
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Jupyter
 *.ipynb
+.ipynb_checkpoints/
+
+# Environment variables
+.env
+.env.*
+*.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Model artifacts
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.pickle
+checkpoints/
+runs/
