@@ -12,7 +12,8 @@ pip install -e .
 ## Quick Start
 
 ```python
-from stg import GraphBuilder, DatasetLoader
+from stg_infra.stg.builders.builder import GraphBuilder
+from stg_infra.stg.io.loaders import DatasetLoader 
 from stg_infra.stg.adapters.kalshi import KalshiMarketNodes, KalshiEventEdges
 from stg_infra.stg.edges.strategies import KNNEdges, CompositeEdges
 from stg_infra.stg.temporal.strategies import FixedWindowTemporal
