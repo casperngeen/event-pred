@@ -10,24 +10,26 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import polars as pl
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
-
+from stg_infra.stg.io.loaders import DatasetLoader
+from stg_infra.stg.edges.kalshi import KalshiEventEdges
+from stg_infra.stg.labels.kalshi import KalshiPriceChangeLabels
+from stg_infra.stg.nodes.kalshi import KalshiTradeBasedNodes
 from stg_infra.stg.builders.builder import GraphBuilder
 from stg_infra.stg.analysis import TemporalMetrics, NodeEvolution, GraphDiff
-from stg_infra.stg.adapters.kalshi import (
-    KalshiTradeAugmentedNodes, KalshiEventEdges, KalshiOutcomeLabels,
-)
 from stg_infra.stg.edges.strategies import CompositeEdges, KNNEdges
 from stg_infra.stg.temporal.strategies import FixedWindowTemporal
 from stg_infra.stg.strategies.post_process import AddSelfLoops, Symmetrise, TopKEdges, NormaliseEdgeWeights
 from stg_infra.stg.strategies.features import LogTransformFeatures, StandardScaleFeatures, ChainFeatures
 
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
+
+
 # ============================================================================
 # 1. LOAD DATA
 # ============================================================================
 # For your real multi-file Kalshi data:
-from stg_infra.stg.io.loaders import DatasetLoader
 markets = DatasetLoader("data/markets_*.parquet", sort_by="created_time").load()
 trades  = DatasetLoader("data/trades_*.parquet", sort_by="created_time").load()
 #
@@ -85,7 +87,7 @@ trades  = DatasetLoader("data/trades_*.parquet", sort_by="created_time").load()
 stg = (
     GraphBuilder()
     .with_temporal(FixedWindowTemporal(time_col="created_time", every="2h"))
-    .with_nodes(KalshiTradeAugmentedNodes())
+    .with_nodes(KalshiTradeBasedNodes())
     .with_edges(CompositeEdges([
         KalshiEventEdges(weight=2.0),
         KNNEdges(k=3, metric="cosine"),
@@ -95,8 +97,8 @@ stg = (
     .with_post_process(AddSelfLoops())
     .with_post_process(TopKEdges(k=8))
     .with_post_process(NormaliseEdgeWeights())
-    .with_labels(KalshiOutcomeLabels())
-    .build(markets, auxiliary={"trades": trades})
+    .with_labels(KalshiPriceChangeLabels(trades))
+    .build(trades, auxiliary={"markets": markets})
 )
 
 print(f"Built: {stg}")

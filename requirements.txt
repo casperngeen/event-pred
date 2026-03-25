@@ -5,4 +5,5 @@ polars>=0.20
 pandas>=1.5
 matplotlib>=3.5
 torch>=2.11
-torchcde-0.2.5
+torchcde>=0.2.5
+sentence_transformers>=5.3.0
