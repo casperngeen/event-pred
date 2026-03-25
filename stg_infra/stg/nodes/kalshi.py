@@ -9,24 +9,16 @@ import numpy as np
 import polars as pl
 
 from stg_infra.stg.core import NodeState
+from stg_infra.stg.util import seconds_to_close
 
-
-def _seconds_to_close(window_end: datetime, close_time: datetime) -> float:
-    """Seconds from window_end to close_time, clamped to >= 0."""
-    if hasattr(window_end, "timestamp") and hasattr(close_time, "timestamp"):
-        delta = close_time.timestamp() - window_end.timestamp()
-        return max(delta, 0.0)
-    return 0.0
-
-
-class KalshiTradeBasedNodes:
+class KalshiTickerNodes:
     """Node features reconstructed from the Kalshi trade data.
 
     ``yes_price`` is used as the canonical market probability throughout.
     YES-side trades (``taker_side == "yes"``) represent buying pressure;
     NO-side trades represent selling pressure on YES.
 
-    Feature vector (10-D):
+    Feature vector (9-D):
         --- Price (yes_price as canonical probability) ---
         0.  last_yes_price      yes_price of the last trade in the window
         1.  yes_vwap            volume-weighted average yes_price across all trades
@@ -35,15 +27,14 @@ class KalshiTradeBasedNodes:
 
         --- Volume ---
         4.  window_volume       total contracts traded in this window
-        5.  cum_volume          cumulative contracts (falls back to window_volume)
 
         --- Order flow ---
-        6.  net_flow            (buy_vol – sell_vol) / total_vol  (normalised, signed)
-        7.  buy_ratio           YES-side volume / total_vol  (volume-weighted)
+        5.  net_flow            (buy_vol – sell_vol) / total_vol  (normalised, signed)
+        6.  buy_ratio           YES-side volume / total_vol  (volume-weighted)
 
         --- Activity ---
-        8.  trade_intensity     trades per second in window
-        9.  time_to_close       seconds from window_end to market close_time  (0 if past)
+        7.  trade_intensity     trades per second in window
+        8.  time_to_close       seconds from window_end to market close_time  (0 if past)
 
     Requires
     --------
@@ -53,7 +44,7 @@ class KalshiTradeBasedNodes:
     used so the stale order-book values are intentionally ignored.
     """
 
-    N_FEATURES = 10
+    N_FEATURES = 9
 
     def __init__(self, node_col: str = "ticker") -> None:
         self.node_col = node_col
@@ -85,7 +76,7 @@ class KalshiTradeBasedNodes:
 
         if t.is_empty():
             if window_end is not None and close_time is not None:
-                feats[9] = _seconds_to_close(window_end, close_time)
+                feats[8] = seconds_to_close(window_end, close_time)
             return NodeState(node_id, feats, meta)
 
         if "created_time" in t.columns:
@@ -107,14 +98,13 @@ class KalshiTradeBasedNodes:
         feats[2] = float(yes_prices[-1]) - float(yes_prices[0]) if n >= 2 else 0.0
         feats[3] = float(yes_prices.std()) if n >= 2 else 0.0  # type: ignore[arg-type]
         feats[4] = total_vol
-        feats[5] = total_vol
-        feats[6] = (buy_vol - sell_vol) / max(total_vol, 1.0)
-        feats[7] = buy_vol / max(total_vol, 1.0)
+        feats[5] = (buy_vol - sell_vol) / max(total_vol, 1.0)
+        feats[6] = buy_vol / max(total_vol, 1.0)
         if "created_time" in t.columns and n >= 2:
             span = (t["created_time"][-1] - t["created_time"][0]).total_seconds()
-            feats[8] = n / max(span, 1.0)
+            feats[7] = n / max(span, 1.0)
         if window_end is not None and close_time is not None:
-            feats[9] = _seconds_to_close(window_end, close_time)
+            feats[8] = seconds_to_close(window_end, close_time)
 
         return NodeState(node_id, np.nan_to_num(feats, nan=0.0), meta)
 
@@ -124,7 +114,7 @@ class KalshiEventNodes:
 
     One node per unique ``event_ticker`` active in the current time window.
     Features are aggregated across every market belonging to the event —
-    completely independent of ``KalshiTradeBasedNodes``.
+    completely independent of ``KalshiTickerNodes``.
 
     Feature vector (7-D):
         0.  total_volume        total contracts traded across all event markets

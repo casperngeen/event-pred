@@ -13,7 +13,7 @@ import polars as pl
 from stg_infra.stg.io.loaders import DatasetLoader
 from stg_infra.stg.edges.kalshi import KalshiEventEdges
 from stg_infra.stg.labels.kalshi import KalshiPriceChangeLabels
-from stg_infra.stg.nodes.kalshi import KalshiTradeBasedNodes
+from stg_infra.stg.nodes.kalshi import KalshiTickerNodes
 from stg_infra.stg.builders.builder import GraphBuilder
 from stg_infra.stg.analysis import TemporalMetrics, NodeEvolution, GraphDiff
 from stg_infra.stg.edges.strategies import CompositeEdges, KNNEdges
@@ -87,7 +87,7 @@ trades  = DatasetLoader("data/trades_*.parquet", sort_by="created_time").load()
 stg = (
     GraphBuilder()
     .with_temporal(FixedWindowTemporal(time_col="created_time", every="2h"))
-    .with_nodes(KalshiTradeBasedNodes())
+    .with_nodes(KalshiTickerNodes())
     .with_edges(CompositeEdges([
         KalshiEventEdges(weight=2.0),
         KNNEdges(k=3, metric="cosine"),

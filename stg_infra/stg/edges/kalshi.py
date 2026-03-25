@@ -73,10 +73,10 @@ class KalshiPriceCorrelationEdges:
         return edges
 
 
-class KalshiMarketToEventEdges:
-    """Bidirectional edges connecting each market node to its event super-node.
+class KalshiTickerToEventEdges:
+    """Bidirectional edges connecting each ticker node to its event super-node.
 
-    Requires both ``KalshiTradeBasedNodes`` and ``KalshiEventNodes`` to have
+    Requires both ``KalshiTickerNodes`` and ``KalshiEventNodes`` to have
     run via ``.with_nodes()``, and must be registered via ``.with_edges()``.
     """
 
@@ -96,9 +96,9 @@ class KalshiMarketToEventEdges:
             if super_id not in snapshot.node_ids:
                 continue
             edges.append(EdgeState(nid, super_id, self.weight,
-                                   metadata={"edge_type": "market_to_event"}))
+                                   metadata={"edge_type": "ticker_to_event"}))
             edges.append(EdgeState(super_id, nid, self.weight,
-                                   metadata={"edge_type": "event_to_market"}))
+                                   metadata={"edge_type": "event_to_ticker"}))
         return edges
 
 

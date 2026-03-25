@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 import polars as pl
 
 def parse_duration_td(s: str) -> timedelta:
@@ -21,3 +21,10 @@ def last_taker_price(trades: pl.DataFrame) -> float:
     if side == "yes":
         return float(row["yes_price"][0])
     return float(row["no_price"][0])
+
+def seconds_to_close(window_end: datetime, close_time: datetime) -> float:
+    """Seconds from window_end to close_time, clamped to >= 0."""
+    if hasattr(window_end, "timestamp") and hasattr(close_time, "timestamp"):
+        delta = close_time.timestamp() - window_end.timestamp()
+        return max(delta, 0.0)
+    return 0.0
