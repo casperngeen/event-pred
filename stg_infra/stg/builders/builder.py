@@ -39,8 +39,8 @@ class GraphBuilder:
 
     def __init__(self) -> None:
         self._temporal: Optional[TemporalStrategy] = None
-        self._node: Optional[NodeStrategy] = None
-        self._edge: Optional[EdgeStrategy] = None
+        self._nodes: List[NodeStrategy] = []
+        self._edges: List[EdgeStrategy] = []
         self._features: Optional[FeatureStrategy] = None
         self._post_processors: List[PostProcessStrategy] = []
         self._label: Optional[LabelStrategy] = None
@@ -51,10 +51,15 @@ class GraphBuilder:
         self._temporal = s; return self
 
     def with_nodes(self, s: NodeStrategy) -> GraphBuilder:
-        self._node = s; return self
+        """Register a node strategy. Multiple calls are supported — strategies
+        run in registration order, each receiving the snapshot-so-far via
+        ``kwargs["snapshot"]`` so later strategies can read already-built nodes."""
+        self._nodes.append(s); return self
 
     def with_edges(self, s: EdgeStrategy) -> GraphBuilder:
-        self._edge = s; return self
+        """Register an edge strategy. Multiple calls are supported — all node
+        strategies run first, then all edge strategies run in order."""
+        self._edges.append(s); return self
 
     def with_features(self, s: FeatureStrategy) -> GraphBuilder:
         self._features = s; return self
@@ -105,10 +110,10 @@ class GraphBuilder:
     ) -> SpatioTemporalGraph:
         if self._temporal is None:
             raise ValueError("TemporalStrategy required — call .with_temporal()")
-        if self._node is None:
-            raise ValueError("NodeStrategy required — call .with_nodes()")
-        if self._edge is None:
-            raise ValueError("EdgeStrategy required — call .with_edges()")
+        if not self._nodes:
+            raise ValueError("At least one NodeStrategy required — call .with_nodes()")
+        if not self._edges:
+            raise ValueError("At least one EdgeStrategy required — call .with_edges()")
 
         auxiliary = auxiliary or {}
         base_kw: Dict[str, Any] = {**self._extra_kwargs}
@@ -133,13 +138,23 @@ class GraphBuilder:
             else:
                 windowed_aux = auxiliary
 
-            kw = {**base_kw, "auxiliary": windowed_aux}
+            kw = {
+                **base_kw,
+                "auxiliary": windowed_aux,
+                "timestamp": ts,
+                "window_start": window_start,
+                "window_end": window_end,
+            }
 
-            for nid in self._node.identify_nodes(wd, **kw):
-                snap.add_node(self._node.build_node_state(nid, wd, **kw))
+            # All node strategies run first, in registration order.
+            for node_strategy in self._nodes:
+                for nid in node_strategy.identify_nodes(wd, **kw):
+                    snap.add_node(node_strategy.build_node_state(nid, wd, **kw))
 
-            for e in self._edge.build_edges(snap, wd, **kw):
-                snap.add_edge(e)
+            # All edge strategies run after every node is present, in registration order.
+            for edge_strategy in self._edges:
+                for e in edge_strategy.build_edges(snap, wd, **kw):
+                    snap.add_edge(e)
 
             if self._features is not None:
                 self._apply_feature_transforms(snap)
