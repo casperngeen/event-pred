@@ -1,10 +1,11 @@
-import pandas as pd
-import glob, os
+import os
+import polars as pl
 from collections import defaultdict
+from stg_infra.stg.io.loaders import DatasetLoader 
 
-# Input files
-markets_files = glob.glob("data/markets/markets_kalshi/*.parquet")
-trades_files  = glob.glob("data/trades/trades_kalshi/*.parquet")
+# Input patterns
+markets_pattern = "data/markets/markets_kalshi/*.parquet"
+trades_pattern  = "data/trades/trades_kalshi/*.parquet"
 
 # Output dirs
 os.makedirs("data/markets/markets_kalshi_odd", exist_ok=True)
@@ -12,28 +13,38 @@ os.makedirs("data/markets/markets_kalshi_even", exist_ok=True)
 os.makedirs("data/trades/trades_kalshi_odd", exist_ok=True)
 os.makedirs("data/trades/trades_kalshi_even", exist_ok=True)
 
-def split_by_month(files, time_col, odd_dir, even_dir, prefix):
+def split_by_month(loader: DatasetLoader, time_col: str, odd_dir: str, even_dir: str, prefix: str):
     monthly_groups = defaultdict(list)
 
-    # Process each file one at a time
-    for f in files:
-        df = pd.read_parquet(f)
-        df[time_col] = pd.to_datetime(df[time_col], errors="coerce").dt.tz_localize(None)
-        df = df.dropna(subset=[time_col])
+    for chunk in loader.load_iter(files_per_batch=10):
+        # Normalize timezone and drop nulls
+        chunk = chunk.with_columns(
+            pl.col(time_col).dt.replace_time_zone(None)
+        ).drop_nulls(subset=[time_col])
+
+        # Sort by time column (required for group_by_dynamic)
+        chunk = chunk.sort(time_col)
 
         # Group rows by month
-        for month, group in df.groupby(df[time_col].dt.to_period("M")):
-            monthly_groups[str(month)].append(group)
+        for month, group in chunk.group_by_dynamic(time_col, every="1mo"):
+            # take the first datetime in this group
+            month_str = group[time_col][0].strftime("%Y-%m")
+            monthly_groups[month_str].append(group)
+
 
     # Write one parquet per month into odd/even folders
     for month_str, groups in monthly_groups.items():
-        combined = pd.concat(groups, ignore_index=True)
-        if pd.Period(month_str).month % 2 == 1:
+        combined = pl.concat(groups)
+        month_num = int(month_str.split("-")[1])
+        if month_num % 2 == 1:
             out_file = os.path.join(odd_dir, f"{prefix}_{month_str}.parquet")
         else:
             out_file = os.path.join(even_dir, f"{prefix}_{month_str}.parquet")
-        combined.to_parquet(out_file)
+        combined.write_parquet(out_file)
 
-# Run for markets and trades
-split_by_month(markets_files, "created_time", "data/markets/markets_kalshi_odd", "data/markets/markets_kalshi_even", "markets")
-split_by_month(trades_files, "created_time", "data/trades/trades_kalshi_odd", "data/trades/trades_kalshi_even", "trades")
+markets_loader = DatasetLoader(markets_pattern, file_format="parquet")
+trades_loader  = DatasetLoader(trades_pattern, file_format="parquet")
+
+split_by_month(markets_loader, "created_time", "data/markets/markets_kalshi_odd", "data/markets/markets_kalshi_even", "markets")
+split_by_month(trades_loader, "created_time", "data/trades/trades_kalshi_odd", "data/trades/trades_kalshi_even", "trades")
+

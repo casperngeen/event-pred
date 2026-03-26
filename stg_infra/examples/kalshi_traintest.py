@@ -13,7 +13,7 @@ from stg_infra.stg.edges.kalshi import KalshiEventEdges
 from stg_infra.stg.labels.kalshi import KalshiPriceChangeLabels
 from stg_infra.stg.nodes.kalshi import KalshiTickerNodes
 from stg_infra.stg.builders.builder import GraphBuilder
-from stg_infra.stg.analysis import TemporalMetrics, NodeEvolution, GraphDiff
+from stg_infra.stg.analysis import TemporalMetrics
 from stg_infra.stg.edges.strategies import CompositeEdges, KNNEdges
 from stg_infra.stg.temporal.strategies import FixedWindowTemporal
 from stg_infra.stg.strategies.post_process import AddSelfLoops, Symmetrise, TopKEdges, NormaliseEdgeWeights
@@ -24,18 +24,18 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 
 
 # ============================================================================
-# 1. LOAD DATA
+# 1. LOAD DATA 
 # ============================================================================
-markets_train_file = "data/markets/markets_kalshi_odd/markets_2025-01.parquet"
-trades_train_file  = "data/trades/trades_kalshi_odd/trades_2025-01.parquet"
+markets_train_loader = DatasetLoader("data/markets/markets_kalshi_odd/markets_2025-01.parquet", file_format="parquet")
+trades_train_loader  = DatasetLoader("data/trades/trades_kalshi_odd/trades_2025-01.parquet", file_format="parquet")
 
-markets_test_file = "data/markets/markets_kalshi_even/markets_2025-02.parquet"
-trades_test_file  = "data/trades/trades_kalshi_even/trades_2025-02.parquet"
+markets_test_loader  = DatasetLoader("data/markets/markets_kalshi_even/markets_2025-02.parquet", file_format="parquet")
+trades_test_loader   = DatasetLoader("data/trades/trades_kalshi_even/trades_2025-02.parquet", file_format="parquet")
 
-markets_train = pl.read_parquet(markets_train_file)
-trades_train  = pl.read_parquet(trades_train_file)
-markets_test  = pl.read_parquet(markets_test_file)
-trades_test   = pl.read_parquet(trades_test_file)
+markets_train = markets_train_loader.load()
+trades_train  = trades_train_loader.load()
+markets_test  = markets_test_loader.load()
+trades_test   = trades_test_loader.load()
 
 # ============================================================================
 # 2. BUILD TRAIN GRAPH (Jan 2025)
