@@ -1,50 +1,91 @@
-import os
+"""Odd/Even Month Splitter"""
+
+import glob
+import logging
+from pathlib import Path
+from typing import Iterator, List, Optional, Union
+
 import polars as pl
-from collections import defaultdict
-from stg_infra.stg.io.loaders import DatasetLoader 
 
-# Input patterns
-markets_pattern = "data/markets/markets_kalshi/*.parquet"
-trades_pattern  = "data/trades/trades_kalshi/*.parquet"
-
-# Output dirs
-os.makedirs("data/markets/markets_kalshi_odd", exist_ok=True)
-os.makedirs("data/markets/markets_kalshi_even", exist_ok=True)
-os.makedirs("data/trades/trades_kalshi_odd", exist_ok=True)
-os.makedirs("data/trades/trades_kalshi_even", exist_ok=True)
-
-def split_by_month(loader: DatasetLoader, time_col: str, odd_dir: str, even_dir: str, prefix: str):
-    monthly_groups = defaultdict(list)
-
-    for chunk in loader.load_iter(files_per_batch=10):
-        # Normalize timezone and drop nulls
-        chunk = chunk.with_columns(
-            pl.col(time_col).dt.replace_time_zone(None)
-        ).drop_nulls(subset=[time_col])
-
-        # Sort by time column (required for group_by_dynamic)
-        chunk = chunk.sort(time_col)
-
-        # Group rows by month
-        for month, group in chunk.group_by_dynamic(time_col, every="1mo"):
-            # take the first datetime in this group
-            month_str = group[time_col][0].strftime("%Y-%m")
-            monthly_groups[month_str].append(group)
+logger = logging.getLogger(__name__)
 
 
-    # Write one parquet per month into odd/even folders
-    for month_str, groups in monthly_groups.items():
-        combined = pl.concat(groups)
-        month_num = int(month_str.split("-")[1])
-        if month_num % 2 == 1:
-            out_file = os.path.join(odd_dir, f"{prefix}_{month_str}.parquet")
+class SplitByOddEvenMonths:
+    """Split large multi-file datasets into train/test sets by odd/even months.
+
+    - Train = odd months
+    - Test  = even months
+    - Supports Parquet, CSV, TSV, NDJSON
+    """
+
+    def __init__(
+        self,
+        paths: Union[str, List[str]],
+        file_format: Optional[str] = None,
+        time_col: str = "created_time",
+        batch_size: int = 10,
+    ) -> None:
+        self.patterns = [paths] if isinstance(paths, str) else paths
+        self.file_format = file_format
+        self.time_col = time_col
+        self.batch_size = batch_size
+
+    def _resolve_files(self) -> List[str]:
+        files: List[str] = []
+        for pattern in self.patterns:
+            matched = sorted(glob.glob(pattern, recursive=True))
+            if not matched:
+                logger.warning("Pattern matched no files: %s", pattern)
+            files.extend(matched)
+        return sorted(set(files))
+
+    def _detect_format(self, path: str) -> str:
+        ext = Path(path).suffix.lower().lstrip(".")
+        return {
+            "parquet": "parquet",
+            "pq": "parquet",
+            "tsv": "tsv",
+            "ndjson": "ndjson",
+            "jsonl": "ndjson",
+        }.get(ext, "csv")
+
+    def _scan_single(self, path: str, fmt: str) -> pl.LazyFrame:
+        if fmt == "parquet":
+            return pl.scan_parquet(path)
+        elif fmt == "tsv":
+            return pl.scan_csv(path, separator="\t")
+        elif fmt == "ndjson":
+            return pl.scan_ndjson(path)
         else:
-            out_file = os.path.join(even_dir, f"{prefix}_{month_str}.parquet")
-        combined.write_parquet(out_file)
+            return pl.scan_csv(path)
 
-markets_loader = DatasetLoader(markets_pattern, file_format="parquet")
-trades_loader  = DatasetLoader(trades_pattern, file_format="parquet")
+    def stream_split(self) -> Iterator[tuple[pl.DataFrame, pl.DataFrame]]:
+        """Yield (train_chunk, test_chunk) pairs batch by batch — memory safe."""
+        files = self._resolve_files()
+        if not files:
+            return
+        fmt = self.file_format
+        for start in range(0, len(files), self.batch_size):
+            batch = files[start:start + self.batch_size]
+            lfs = [self._scan_single(f, fmt or self._detect_format(f)) for f in batch]
+            chunk = pl.concat(lfs).collect()
 
-split_by_month(markets_loader, "created_time", "data/markets/markets_kalshi_odd", "data/markets/markets_kalshi_even", "markets")
-split_by_month(trades_loader, "created_time", "data/trades/trades_kalshi_odd", "data/trades/trades_kalshi_even", "trades")
+            # Normalize datetime
+            chunk = chunk.with_columns(pl.col(self.time_col).dt.replace_time_zone(None))
+            chunk = chunk.drop_nulls(subset=[self.time_col])
+            chunk = chunk.with_columns(pl.col(self.time_col).dt.month().alias("month"))
 
+            train_chunk = chunk.filter(pl.col("month") % 2 == 1)
+            test_chunk = chunk.filter(pl.col("month") % 2 == 0)
+
+            yield train_chunk, test_chunk
+
+    def collect_split(self) -> tuple[pl.DataFrame, pl.DataFrame]:
+        """Collect all batches into full train/test DataFrames (use only if dataset fits in memory)."""
+        train_parts, test_parts = [], []
+        for train_chunk, test_chunk in self.stream_split():
+            train_parts.append(train_chunk)
+            test_parts.append(test_chunk)
+        train_df = pl.concat(train_parts) if train_parts else pl.DataFrame()
+        test_df = pl.concat(test_parts) if test_parts else pl.DataFrame()
+        return train_df, test_df

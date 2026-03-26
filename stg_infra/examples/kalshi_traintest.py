@@ -1,5 +1,6 @@
 """
-Train/Test Split Example: Odd months = Train, Even months = Test
+Train/Test Split Example: Jan 2025 = Train, Feb 2025 = Test
+Process all data for each month together
 """
 
 import logging
@@ -8,7 +9,6 @@ import os
 
 import polars as pl
 
-from stg_infra.stg.io.loaders import DatasetLoader
 from stg_infra.stg.edges.kalshi import KalshiEventEdges
 from stg_infra.stg.labels.kalshi import KalshiPriceChangeLabels
 from stg_infra.stg.nodes.kalshi import KalshiTickerNodes
@@ -19,27 +19,44 @@ from stg_infra.stg.temporal.strategies import FixedWindowTemporal
 from stg_infra.stg.strategies.post_process import AddSelfLoops, Symmetrise, TopKEdges, NormaliseEdgeWeights
 from stg_infra.stg.strategies.features import LogTransformFeatures, StandardScaleFeatures, ChainFeatures
 
+from scripts.data_split_odd_even_months import SplitByOddEvenMonths
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 
 
 # ============================================================================
-# 1. LOAD DATA 
+# 1. STREAM DATA AND FILTER BY MONTH
 # ============================================================================
-markets_train_loader = DatasetLoader("data/markets/markets_kalshi_odd/markets_2025-01.parquet", file_format="parquet")
-trades_train_loader  = DatasetLoader("data/trades/trades_kalshi_odd/trades_2025-01.parquet", file_format="parquet")
+markets_splitter = SplitByOddEvenMonths("data/markets/markets_kalshi/*.parquet", file_format="parquet", time_col="created_time", batch_size=5)
+trades_splitter  = SplitByOddEvenMonths("data/trades/trades_kalshi/*.parquet", file_format="parquet", time_col="created_time", batch_size=5)
 
-markets_test_loader  = DatasetLoader("data/markets/markets_kalshi_even/markets_2025-02.parquet", file_format="parquet")
-trades_test_loader   = DatasetLoader("data/trades/trades_kalshi_even/trades_2025-02.parquet", file_format="parquet")
+def collect_month(splitter, year: int, month: int, which: str) -> pl.DataFrame:
+    """Collect all batches for a given year-month from either train or test side."""
+    parts = []
+    for train_chunk, test_chunk in splitter.stream_split():
+        chunk = train_chunk if which == "train" else test_chunk
+        filtered = chunk.filter(
+            (pl.col("created_time").dt.year() == year) &
+            (pl.col("created_time").dt.month() == month)
+        )
+        if not filtered.is_empty():
+            parts.append(filtered)
+    return pl.concat(parts) if parts else pl.DataFrame()
 
-markets_train = markets_train_loader.load()
-trades_train  = trades_train_loader.load()
-markets_test  = markets_test_loader.load()
-trades_test   = trades_test_loader.load()
+# Collect all Jan 2025 data for train
+markets_jan = collect_month(markets_splitter, 2025, 1, "train")
+trades_jan  = collect_month(trades_splitter, 2025, 1, "train")
+
+# Collect all Feb 2025 data for test
+markets_feb = collect_month(markets_splitter, 2025, 2, "test")
+trades_feb  = collect_month(trades_splitter, 2025, 2, "test")
+
 
 # ============================================================================
 # 2. BUILD TRAIN GRAPH (Jan 2025)
 # ============================================================================
+print("\nBuilding Train Graph (Jan 2025)...")
 stg_train = (
     GraphBuilder()
     .with_temporal(FixedWindowTemporal(time_col="created_time", every="2h"))
@@ -53,17 +70,19 @@ stg_train = (
     .with_post_process(AddSelfLoops())
     .with_post_process(TopKEdges(k=8))
     .with_post_process(NormaliseEdgeWeights())
-    .with_labels(KalshiPriceChangeLabels(trades_train))
-    .build(trades_train, auxiliary={"markets": markets_train})
+    .with_labels(KalshiPriceChangeLabels(trades_jan))
+    .build(trades_jan, auxiliary={"markets": markets_jan})
 )
 
-print("\nTrain (Jan 2025) summary:")
+print("Train summary:")
 print(stg_train.summary())
 print("Train metrics:", TemporalMetrics.compute(stg_train))
+
 
 # ============================================================================
 # 3. BUILD TEST GRAPH (Feb 2025)
 # ============================================================================
+print("\nBuilding Test Graph (Feb 2025)...")
 stg_test = (
     GraphBuilder()
     .with_temporal(FixedWindowTemporal(time_col="created_time", every="2h"))
@@ -77,10 +96,10 @@ stg_test = (
     .with_post_process(AddSelfLoops())
     .with_post_process(TopKEdges(k=8))
     .with_post_process(NormaliseEdgeWeights())
-    .with_labels(KalshiPriceChangeLabels(trades_test))
-    .build(trades_test, auxiliary={"markets": markets_test})
+    .with_labels(KalshiPriceChangeLabels(trades_feb))
+    .build(trades_feb, auxiliary={"markets": markets_feb})
 )
 
-print("\nTest (Feb 2025) summary:")
+print("Test summary:")
 print(stg_test.summary())
 print("Test metrics:", TemporalMetrics.compute(stg_test))
