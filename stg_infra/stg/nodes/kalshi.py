@@ -187,7 +187,7 @@ class KalshiEventNodes:
         if window_end is not None and "close_time" in event_mkts.columns:
             close_times = event_mkts["close_time"].drop_nulls()
             if close_times.len() > 0:
-                feats[5] = _seconds_to_close(window_end, close_times.min())  # type: ignore[arg-type]
-                feats[6] = _seconds_to_close(window_end, close_times.max())  # type: ignore[arg-type]
+                feats[5] = seconds_to_close(window_end, close_times.min())  # type: ignore[arg-type]
+                feats[6] = seconds_to_close(window_end, close_times.max())  # type: ignore[arg-type]
 
         return NodeState(node_id, np.nan_to_num(feats, nan=0.0), meta)
