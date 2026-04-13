@@ -44,6 +44,10 @@ class KalshiOHLCV:
             ])
             .sort(["ticker", "date"])
             .join(market_meta, on="ticker", how="inner")
+            .with_columns([
+                pl.col("ticker").str.replace(r"^KX", "").alias("clean_ticker"),
+                pl.col("event_ticker").str.replace(r"^KX", "").alias("clean_event_ticker"),
+            ])
         )
 
         filled = (
@@ -60,6 +64,8 @@ class KalshiOHLCV:
                     pl.col("low").fill_null(pl.col("close")),
                     pl.col("ticker").forward_fill(),
                     pl.col("event_ticker").forward_fill(),
+                    pl.col("clean_ticker").forward_fill(),
+                    pl.col("clean_event_ticker").forward_fill(),
                     pl.col("title").forward_fill(),
                     pl.col("open_time").forward_fill(),
                     pl.col("close_time").forward_fill(),
