@@ -4,7 +4,7 @@ from typing import Optional, Sequence, Tuple, Union
 
 import polars as pl
 
-from stg_infra.stg.io.loaders import DatasetLoader
+from stg.io.loaders import DatasetLoader
 
 
 def load_kalshi_trades(

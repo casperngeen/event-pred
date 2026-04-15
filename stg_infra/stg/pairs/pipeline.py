@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Dict
 
-from stg_infra.stg.io.kalshi import KalshiOHLCV
-from stg_infra.stg.pairs.config import EventPairsConfig
-from stg_infra.stg.pairs.kalshi_inputs import load_trades_and_markets
-from stg_infra.stg.pairs.selection import build_event_panel, select_event_pairs, select_event_universe
-from stg_infra.stg.pairs.tradable_proxy import (
+from stg.io.kalshi import KalshiOHLCV
+from stg.pairs.config import EventPairsConfig
+from stg.pairs.kalshi_inputs import load_trades_and_markets
+from stg.pairs.selection import build_event_panel, select_event_pairs, select_event_universe
+from stg.pairs.tradable_proxy import (
     backtest_zscore_pairs,
     build_wide_ticker_close_panel,
     map_event_pairs_to_ticker_pairs,

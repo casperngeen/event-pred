@@ -9,15 +9,15 @@ import os
 
 import polars as pl
 
-from stg_infra.stg.edges.kalshi import KalshiEventEdges
-from stg_infra.stg.labels.kalshi import KalshiPriceChangeLabels
-from stg_infra.stg.nodes.kalshi import KalshiTickerNodes
-from stg_infra.stg.builders.builder import GraphBuilder
-from stg_infra.stg.analysis import TemporalMetrics
-from stg_infra.stg.edges.strategies import CompositeEdges, KNNEdges
-from stg_infra.stg.temporal.strategies import FixedWindowTemporal
-from stg_infra.stg.strategies.post_process import AddSelfLoops, Symmetrise, TopKEdges, NormaliseEdgeWeights
-from stg_infra.stg.strategies.features import LogTransformFeatures, StandardScaleFeatures, ChainFeatures
+from stg.edges.kalshi import KalshiEventEdges
+from stg.labels.kalshi import KalshiPriceChangeLabels
+from stg.nodes.kalshi import KalshiTickerNodes
+from stg.builders.builder import GraphBuilder
+from stg.analysis import TemporalMetrics
+from stg.edges.strategies import CompositeEdges, KNNEdges
+from stg.temporal.strategies import FixedWindowTemporal
+from stg.strategies.post_process import AddSelfLoops, Symmetrise, TopKEdges, NormaliseEdgeWeights
+from stg.strategies.features import LogTransformFeatures, StandardScaleFeatures, ChainFeatures
 
 from scripts.data_split_odd_even_months import SplitByOddEvenMonths
 

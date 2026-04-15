@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from stg_infra.stg.core import EdgeState, GraphSnapshot
+from stg.core import EdgeState, GraphSnapshot
 
 
 class AddSelfLoops:

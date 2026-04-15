@@ -11,8 +11,8 @@ from typing import Any, Dict, List, Optional
 
 import polars as pl
 
-from stg_infra.stg.core import GraphSnapshot, SpatioTemporalGraph
-from stg_infra.stg.strategies.protocols import (
+from stg.core import GraphSnapshot, SpatioTemporalGraph
+from stg.strategies.protocols import (
     EdgeStrategy, FeatureStrategy, LabelStrategy,
     NodeStrategy, PostProcessStrategy, TemporalStrategy,
 )

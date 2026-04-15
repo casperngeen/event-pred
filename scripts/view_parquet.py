@@ -1,4 +1,4 @@
-from stg_infra.stg.io.loaders import DatasetLoader   
+from stg.io.loaders import DatasetLoader   
 import polars as pl
 
 # Load markets 

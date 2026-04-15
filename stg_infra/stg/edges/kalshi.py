@@ -8,7 +8,7 @@ import numpy as np
 import polars as pl
 from sentence_transformers import SentenceTransformer
 
-from stg_infra.stg.core import EdgeState, GraphSnapshot
+from stg.core import EdgeState, GraphSnapshot
 
 
 class KalshiEventEdges:

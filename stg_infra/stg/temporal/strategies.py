@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 import numpy as np
 import polars as pl
 
-from stg_infra.stg.util import parse_duration_td
+from stg.util import parse_duration_td
 
 class FixedWindowTemporal:
     """Fixed-width time windows via Polars ``group_by_dynamic``."""

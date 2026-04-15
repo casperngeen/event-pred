@@ -7,7 +7,7 @@ from typing import Any, Dict, Hashable, List
 
 import polars as pl
 
-from stg_infra.stg.util import parse_duration_td
+from stg.util import parse_duration_td
 
 
 class KalshiOutcomeLabels:

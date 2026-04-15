@@ -10,16 +10,16 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import polars as pl
 
-from stg_infra.stg.io.loaders import DatasetLoader
-from stg_infra.stg.edges.kalshi import KalshiEventEdges
-from stg_infra.stg.labels.kalshi import KalshiPriceChangeLabels
-from stg_infra.stg.nodes.kalshi import KalshiTickerNodes
-from stg_infra.stg.builders.builder import GraphBuilder
-from stg_infra.stg.analysis import TemporalMetrics, NodeEvolution, GraphDiff
-from stg_infra.stg.edges.strategies import CompositeEdges, KNNEdges
-from stg_infra.stg.temporal.strategies import FixedWindowTemporal
-from stg_infra.stg.strategies.post_process import AddSelfLoops, Symmetrise, TopKEdges, NormaliseEdgeWeights
-from stg_infra.stg.strategies.features import LogTransformFeatures, StandardScaleFeatures, ChainFeatures
+from stg.io.loaders import DatasetLoader
+from stg.edges.kalshi import KalshiEventEdges
+from stg.labels.kalshi import KalshiPriceChangeLabels
+from stg.nodes.kalshi import KalshiTickerNodes
+from stg.builders.builder import GraphBuilder
+from stg.analysis import TemporalMetrics, NodeEvolution, GraphDiff
+from stg.edges.strategies import CompositeEdges, KNNEdges
+from stg.temporal.strategies import FixedWindowTemporal
+from stg.strategies.post_process import AddSelfLoops, Symmetrise, TopKEdges, NormaliseEdgeWeights
+from stg.strategies.features import LogTransformFeatures, StandardScaleFeatures, ChainFeatures
 
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

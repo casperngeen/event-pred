@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Hashable, List, Optional
 import numpy as np
 import polars as pl
 
-from stg_infra.stg.core import NodeState
+from stg.core import NodeState
 
 
 class ColumnNodeStrategy:

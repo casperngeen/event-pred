@@ -8,8 +8,8 @@ from typing import Any, Dict, Hashable, List, Optional
 import numpy as np
 import polars as pl
 
-from stg_infra.stg.core import NodeState
-from stg_infra.stg.util import seconds_to_close
+from stg.core import NodeState
+from stg.util import seconds_to_close
 
 class KalshiTickerNodes:
     """Node features reconstructed from the Kalshi trade data.

@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, Hashable, List
 import numpy as np
 import polars as pl
 
-from stg_infra.stg.core import EdgeState, GraphSnapshot
+from stg.core import EdgeState, GraphSnapshot
 
 
 class CosineSimilarityEdges:

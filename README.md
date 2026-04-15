@@ -12,12 +12,12 @@ pip install -e .
 ## Quick Start
 
 ```python
-from stg_infra.stg.builders.builder import GraphBuilder
-from stg_infra.stg.io.loaders import DatasetLoader 
-from stg_infra.stg.adapters.kalshi import KalshiMarketNodes, KalshiEventEdges
-from stg_infra.stg.edges.strategies import KNNEdges, CompositeEdges
-from stg_infra.stg.temporal.strategies import FixedWindowTemporal
-from stg_infra.stg.strategies.post_process import AddSelfLoops, Symmetrise
+from stg.builders.builder import GraphBuilder
+from stg.io.loaders import DatasetLoader
+from stg.adapters.kalshi import KalshiMarketNodes, KalshiEventEdges
+from stg.edges.strategies import KNNEdges, CompositeEdges
+from stg.temporal.strategies import FixedWindowTemporal
+from stg.strategies.post_process import AddSelfLoops, Symmetrise
 
 # load data from google drive in a data/ folder
 markets = DatasetLoader("data/markets_*.parquet", sort_by="created_time").load()

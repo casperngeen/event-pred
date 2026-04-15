@@ -7,7 +7,7 @@ from typing import List
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from stg_infra.stg.strategies.protocols import FeatureStrategy
+from stg.strategies.protocols import FeatureStrategy
 
 
 class StandardScaleFeatures:

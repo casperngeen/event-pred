@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from stg_infra.stg.pairs.config import EventPairsConfig
-from stg_infra.stg.pairs.pipeline import run_event_pairs_arb
+from stg.pairs.config import EventPairsConfig
+from stg.pairs.pipeline import run_event_pairs_arb
 
 
 TRADES_GLOB = "data/trades/trades_kalshi_even/trades_2025-10.parquet"

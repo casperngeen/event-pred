@@ -7,7 +7,7 @@ from typing import Any, Dict, Hashable, List, Protocol, runtime_checkable
 import numpy as np
 import polars as pl
 
-from stg_infra.stg.core import EdgeState, GraphSnapshot, NodeState
+from stg.core import EdgeState, GraphSnapshot, NodeState
 
 
 @runtime_checkable
