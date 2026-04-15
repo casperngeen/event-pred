@@ -30,8 +30,8 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 # 1. LOAD DATA
 # ============================================================================
 # For your real multi-file Kalshi data:
-markets = DatasetLoader("data/markets_*.parquet", sort_by="created_time").load()
-trades  = DatasetLoader("data/trades_*.parquet", sort_by="created_time").load()
+markets = DatasetLoader("data/markets/markets_*.parquet", sort_by="created_time").load()
+trades  = DatasetLoader("data/trades/trades_*.parquet", sort_by="created_time").load()
 #
 # Lazy scan (only reads what's needed from disk):
 #   lf = DatasetLoader("data/markets_*.parquet",
@@ -84,20 +84,18 @@ trades  = DatasetLoader("data/trades_*.parquet", sort_by="created_time").load()
 # ============================================================================
 # 2. BUILD
 # ============================================================================
+labels = KalshiPriceChangeLabels(trades, horizon="1d", mode="direction", flat_threshold=1.0)
 stg = (
     GraphBuilder()
-    .with_temporal(FixedWindowTemporal(time_col="created_time", every="2h"))
+    .with_temporal(FixedWindowTemporal(time_col="created_time", every="1d"))
     .with_nodes(KalshiTickerNodes())
     .with_edges(CompositeEdges([
         KalshiEventEdges(weight=2.0),
         KNNEdges(k=3, metric="cosine"),
     ]))
-    .with_features(ChainFeatures([LogTransformFeatures(), StandardScaleFeatures()]))
     .with_post_process(Symmetrise())
     .with_post_process(AddSelfLoops())
-    .with_post_process(TopKEdges(k=8))
-    .with_post_process(NormaliseEdgeWeights())
-    .with_labels(KalshiPriceChangeLabels(trades))
+    .with_labels(labels)
     .build(trades, auxiliary={"markets": markets})
 )
 

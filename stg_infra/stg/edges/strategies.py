@@ -52,8 +52,9 @@ class KNNEdges:
             norms = np.where(norms == 0, 1e-10, norms)
             dist = 1.0 - (X / norms) @ (X / norms).T
         else:
-            diff = X[:, np.newaxis, :] - X[np.newaxis, :, :]
-            dist = np.sqrt((diff ** 2).sum(axis=-1))
+            # Expand via ||a-b||² = ||a||² + ||b||² - 2a·bᵀ to avoid (N,N,F) tensor
+            sq = (X ** 2).sum(axis=1)
+            dist = np.sqrt(np.maximum(sq[:, None] + sq[None, :] - 2.0 * (X @ X.T), 0.0))
         np.fill_diagonal(dist, np.inf)
         edges: List[EdgeState] = []
         for i in range(len(nodes)):

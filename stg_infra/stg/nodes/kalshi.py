@@ -45,24 +45,58 @@ class KalshiTickerNodes:
     """
 
     N_FEATURES = 9
+    _META_COLS = ("event_ticker", "title", "status", "market_type", "close_time")
 
-    def __init__(self, node_col: str = "ticker") -> None:
+    def __init__(self, node_col: str = "ticker", markets_df: Optional[pl.DataFrame] = None) -> None:
         self.node_col = node_col
+        # Pre-build O(1) ticker → metadata dict to avoid per-node DataFrame filters at build time.
+        self._ticker_meta: Dict[str, Dict[str, Any]] = {}
+        if markets_df is not None:
+            cols = [c for c in (node_col, *self._META_COLS) if c in markets_df.columns]
+            for row in (
+                markets_df.select(cols)
+                .unique(subset=[node_col], keep="last")
+                .iter_rows(named=True)
+            ):
+                self._ticker_meta[str(row[node_col])] = row
+        # Cache of per-ticker slices for the current window, populated in identify_nodes
+        # and consumed in build_node_state to avoid re-scanning wd per node.
+        self._window_slices: Dict[str, pl.DataFrame] = {}
+        self._window_data_id: int = -1
 
     def identify_nodes(self, data: pl.DataFrame, **kwargs: Any) -> List[Hashable]:
-        return data[self.node_col].unique().sort().to_list()
+        node_ids = data[self.node_col].unique().sort().to_list()
+        # Partition wd once here so build_node_state can do O(1) dict lookup
+        # instead of re-scanning the window DataFrame for every node.
+        if id(data) != self._window_data_id:
+            self._window_slices = {
+                str(k): v
+                for k, v in data.partition_by(self.node_col, as_dict=True).items()
+            }
+            self._window_data_id = id(data)
+        return node_ids
 
     def build_node_state(self, node_id: Hashable, data: pl.DataFrame, **kwargs: Any) -> NodeState:
         window_end: Optional[datetime] = kwargs.get("window_end")
         auxiliary: Dict[str, pl.DataFrame] = kwargs.get("auxiliary") or {}
         markets: Optional[pl.DataFrame] = auxiliary.get("markets")
 
-        t = data.filter(pl.col(self.node_col) == node_id)
+        t = self._window_slices.get(str(node_id)) if self._window_slices else None
+        if t is None:
+            t = data.filter(pl.col(self.node_col) == node_id)
         feats = np.zeros(self.N_FEATURES, dtype=np.float64)
         meta: Dict[str, Any] = {}
 
         close_time: Optional[datetime] = None
-        if markets is not None and not markets.is_empty():
+        cached = self._ticker_meta.get(str(node_id))
+        if cached is not None:
+            for col in ("event_ticker", "title", "status", "market_type"):
+                if col in cached:
+                    meta[col] = cached[col]
+            ct = cached.get("close_time")
+            if ct is not None:
+                close_time = ct
+        elif markets is not None and not markets.is_empty():
             mkt = markets.filter(pl.col("ticker") == node_id)
             if not mkt.is_empty():
                 row = mkt.tail(1)

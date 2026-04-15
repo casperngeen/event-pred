@@ -18,13 +18,17 @@ class KalshiOutcomeLabels:
         self.result_col = result_col
 
     def extract_labels(self, node_ids: List[Hashable], data: pl.DataFrame, **kwargs: Any) -> Dict[Hashable, int]:
+        if data.is_empty() or self.result_col not in data.columns:
+            return {nid: -1 for nid in node_ids}
+        lookup = {
+            str(row[self.node_col]): row[self.result_col]
+            for row in data.select([self.node_col, self.result_col])
+            .unique(subset=[self.node_col], keep="last")
+            .iter_rows(named=True)
+        }
         labels: Dict[Hashable, int] = {}
         for nid in node_ids:
-            sub = data.filter(pl.col(self.node_col) == nid)
-            if sub.is_empty() or self.result_col not in sub.columns:
-                labels[nid] = -1
-                continue
-            val = sub[self.result_col][-1]
+            val = lookup.get(str(nid))
             labels[nid] = 1 if val == "yes" else (0 if val == "no" else -1)
         return labels
 
@@ -66,11 +70,16 @@ class KalshiPriceChangeLabels:
     ) -> None:
         if mode not in ("raw", "pct", "direction"):
             raise ValueError(f"mode must be 'raw', 'pct', or 'direction', got {mode!r}")
-        self.all_trades = all_trades.sort("created_time") if "created_time" in all_trades.columns else all_trades
         self.horizon_td = parse_duration_td(horizon)
         self.mode = mode
         self.flat_threshold = flat_threshold
         self.node_col = node_col
+        # Pre-partition by ticker so each future-window lookup scans only that
+        # ticker's rows rather than the full 39M-row DataFrame.
+        sorted_trades = all_trades.sort("created_time") if "created_time" in all_trades.columns else all_trades
+        self._by_ticker: Dict[str, pl.DataFrame] = {
+            str(k): v for k, v in sorted_trades.partition_by(node_col, as_dict=True).items()
+        }
 
     def extract_labels(
         self, node_ids: List[Hashable], data: pl.DataFrame, **kwargs: Any
@@ -93,9 +102,12 @@ class KalshiPriceChangeLabels:
                 continue
             cur_price = float(cur["yes_price"][-1])
 
-            fut = self.all_trades.filter(
-                (pl.col(self.node_col) == nid)
-                & (pl.col("created_time") >= window_end)
+            ticker_trades = self._by_ticker.get(str(nid))
+            if ticker_trades is None:
+                labels[nid] = float("nan")
+                continue
+            fut = ticker_trades.filter(
+                (pl.col("created_time") >= window_end)
                 & (pl.col("created_time") < horizon_end)
             )
             if fut.is_empty():

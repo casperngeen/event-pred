@@ -7,6 +7,7 @@ primary data, so node/edge strategies always receive temporally aligned data.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 import polars as pl
@@ -46,6 +47,7 @@ class GraphBuilder:
         self._label: Optional[LabelStrategy] = None
         self._extra_kwargs: Dict[str, Any] = {}
         self._aux_time_cols: Dict[str, str] = {}
+        self._static_aux_names: set = set()
 
     def with_temporal(self, s: TemporalStrategy) -> GraphBuilder:
         self._temporal = s; return self
@@ -73,6 +75,12 @@ class GraphBuilder:
     def with_kwargs(self, **kwargs: Any) -> GraphBuilder:
         self._extra_kwargs.update(kwargs); return self
 
+    def with_static_auxiliary(self, *names: str) -> GraphBuilder:
+        """Mark auxiliary DataFrames that are reference tables and should NOT be
+        sliced per window (e.g. a markets metadata table)."""
+        self._static_aux_names.update(names)
+        return self
+
     def with_auxiliary_time_col(self, aux_name: str, time_col: str) -> GraphBuilder:
         """Specify which time column to use when slicing an auxiliary DataFrame.
 
@@ -90,6 +98,9 @@ class GraphBuilder:
         """Filter each auxiliary DataFrame to [window_start, window_end)."""
         sliced: Dict[str, pl.DataFrame] = {}
         for name, df in auxiliary.items():
+            if name in self._static_aux_names:
+                sliced[name] = df
+                continue
             time_col = self._aux_time_cols.get(name, "created_time")
             if time_col not in df.columns:
                 # Can't slice — pass through unfiltered with a warning
@@ -118,18 +129,24 @@ class GraphBuilder:
         auxiliary = auxiliary or {}
         base_kw: Dict[str, Any] = {**self._extra_kwargs}
 
+        t0 = time.perf_counter()
         slices = self._temporal.slice(data, **base_kw)
-        logger.info("Temporal slicing produced %d windows", len(slices))
+        n_windows = len(slices)
+        logger.info("Temporal slicing produced %d windows (%.1fs)", n_windows, time.perf_counter() - t0)
 
         snapshots: List[GraphSnapshot] = []
         labels_over_time: Dict[Any, Dict[Any, Any]] = {}
 
-        for window in slices:
+        # Stage timing accumulators
+        t_nodes = t_edges = t_feats = t_post = t_labels = 0.0
+        last_log_time = time.perf_counter()
+        log_interval = 10.0  # seconds between progress updates
+
+        for i, window in enumerate(slices):
             ts = window["timestamp"]
             wd: pl.DataFrame = window["data"]
             snap = GraphSnapshot(timestamp=ts)
 
-            # Slice auxiliary data to this window's time range
             window_start = window.get("window_start")
             window_end = window.get("window_end")
 
@@ -146,27 +163,56 @@ class GraphBuilder:
                 "window_end": window_end,
             }
 
-            # All node strategies run first, in registration order.
+            # Nodes
+            t = time.perf_counter()
             for node_strategy in self._nodes:
                 for nid in node_strategy.identify_nodes(wd, **kw):
                     snap.add_node(node_strategy.build_node_state(nid, wd, **kw))
+            t_nodes += time.perf_counter() - t
 
-            # All edge strategies run after every node is present, in registration order.
+            # Edges
+            t = time.perf_counter()
             for edge_strategy in self._edges:
                 for e in edge_strategy.build_edges(snap, wd, **kw):
                     snap.add_edge(e)
+            t_edges += time.perf_counter() - t
 
+            # Feature transforms
+            t = time.perf_counter()
             if self._features is not None:
                 self._apply_feature_transforms(snap)
+            t_feats += time.perf_counter() - t
 
+            # Post-processing
+            t = time.perf_counter()
             for pp in self._post_processors:
                 snap = pp.process(snap, **kw)
+            t_post += time.perf_counter() - t
 
+            # Labels
+            t = time.perf_counter()
             if self._label is not None:
                 labels_over_time[ts] = self._label.extract_labels(snap.node_ids, wd, **kw)
+            t_labels += time.perf_counter() - t
 
             snapshots.append(snap)
             logger.debug("t=%s  nodes=%d  edges=%d", ts, snap.num_nodes, snap.num_edges)
+
+            now = time.perf_counter()
+            if now - last_log_time >= log_interval or (i + 1) == n_windows:
+                last_log_time = now
+                pct = 100 * (i + 1) / n_windows
+                elapsed = t_nodes + t_edges + t_feats + t_post + t_labels
+                logger.info(
+                    "[%5.1f%%] %d/%d windows | nodes %.1fs  edges %.1fs  feats %.1fs  post %.1fs  labels %.1fs | total %.1fs",
+                    pct, i + 1, n_windows,
+                    t_nodes, t_edges, t_feats, t_post, t_labels, elapsed,
+                )
+
+        logger.info(
+            "Build complete — %d snapshots in %.1fs",
+            len(snapshots), t_nodes + t_edges + t_feats + t_post + t_labels,
+        )
 
         stg = SpatioTemporalGraph(snapshots)
         stg._labels = labels_over_time  # type: ignore[attr-defined]
@@ -174,11 +220,12 @@ class GraphBuilder:
 
     def _apply_feature_transforms(self, snapshot: GraphSnapshot) -> None:
         assert self._features is not None
-        for nid in snapshot.node_ids:
-            nd = snapshot._graph.nodes[nid]
-            nd["features"] = self._features.transform_node_features(
-                nd["features"].reshape(1, -1)
-            ).squeeze(0)
+        nids = snapshot.node_ids
+        if nids:
+            X = snapshot.feature_matrix()  # (N, F) — single batch transform
+            X_t = self._features.transform_node_features(X)
+            for i, nid in enumerate(nids):
+                snapshot._graph.nodes[nid]["features"] = X_t[i]
         for u, v in snapshot.edges:
             ed = snapshot._graph.edges[u, v]
             ef = ed.get("features")
