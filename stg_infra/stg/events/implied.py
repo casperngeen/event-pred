@@ -88,6 +88,53 @@ def pdf_implied_std(thresholds: np.ndarray, above_probs: np.ndarray) -> float:
     return float(np.sqrt(np.dot(probs, (midpoints - mean) ** 2)))
 
 
+def pdf_implied_stats(
+    midpoints: np.ndarray,
+    probs: np.ndarray,
+) -> dict:
+    """Compute a full set of distributional statistics from a discrete PDF.
+
+    Parameters
+    ----------
+    midpoints : bucket midpoints (already from recover_pdf)
+    probs     : probability masses summing to 1 (already from recover_pdf)
+
+    Returns
+    -------
+    dict with keys: mean, std, skew, kurtosis, entropy, median
+        skew     — 3rd standardised moment (positive = right-skewed)
+        kurtosis — excess kurtosis (0 for normal; positive = fat tails)
+        entropy  — Shannon entropy in nats
+        median   — midpoint where cumulative mass first reaches 0.5
+    """
+    mean = float(np.dot(midpoints, probs))
+    variance = float(np.dot(probs, (midpoints - mean) ** 2))
+    std = float(np.sqrt(variance))
+
+    if std > 0:
+        skew = float(np.dot(probs, (midpoints - mean) ** 3) / std ** 3)
+        kurtosis = float(np.dot(probs, (midpoints - mean) ** 4) / std ** 4) - 3.0
+    else:
+        skew = 0.0
+        kurtosis = 0.0
+
+    eps = 1e-12
+    entropy = float(-np.sum(probs * np.log(probs + eps)))
+
+    cdf = np.cumsum(probs)
+    median_idx = min(int(np.searchsorted(cdf, 0.5)), len(midpoints) - 1)
+    median = float(midpoints[median_idx])
+
+    return {
+        "mean": mean,
+        "std": std,
+        "skew": skew,
+        "kurtosis": kurtosis,
+        "entropy": entropy,
+        "median": median,
+    }
+
+
 def resolved_value(event_markets: pl.DataFrame) -> Optional[float]:
     """Infer the resolved value from submarket yes/no results.
 
@@ -203,6 +250,7 @@ def build_daily_implied_means(
     -------
     DataFrame with columns:
         event_ticker, date, implied_mean, implied_std,
+        implied_skew, implied_kurtosis, implied_entropy, implied_median,
         n_submarkets, series_type, resolved_value
     """
     def _group_mean(df: pl.DataFrame) -> pl.DataFrame:
@@ -211,20 +259,28 @@ def build_daily_implied_means(
         idx = np.argsort(thr)
         thr, prb = thr[idx], prb[idx]
 
+        null_cols = [
+            pl.lit(None).cast(pl.Float64).alias("implied_mean"),
+            pl.lit(None).cast(pl.Float64).alias("implied_std"),
+            pl.lit(None).cast(pl.Float64).alias("implied_skew"),
+            pl.lit(None).cast(pl.Float64).alias("implied_kurtosis"),
+            pl.lit(None).cast(pl.Float64).alias("implied_entropy"),
+            pl.lit(None).cast(pl.Float64).alias("implied_median"),
+            pl.lit(len(thr)).cast(pl.Int32).alias("n_submarkets"),
+            pl.lit(series_type).alias("series_type"),
+        ]
         if len(thr) < 2:
-            return df.head(1).select(["event_ticker", "date"]).with_columns([
-                pl.lit(None).cast(pl.Float64).alias("implied_mean"),
-                pl.lit(None).cast(pl.Float64).alias("implied_std"),
-                pl.lit(len(thr)).cast(pl.Int32).alias("n_submarkets"),
-                pl.lit(series_type).alias("series_type"),
-            ])
+            return df.head(1).select(["event_ticker", "date"]).with_columns(null_cols)
 
         midpoints, probs = recover_pdf(thr, prb)
-        mean = float(np.dot(midpoints, probs))
-        std  = float(np.sqrt(np.dot(probs, (midpoints - mean) ** 2)))
+        s = pdf_implied_stats(midpoints, probs)
         return df.head(1).select(["event_ticker", "date"]).with_columns([
-            pl.lit(mean).alias("implied_mean"),
-            pl.lit(std).alias("implied_std"),
+            pl.lit(s["mean"]).alias("implied_mean"),
+            pl.lit(s["std"]).alias("implied_std"),
+            pl.lit(s["skew"]).alias("implied_skew"),
+            pl.lit(s["kurtosis"]).alias("implied_kurtosis"),
+            pl.lit(s["entropy"]).alias("implied_entropy"),
+            pl.lit(s["median"]).alias("implied_median"),
             pl.lit(len(thr)).cast(pl.Int32).alias("n_submarkets"),
             pl.lit(series_type).alias("series_type"),
         ])

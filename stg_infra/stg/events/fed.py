@@ -24,7 +24,7 @@ import polars as pl
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "stg"))
 from stg.io.kalshi import KalshiOHLCV
 
-from stg_infra.stg.events.implied import parse_threshold, build_daily_implied_means
+from stg_infra.stg.events.implied import parse_threshold, build_daily_implied_means, pdf_implied_stats
 from stg_infra.stg.events.config import DATA_DIR, DATE_START, DATE_END
 
 log = logging.getLogger(__name__)
@@ -121,11 +121,16 @@ def compute_fed_decision_series(
         total      = prices.sum()
         probs      = prices / total if total > 0 else np.ones(len(prices)) / len(prices)
         bps_values = np.array([_DECISION_BPS[d] for d in decisions])
-        mean = float(np.dot(probs, bps_values))
-        std  = float(np.sqrt(np.dot(probs, (bps_values - mean) ** 2)))
+        # sort by bps value so median is well-defined
+        order      = np.argsort(bps_values)
+        s = pdf_implied_stats(bps_values[order], probs[order])
         return df.head(1).select(["event_ticker", "date"]).with_columns([
-            pl.lit(mean).alias("implied_mean"),
-            pl.lit(std).alias("implied_std"),
+            pl.lit(s["mean"]).alias("implied_mean"),
+            pl.lit(s["std"]).alias("implied_std"),
+            pl.lit(s["skew"]).alias("implied_skew"),
+            pl.lit(s["kurtosis"]).alias("implied_kurtosis"),
+            pl.lit(s["entropy"]).alias("implied_entropy"),
+            pl.lit(s["median"]).alias("implied_median"),
             pl.lit(len(decisions)).cast(pl.Int32).alias("n_submarkets"),
             pl.lit("decision_bps").alias("series_type"),
         ])
