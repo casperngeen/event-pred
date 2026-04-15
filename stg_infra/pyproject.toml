@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64.0.0, <75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stg"
+version = "0.3.0"
+description = "Spatio-Temporal Graph infrastructure for event prediction markets"
+requires-python = ">=3.9"
+dependencies = [
+    "polars>=0.20",
+    "numpy>=1.22",
+    "networkx>=3.0",
+    "scikit-learn>=1.0",
+]
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.5"]
+
+[tool.setuptools.packages.find]
+where = ["."]
