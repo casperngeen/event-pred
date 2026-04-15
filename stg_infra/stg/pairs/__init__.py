@@ -1,0 +1,1 @@
+"""Event pairs: selection, mapping to tradable tickers, and backtesting."""
