@@ -1,12 +1,18 @@
 from __future__ import annotations
 
-from typing import Dict
+import logging
+from typing import Dict, Optional
 
-from stg.io.kalshi import KalshiOHLCV
-from stg.pairs.config import EventPairsConfig
-from stg.pairs.kalshi_inputs import load_trades_and_markets
-from stg.pairs.selection import build_event_panel, select_event_pairs, select_event_universe
-from stg.pairs.tradable_proxy import (
+import numpy as np
+import polars as pl
+
+logger = logging.getLogger(__name__)
+
+from stg_infra.stg.io.kalshi import KalshiOHLCV
+from stg_infra.stg.pairs.config import EventPairsConfig
+from stg_infra.stg.pairs.kalshi_inputs import load_trades_and_markets
+from stg_infra.stg.pairs.selection import build_event_panel, select_event_pairs, select_event_universe
+from stg_infra.stg.pairs.tradable_proxy import (
     backtest_zscore_pairs,
     build_wide_ticker_close_panel,
     map_event_pairs_to_ticker_pairs,
@@ -19,6 +25,8 @@ def run_event_pairs_arb(
     trades_glob: str,
     markets_glob: str,
     cfg: EventPairsConfig,
+    backtest_trades_glob: Optional[str] = None,
+    backtest_markets_glob: Optional[str] = None,
 ) -> Dict[str, object]:
     trades, markets = load_trades_and_markets(trades_glob, markets_glob)
 
@@ -47,9 +55,47 @@ def run_event_pairs_arb(
         raise RuntimeError("No ticker pairs mapped from event pairs (rep tickers missing or same ticker).")
 
     tickers_needed = sorted({t for a, b in ticker_pairs for t in (a, b)})
-    tdates, tseries = build_wide_ticker_close_panel(daily, tickers_needed)
+
+    if backtest_trades_glob is not None or backtest_markets_glob is not None:
+        if backtest_trades_glob is None or backtest_markets_glob is None:
+            raise ValueError(
+                "backtest_trades_glob and backtest_markets_glob must be given together."
+            )
+
+        bt_trades, bt_markets = load_trades_and_markets(
+            backtest_trades_glob,
+            backtest_markets_glob
+        )
+
+        daily_bt = KalshiOHLCV.build_daily(bt_trades, bt_markets)
+
+        tdates, tseries = build_wide_ticker_close_panel(
+            daily_bt,
+            tickers_needed
+        )
+
+        in_sample = np.zeros(len(tdates), dtype=bool)
+
+    else:
+        logger.warning(
+            "run_event_pairs_arb: no backtest_trades_glob/backtest_markets_glob given — "
+            "backtesting on the same data used for pair selection. This is in-sample and "
+            "will overstate performance."
+        )
+
+        tdates, tseries = build_wide_ticker_close_panel(
+            daily,
+            tickers_needed
+        )
+
+        in_sample = tdates <= end_date
+
 
     equity = backtest_zscore_pairs(tdates, tseries, ticker_pairs, cfg)
+
+    equity = equity.with_columns(
+        pl.Series("in_sample", in_sample)
+    )
 
     return {
         "daily": daily,

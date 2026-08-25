@@ -1,0 +1,30 @@
+{
+  "baseline": {
+    "risk": {
+      "annualized_return": 22.91035957160579,
+      "annualized_volatility": 0.6114140482686451,
+      "sharpe_ratio": 5.510258371709896,
+      "sortino_ratio": 14.375031669637348,
+      "max_drawdown": -0.034141092856125654,
+      "calmar_ratio": 671.0493910711231,
+      "profit_factor": 6.903685024993597,
+      "win_rate": 0.23333333333333334
+    },
+    "stat_arb": {
+      "num_pairs": 30,
+      "stationary_ratio_p_lt_0.05": 0.1875,
+      "median_adf_pvalue": 0.21109544442659997,
+      "median_zero_cross_rate_week": 0.0,
+      "median_z_kurtosis": 2.8536986827021287
+    },
+    "graph": {
+      "avg_turnover": 0.0,
+      "avg_homophily": 1.0,
+      "avg_edge_persistence": 30.0
+    }
+  },
+  "stg": {},
+  "comparison": {
+    "num_compared_metrics": 0
+  }
+}

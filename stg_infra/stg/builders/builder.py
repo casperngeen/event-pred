@@ -33,8 +33,8 @@ class GraphBuilder:
     ...     .with_temporal(FixedWindowTemporal(every="1h"))
     ...     .with_nodes(KalshiTradeAugmentedNodes())
     ...     .with_edges(KalshiEventEdges())
-    ...     .with_auxiliary_time_col("trades", "created_time")
-    ...     .build(markets_df, auxiliary={"trades": trades_df})
+    ...     .with_auxiliary_time_col("markets", "created_time")
+    ...     .build(trades_df, auxiliary={"markets": markets_df})
     ... )
     """
 

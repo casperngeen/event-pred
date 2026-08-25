@@ -12,10 +12,11 @@ pip install -e .
 ## Quick Start
 
 ```python
-from stg.builders.builder import GraphBuilder
-from stg.io.loaders import DatasetLoader
-from stg.adapters.kalshi import KalshiMarketNodes, KalshiEventEdges
-from stg.edges.strategies import KNNEdges, CompositeEdges
+from stg_infra.stg.builders.builder import GraphBuilder
+from stg_infra.stg.io.loaders import DatasetLoader
+from stg_infra.stg.nodes.kalshi import KalshiTickerNodes
+from stg_infra.stg.edges.kalshi import KalshiEventEdges
+from stg_infra.stg.edges.strategies import KNNEdges, CompositeEdges
 from stg.temporal.strategies import FixedWindowTemporal
 from stg.strategies.post_process import AddSelfLoops, Symmetrise
 
@@ -26,14 +27,17 @@ trades  = DatasetLoader("data/trades_*.parquet").load()
 stg = (
     GraphBuilder()
     .with_temporal(FixedWindowTemporal(every="1h"))
-    .with_nodes(KalshiMarketNodes())
-    .with_edges(CompositeEdges([KalshiEventEdges(weight=2.0), KNNEdges(k=5)]))
+    .with_nodes(KalshiTickerNodes())
+    .with_edges(CompositeEdges([
+        KalshiEventEdges(weight=2.0),
+        KNNEdges(k=5)
+    ]))
     .with_post_process(Symmetrise())
     .with_post_process(AddSelfLoops())
-    .build(markets, auxiliary={"trades": trades})
+    .build(trades, auxiliary={"markets": markets})
 )
 
-feat = stg.feature_tensor()    # (T, N, F) numpy
+feat = stg.feature_tensor_padded()   # (T, N, F) numpy
 adj  = stg.adjacency_tensor()  # (T, N, N) numpy
 ```
 
@@ -49,7 +53,7 @@ lf = DatasetLoader(
 markets = lf.collect()
 
 # Out-of-core incremental building
-from stg import IncrementalGraphBuilder
+from stg_infra.stg.io.loaders import IncrementalGraphBuilder
 inc = IncrementalGraphBuilder(builder)
 for chunk in DatasetLoader("data/markets_*.parquet").load_iter(files_per_batch=20):
     inc.ingest(chunk)
