@@ -5,8 +5,8 @@ from typing import List, Tuple
 import numpy as np
 import polars as pl
 
-from stg_infra.stg.pairs.config import EventPairsConfig
-from stg_infra.stg.pairs.stats import half_life, pairwise_corr, rolling_beta
+from stg.pairs.config import EventPairsConfig
+from stg.pairs.stats import half_life, pairwise_corr, rolling_beta
 
 
 def select_event_universe(

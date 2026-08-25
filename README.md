@@ -6,17 +6,17 @@ Strategy-pattern framework for modelling event prediction markets as spatio-temp
 
 ```bash
 pip install -r requirements.txt
-pip install -e .
+pip install -e ./stg_infra
 ```
 
 ## Quick Start
 
 ```python
-from stg_infra.stg.builders.builder import GraphBuilder
-from stg_infra.stg.io.loaders import DatasetLoader
-from stg_infra.stg.nodes.kalshi import KalshiTickerNodes
-from stg_infra.stg.edges.kalshi import KalshiEventEdges
-from stg_infra.stg.edges.strategies import KNNEdges, CompositeEdges
+from stg.builders.builder import GraphBuilder
+from stg.io.loaders import DatasetLoader
+from stg.nodes.kalshi import KalshiTickerNodes
+from stg.edges.kalshi import KalshiEventEdges
+from stg.edges.strategies import KNNEdges, CompositeEdges
 from stg.temporal.strategies import FixedWindowTemporal
 from stg.strategies.post_process import AddSelfLoops, Symmetrise
 
@@ -53,7 +53,7 @@ lf = DatasetLoader(
 markets = lf.collect()
 
 # Out-of-core incremental building
-from stg_infra.stg.io.loaders import IncrementalGraphBuilder
+from stg.io.loaders import IncrementalGraphBuilder
 inc = IncrementalGraphBuilder(builder)
 for chunk in DatasetLoader("data/markets_*.parquet").load_iter(files_per_batch=20):
     inc.ingest(chunk)

@@ -1,19 +1,5 @@
 import polars as pl
 
-
-pl.Config.set_fmt_str_lengths(1000)  
-pl.Config.set_tbl_rows(20)           
-
-df = pl.read_parquet("data/markets/markets_kalshi_even/markets_2025-10.parquet")
-
-n_way_events = (
-    df.group_by("event_ticker")
-    .agg(pl.count("ticker").alias("num_outcomes"))
-    .sort("num_outcomes", descending=True)
-)
-
-print(n_way_events.tail(999))
-
 # 1. Configuration for clear output
 pl.Config.set_fmt_str_lengths(1000)  # Don't truncate long tickers
 pl.Config.set_tbl_rows(50)           # Show more rows

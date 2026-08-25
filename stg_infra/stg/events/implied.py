@@ -12,6 +12,9 @@ from typing import Optional
 import numpy as np
 import polars as pl
 
+from stg.io.kalshi import KalshiOHLCV
+from stg.events.config import DATE_START, DATE_END
+
 _THRESHOLD_RE = re.compile(
     r"-T(-\d+\.?\d*)$"     # new format negative: T-0.1
     r"|"
@@ -199,15 +202,8 @@ def compute_threshold_series(
     date_start/end   : override the module-level DATE_START/DATE_END;
                        pass a ``pl.date(...)`` expression if needed
     """
-    # import here to avoid circular dependency (KalshiOHLCV → stg)
-    import sys
-    from pathlib import Path as _Path
-    sys.path.insert(0, str(_Path(__file__).parent.parent.parent / "stg"))
-    from stg.io.kalshi import KalshiOHLCV
-
-    from stg_infra.stg.events.config import DATE_START as _DS, DATE_END as _DE
-    ds = date_start if date_start is not None else _DS
-    de = date_end   if date_end   is not None else _DE
+    ds = date_start if date_start is not None else DATE_START
+    de = date_end   if date_end   is not None else DATE_END
 
     evt_markets = markets.filter(pl.col("event_ticker").str.contains(event_pattern))
     tickers     = evt_markets["ticker"].unique().to_list()

@@ -62,18 +62,28 @@ class KalshiTickerNodes:
         # Cache of per-ticker slices for the current window, populated in identify_nodes
         # and consumed in build_node_state to avoid re-scanning wd per node.
         self._window_slices: Dict[str, pl.DataFrame] = {}
-        self._window_data_id: int = -1
+        # NOTE: this must be a real reference to the last-seen window DataFrame, not
+        # id(data). GraphBuilder keeps every window alive for the duration of one
+        # .build() call, so id() reuse can't happen there — but IncrementalGraphBuilder
+        # reuses this same strategy instance across *separate* .build() calls on
+        # different chunks. Once one chunk's DataFrame is garbage-collected between
+        # ingest() calls, Python is free to hand the next chunk's DataFrame the exact
+        # same id(), which would silently reuse a stale, unrelated window's cache.
+        # Holding the actual object (and comparing with `is`) makes that impossible:
+        # as long as we hold the reference, its id() can't be reassigned to anything
+        # else.
+        self._window_data_ref: Optional[pl.DataFrame] = None
 
     def identify_nodes(self, data: pl.DataFrame, **kwargs: Any) -> List[Hashable]:
         node_ids = data[self.node_col].unique().sort().to_list()
         # Partition wd once here so build_node_state can do O(1) dict lookup
         # instead of re-scanning the window DataFrame for every node.
-        if id(data) != self._window_data_id:
+        if data is not self._window_data_ref:
             self._window_slices = {
                 str(k): v
                 for k, v in data.partition_by(self.node_col, as_dict=True).items()
             }
-            self._window_data_id = id(data)
+            self._window_data_ref = data
         return node_ids
 
     def build_node_state(self, node_id: Hashable, data: pl.DataFrame, **kwargs: Any) -> NodeState:

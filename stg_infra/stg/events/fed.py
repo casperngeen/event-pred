@@ -13,7 +13,6 @@ Handles two market structures:
 from __future__ import annotations
 
 import re
-import sys
 import logging
 from pathlib import Path
 from typing import Optional
@@ -21,11 +20,10 @@ from typing import Optional
 import numpy as np
 import polars as pl
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "stg"))
 from stg.io.kalshi import KalshiOHLCV
 
-from stg_infra.stg.events.implied import parse_threshold, build_daily_implied_means, pdf_implied_stats
-from stg_infra.stg.events.config import DATA_DIR, DATE_START, DATE_END
+from stg.events.implied import compute_threshold_series, pdf_implied_stats
+from stg.events.config import DATE_START, DATE_END
 
 log = logging.getLogger(__name__)
 
@@ -60,30 +58,18 @@ def compute_fed_level_series(
     markets: pl.DataFrame,
     trades: pl.DataFrame,
 ) -> pl.DataFrame:
-    """Daily implied fed funds rate level for FED-YYMM events."""
-    fed_markets = markets.filter(
-        pl.col("event_ticker").str.contains(r"^FED-\d{2}[A-Z]{3}$")
+    """Daily implied fed funds rate level for FED-YYMM events.
+
+    FED-YYMM is a plain "Above X%" threshold series, structurally identical
+    to CPI/GDP/payrolls/unemployment — so this just delegates to the shared
+    ``compute_threshold_series`` instead of re-implementing the same
+    filter -> build_daily -> parse-threshold -> PDF-recovery pipeline.
+    """
+    return compute_threshold_series(
+        markets, trades,
+        event_pattern=r"^FED-\d{2}[A-Z]{3}$",
+        series_type="fed_level",
     )
-    fed_tickers = fed_markets["ticker"].unique().to_list()
-    fed_trades  = trades.filter(pl.col("ticker").is_in(fed_tickers))
-
-    if fed_trades.is_empty():
-        return pl.DataFrame()
-
-    log.info("Building daily OHLCV for %d FED-level tickers...", len(fed_tickers))
-    daily = (
-        KalshiOHLCV.build_daily(fed_trades, fed_markets)
-        .filter((pl.col("date") >= DATE_START) & (pl.col("date") <= DATE_END))
-        .with_columns(
-            pl.col("ticker")
-            .map_elements(parse_threshold, return_dtype=pl.Float64)
-            .alias("threshold")
-        )
-        .filter(pl.col("threshold").is_not_null())
-    )
-
-    return build_daily_implied_means(daily, fed_markets, series_type="fed_level")
-
 
 # ---------------------------------------------------------------------------
 # FEDDECISION: categorical cut/hold/hike contracts
@@ -174,9 +160,9 @@ def compute_fed_decision_series(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 
-    log.info("Loading data...")
-    markets = pl.read_parquet(str(DATA_DIR / "markets/*.parquet"))
-    trades  = pl.read_parquet(str(DATA_DIR / "trades/*.parquet"))
+    from stg.events._cli import load_markets_and_trades
+ 
+    markets, trades = load_markets_and_trades()
 
     level    = compute_fed_level_series(markets, trades)
     decision = compute_fed_decision_series(markets, trades)
@@ -195,5 +181,6 @@ if __name__ == "__main__":
     print(decision.filter(pl.col("implied_mean").is_not_null()).head(10))
 
     out = Path("kalshi/fed_implied_mean.parquet")
+    out.parent.mkdir(parents=True, exist_ok=True)
     all_results.write_parquet(str(out))
     log.info("Saved to %s", out)

@@ -4,8 +4,6 @@ Process all data for each month together
 """
 
 import logging
-import sys
-import os
 
 import polars as pl
 
@@ -21,7 +19,11 @@ from stg.strategies.features import LogTransformFeatures, StandardScaleFeatures,
 
 from scripts.data_split_odd_even_months import SplitByOddEvenMonths
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
++# NOTE: no sys.path manipulation needed here -- `stg` resolves via the
++# editable install (`pip install -e ./stg_infra`), same as every other
++# module in this codebase. `scripts` still needs to be run from the repo
++# root (or with the repo root on PYTHONPATH) for the import above to resolve.
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 
 

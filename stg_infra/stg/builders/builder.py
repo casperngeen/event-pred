@@ -31,7 +31,7 @@ class GraphBuilder:
     >>> stg = (
     ...     GraphBuilder()
     ...     .with_temporal(FixedWindowTemporal(every="1h"))
-    ...     .with_nodes(KalshiTradeAugmentedNodes())
+    ...     .with_nodes(KalshiTickerNodes())
     ...     .with_edges(KalshiEventEdges())
     ...     .with_auxiliary_time_col("markets", "created_time")
     ...     .build(trades_df, auxiliary={"markets": markets_df})

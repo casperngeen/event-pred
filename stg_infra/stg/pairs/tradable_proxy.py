@@ -5,8 +5,8 @@ from typing import Dict, List, Sequence, Tuple
 import numpy as np
 import polars as pl
 
-from stg_infra.stg.pairs.config import EventPairsConfig
-from stg_infra.stg.pairs.stats import rolling_beta, rolling_z
+from stg.pairs.config import EventPairsConfig
+from stg.pairs.stats import rolling_beta, rolling_z
 
 
 def representative_tickers(

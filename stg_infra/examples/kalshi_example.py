@@ -3,8 +3,6 @@ Example: Building a Spatio-Temporal Graph from Kalshi data (pure Polars).
 """
 
 import logging
-import sys
-import os
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
@@ -22,7 +20,9 @@ from stg.strategies.post_process import AddSelfLoops, Symmetrise, TopKEdges, Nor
 from stg.strategies.features import LogTransformFeatures, StandardScaleFeatures, ChainFeatures
 
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# NOTE: no sys.path manipulation needed here -- `stg` resolves via the
+# editable install (`pip install -e ./stg_infra`), same as every other
+# module in this codebase.
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 
 

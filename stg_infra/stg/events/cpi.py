@@ -11,16 +11,11 @@ and computes the implied mean per event per day.
 
 from __future__ import annotations
 
-import sys
 import logging
-from pathlib import Path
 
 import polars as pl
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "stg"))
-
-from stg_infra.stg.events.implied import compute_threshold_series
-from stg_infra.stg.events.config import DATA_DIR
+from stg.events.implied import compute_threshold_series
 
 log = logging.getLogger(__name__)
 
@@ -56,19 +51,9 @@ compute_daily_implied_means = compute_cpi_mom_series
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 
-    log.info("Loading data...")
-    markets = pl.read_parquet(str(DATA_DIR / "markets/*.parquet"))
-    trades  = pl.read_parquet(str(DATA_DIR / "trades/*.parquet"))
-
-    mom = compute_cpi_mom_series(markets, trades)
-    yoy = compute_cpi_yoy_series(markets, trades)
-    results = pl.concat([df for df in [mom, yoy] if not df.is_empty()])
-
-    print(f"\nCPI MoM rows:   {len(mom)}")
-    print(f"CPI YoY rows:   {len(yoy)}")
-    print(f"Total rows:     {len(results)}")
-    print(f"Events covered: {results['event_ticker'].n_unique()}")
-
-    out = Path("kalshi/cpi_implied_mean.parquet")
-    results.write_parquet(str(out))
-    log.info("Saved to %s", out)
+    from stg.events._cli import run_and_save
+    
+    run_and_save(
+        {"CPI MoM": compute_cpi_mom_series, "CPI YoY": compute_cpi_yoy_series},
+        "kalshi/cpi_implied_mean.parquet",
+    )
