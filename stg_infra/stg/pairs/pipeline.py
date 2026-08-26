@@ -69,12 +69,43 @@ def run_event_pairs_arb(
 
         daily_bt = KalshiOHLCV.build_daily(bt_trades, bt_markets)
 
-        tdates, tseries = build_wide_ticker_close_panel(
-            daily_bt,
-            tickers_needed
+        # Representative tickers are re-resolved over the backtest window itself,
+        # rather than reusing rep_tickers/ticker_pairs from the training window
+        # above -- a ticker picked as "representative" for an event in training
+        # typically won't exist at all in a later, disjoint backtest window.
+        bt_start_date = daily_bt["date"].min()
+        bt_end_date = daily_bt["date"].max()
+        rep_tickers_bt = representative_tickers(
+            daily_bt, events, start_date=bt_start_date, end_date=bt_end_date
+        )
+        ticker_pairs_bt, pair_mapping_bt = map_event_pairs_to_ticker_pairs(
+            event_pairs, rep_tickers_bt
         )
 
+        if not ticker_pairs_bt:
+            raise RuntimeError(
+                f"0 of {len(event_pairs)} event pairs have a representative ticker "
+                f"tradable during the backtest window ({bt_start_date}..{bt_end_date}). "
+                "The events selected in the training window most likely resolved/"
+                "expired before the backtest period started -- try a backtest period "
+                "closer to the training window, or restrict event selection to events "
+                "with longer typical lifetimes."
+            )
+
+        tickers_needed_bt = sorted({t for a, b in ticker_pairs_bt for t in (a, b)})
+        tdates, tseries = build_wide_ticker_close_panel(daily_bt, tickers_needed_bt)
+
+        if len(tdates) == 0:
+            raise RuntimeError(
+                "Backtest ticker panel has 0 rows even though "
+                f"{len(ticker_pairs_bt)} ticker pair(s) were resolved for the backtest "
+                f"window ({bt_start_date}..{bt_end_date}) -- check that daily_bt actually "
+                "has price data (not just ticker matches) in that range."
+            )
+
         in_sample = np.zeros(len(tdates), dtype=bool)
+        bt_ticker_pairs = ticker_pairs_bt
+        bt_pair_mapping = pair_mapping_bt
 
     else:
         logger.warning(
@@ -83,15 +114,18 @@ def run_event_pairs_arb(
             "will overstate performance."
         )
 
+        daily_bt = daily
         tdates, tseries = build_wide_ticker_close_panel(
             daily,
             tickers_needed
         )
 
         in_sample = tdates <= end_date
+        bt_ticker_pairs = ticker_pairs
+        bt_pair_mapping = pair_mapping
 
 
-    equity = backtest_zscore_pairs(tdates, tseries, ticker_pairs, cfg)
+    equity = backtest_zscore_pairs(tdates, tseries, bt_ticker_pairs, cfg)
 
     equity = equity.with_columns(
         pl.Series("in_sample", in_sample)
@@ -99,12 +133,16 @@ def run_event_pairs_arb(
 
     return {
         "daily": daily,
+        "daily_bt": daily_bt,
         "event": event,
         "events": events,
         "event_pairs": event_pairs,
-        "ticker_pairs": ticker_pairs,
+        "ticker_pairs": bt_ticker_pairs,
         "diagnostics": diagnostics,
         "rep_tickers": rep_tickers,
-        "pair_mapping": pair_mapping,
+        "pair_mapping": bt_pair_mapping,
         "equity": equity,
+        # (start_date, end_date) of the training/selection window rep_tickers
+        # and event_pairs were chosen over.
+        "selection_window": (start_date, end_date),
     }

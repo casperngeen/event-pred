@@ -128,16 +128,28 @@ out = run_event_pairs_arb(
     trades_glob=TRADES_GLOB,
     markets_glob=MARKETS_GLOB,
     cfg=cfg,
-    backtest_trades_glob="data/trades/trades_kalshi_even/trades_2025-11.parquet",
-    backtest_markets_glob="data/markets/markets_kalshi_even/markets_2025-11.parquet",
+    backtest_trades_glob="data/trades/trades_kalshi_odd/trades_2025-11.parquet",
+    backtest_markets_glob="data/markets/markets_kalshi_odd/markets_2025-11.parquet",
 )
 
 in_sample_frac = out["equity"]["in_sample"].mean()
 
-print(
-    f"\nWARNING: {in_sample_frac:.0%} of the backtest window overlaps pair selection "
-    f"(selection_window={out['selection_window']}) — treat this equity curve as in-sample."
-)
+# in_sample_frac is None only when out["equity"] has 0 rows -- this shouldn't
+# happen any more (run_event_pairs_arb now raises a clear RuntimeError instead
+# of silently returning an empty backtest panel when 0 event pairs survive
+# into the backtest window), but the guard is kept so a future regression
+# here fails with a readable message instead of
+# `TypeError: unsupported format string passed to NoneType.__format__`.
+if in_sample_frac is None:
+    print(
+        "\nWARNING: could not compute in-sample overlap fraction -- "
+        "out['equity'] has 0 rows."
+    )
+else:
+    print(
+        f"\nWARNING: {in_sample_frac:.0%} of the backtest window overlaps pair selection "
+        f"(selection_window={out['selection_window']}) — treat this equity curve as in-sample."
+    )
 
 # --------------------------------------------------------------------------
 # 3. Process Equity (fixed: explicit named column, not positional index)
@@ -147,12 +159,17 @@ equity_series = _extract_equity_series(equity_df)
 returns = equity_series.pct_change().fillna(0.0)
 
 # --------------------------------------------------------------------------
-# 4. Recover Pair History (fixed: use the pipeline's own `daily` panel and
+# 4. Recover Pair History (fixed: use the pipeline's own `daily_bt` panel and
 #    `ticker_pairs`, not a re-derived pivot from the raw markets file)
 # --------------------------------------------------------------------------
+# `daily_bt` is the panel that was actually backtested (the November window,
+# on tickers re-resolved for that window) -- using `out["daily"]` here would
+# silently pull October's training-period prices, which don't share dates
+# with `equity_series` and mostly won't even share tickers now that
+# representative tickers are re-resolved per window (see pipeline.py).
 print("Recovering Price History for Metrics...")
 pair_to_spread = _compute_pair_spreads_from_daily(
-    out["daily"], out["ticker_pairs"], out["pair_mapping"]
+    out["daily_bt"], out["ticker_pairs"], out["pair_mapping"]
 )
 print(f"[DEBUG] Metrics successfully recovered price history for {len(pair_to_spread)} pairs.")
 

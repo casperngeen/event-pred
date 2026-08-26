@@ -20,11 +20,18 @@ def analyze_n_way_clusters(markets_path: str):
         ])
     )
 
-    # 3. Categorize the events based on the number of outcomes
+    # 3. Categorize the events based on the number of outcomes.
+    # num_outcomes == 1 is an implicit-binary market (a single ticker carries
+    # both yes_bid/yes_ask and no_bid/no_ask -- there's no separate NO
+    # ticker). The original ladder started at == 2, so a 1-ticker event
+    # matched none of the `when` branches and fell through to `otherwise`,
+    # silently mislabeling every implicit-binary event as "Monster N-Way".
     event_distribution = (
         event_counts.with_columns(
-            pl.when(pl.col("num_outcomes") == 2)
-            .then(pl.lit("1. Binary (Yes/No)"))
+            pl.when(pl.col("num_outcomes") == 1)
+            .then(pl.lit("0. Implicit Binary (1 ticker)"))
+            .when(pl.col("num_outcomes") == 2)
+            .then(pl.lit("1. Explicit Binary (2 tickers)"))
             .when(pl.col("num_outcomes").is_between(3, 10))
             .then(pl.lit("2. Small N-Way (3-10)"))
             .when(pl.col("num_outcomes").is_between(11, 50))
@@ -51,15 +58,20 @@ def analyze_n_way_clusters(markets_path: str):
     )
     print(top_monster_events.select(["num_outcomes", "event_ticker", "sample_title"]))
 
-    # 5. Total N-Way vs Binary count
+    # 5. Implicit-binary vs explicit-binary vs N-way counts (fixed: these three
+    # buckets are now exhaustive and mutually exclusive, so the percentages
+    # below actually sum to 100% -- previously num_outcomes == 1 events were
+    # excluded from every bucket here even though they're the majority tier.
     total_events = len(event_counts)
+    implicit_binary_total = len(event_counts.filter(pl.col("num_outcomes") == 1))
+    explicit_binary_total = len(event_counts.filter(pl.col("num_outcomes") == 2))
     n_way_total = len(event_counts.filter(pl.col("num_outcomes") > 2))
-    binary_total = len(event_counts.filter(pl.col("num_outcomes") == 2))
 
     print(f"\n--- Summary ---")
-    print(f"Total Unique Events: {total_events}")
-    print(f"Binary Events:       {binary_total} ({binary_total/total_events:.1%})")
-    print(f"N-Way Clusters:      {n_way_total} ({n_way_total/total_events:.1%})")
+    print(f"Total Unique Events:   {total_events}")
+    print(f"Implicit Binary (1):   {implicit_binary_total} ({implicit_binary_total/total_events:.1%})")
+    print(f"Explicit Binary (2):   {explicit_binary_total} ({explicit_binary_total/total_events:.1%})")
+    print(f"N-Way Clusters (3+):   {n_way_total} ({n_way_total/total_events:.1%})")
 
 if __name__ == "__main__":
     # Update this path to your actual markets folder or file
