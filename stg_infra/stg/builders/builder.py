@@ -30,11 +30,11 @@ class GraphBuilder:
 
     >>> stg = (
     ...     GraphBuilder()
-    ...     .with_temporal(FixedWindowTemporal(every="1h"))
-    ...     .with_nodes(KalshiTradeAugmentedNodes())
-    ...     .with_edges(KalshiEventEdges())
-    ...     .with_auxiliary_time_col("trades", "created_time")
-    ...     .build(markets_df, auxiliary={"trades": trades_df})
+    ...     .with_temporal(MacroResolutionTemporal(snapshot_dates=dates))
+    ...     .with_nodes(SeriesBeliefNodes())
+    ...     .with_edges(SurpriseInfluenceEdges()).with_edges(SameReleaseEdges())
+    ...     .with_labels(ImpliedMeanChangeLabels(node_panel, horizon=3))
+    ...     .build(node_panel)
     ... )
     """
 

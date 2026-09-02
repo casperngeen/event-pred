@@ -1,130 +1,77 @@
-"""Kalshi-specific label strategies."""
+"""Kalshi label strategy — k-step-ahead change in a node's implied belief.
+
+The label for node B at snapshot t is the change in B's ``implied_mean`` between
+t and the k-th following snapshot (or k calendar days, per ``unit``). Sign is
+exposed via ``direction`` for directional-accuracy scoring.
+
+The full node panel is passed at construction because the builder only hands
+each label call the current window's slice.
+
+Replaces the pre-refactor ``KalshiPriceChangeLabels`` / ``KalshiOutcomeLabels``
+(contract-level).
+"""
 
 from __future__ import annotations
 
-from datetime import datetime
+import datetime as dt
 from typing import Any, Dict, Hashable, List
 
+import numpy as np
 import polars as pl
 
-from stg.util import parse_duration_td
 
-
-class KalshiOutcomeLabels:
-    """Binary outcome labels: yes→1, no→0, else→-1."""
-
-    def __init__(self, node_col: str = "ticker", result_col: str = "result") -> None:
-        self.node_col = node_col
-        self.result_col = result_col
-
-    def extract_labels(self, node_ids: List[Hashable], data: pl.DataFrame, **kwargs: Any) -> Dict[Hashable, int]:
-        if data.is_empty() or self.result_col not in data.columns:
-            return {nid: -1 for nid in node_ids}
-        lookup = {
-            str(row[self.node_col]): row[self.result_col]
-            for row in data.select([self.node_col, self.result_col])
-            .unique(subset=[self.node_col], keep="last")
-            .iter_rows(named=True)
-        }
-        labels: Dict[Hashable, int] = {}
-        for nid in node_ids:
-            val = lookup.get(str(nid))
-            labels[nid] = 1 if val == "yes" else (0 if val == "no" else -1)
-        return labels
-
-
-class KalshiPriceChangeLabels:
-    """Per-node yes_price change over a forward-looking horizon.
-
-    At each snapshot the label is the change in yes_price between the last
-    trade in the current window and the last trade in a future horizon window.
-    This turns the task into a price-movement regression (or direction classification).
+class ImpliedMeanChangeLabels:
+    """Forward change in ``implied_mean`` per series node.
 
     Parameters
     ----------
-    all_trades : pl.DataFrame
-        The **full, unsliced** trades DataFrame.  Must be passed at
-        construction time because the builder only supplies the current
-        window's data to the label strategy.
-    horizon : str
-        Polars-style duration string for the lookahead (e.g. ``"1h"``,
-        ``"30m"``).  The future window is ``[window_end, window_end+horizon)``.
-    mode : str
-        ``"raw"``       — absolute price change in cents  (float, regression)
-        ``"pct"``       — percentage change relative to current price (float)
-        ``"direction"`` — discretised: +1 (up), -1 (down), 0 (flat)
-    flat_threshold : float
-        Only used when ``mode="direction"``.  Changes whose absolute value is
-        below this (in cents) are labelled 0.  Default 1 cent.
-    node_col : str
-        Column name for the market ticker.
+    node_panel : the full (series, date) feature panel.
+    horizon : k. With ``unit="snapshots"`` the label looks k rows ahead in that
+        series' own snapshot sequence; with ``unit="days"`` it looks for the
+        first row on/after ``date + k days``.
+    unit : ``"snapshots"`` or ``"days"``.
     """
 
-    def __init__(
-        self,
-        all_trades: pl.DataFrame,
-        horizon: str = "1h",
-        mode: str = "raw",
-        flat_threshold: float = 1.0,
-        node_col: str = "ticker",
-    ) -> None:
-        if mode not in ("raw", "pct", "direction"):
-            raise ValueError(f"mode must be 'raw', 'pct', or 'direction', got {mode!r}")
-        self.horizon_td = parse_duration_td(horizon)
-        self.mode = mode
-        self.flat_threshold = flat_threshold
-        self.node_col = node_col
-        # Pre-partition by ticker so each future-window lookup scans only that
-        # ticker's rows rather than the full 39M-row DataFrame.
-        sorted_trades = all_trades.sort("created_time") if "created_time" in all_trades.columns else all_trades
-        self._by_ticker: Dict[str, pl.DataFrame] = {
-            str(k): v for k, v in sorted_trades.partition_by(node_col, as_dict=True).items()
+    def __init__(self, node_panel: pl.DataFrame, horizon: int = 3,
+                 unit: str = "snapshots", series_col: str = "series") -> None:
+        if unit not in ("snapshots", "days"):
+            raise ValueError("unit must be 'snapshots' or 'days'")
+        self.horizon = horizon
+        self.unit = unit
+        self.series_col = series_col
+        self._by_series: Dict[str, pl.DataFrame] = {
+            str(k[0]): v.sort("date")
+            for k, v in node_panel.partition_by(series_col, as_dict=True).items()
         }
 
-    def extract_labels(
-        self, node_ids: List[Hashable], data: pl.DataFrame, **kwargs: Any
-    ) -> Dict[Hashable, Any]:
-        window_end = kwargs.get("window_end")
-        if window_end is None:
-            if "created_time" in data.columns and not data.is_empty():
-                window_end = data["created_time"].max()
-            else:
-                return {nid: float("nan") for nid in node_ids}
+    def _future_mean(self, series: str, when: dt.date) -> float | None:
+        df = self._by_series.get(str(series))
+        if df is None:
+            return None
+        idx = df["date"].search_sorted(when)
+        if self.unit == "snapshots":
+            j = int(idx) + self.horizon
+        else:
+            target = when + dt.timedelta(days=self.horizon)
+            j = int(df["date"].search_sorted(target))
+        if j >= df.height:
+            return None
+        v = df["implied_mean"][j]
+        return float(v) if v is not None else None
 
-        assert isinstance(window_end, datetime)
-        horizon_end = window_end + self.horizon_td
-
-        labels: Dict[Hashable, Any] = {}
+    def extract_labels(self, node_ids: List[Hashable], data: pl.DataFrame,
+                       **kwargs: Any) -> Dict[Hashable, Any]:
+        ts = kwargs.get("timestamp") or (
+            data["date"].max() if "date" in data.columns and data.height else None)
+        when = ts.date() if isinstance(ts, dt.datetime) else ts
+        out: Dict[Hashable, Any] = {}
         for nid in node_ids:
-            cur = data.filter(pl.col(self.node_col) == nid)
-            if cur.is_empty():
-                labels[nid] = float("nan")
-                continue
-            cur_price = float(cur["yes_price"][-1])
-
-            ticker_trades = self._by_ticker.get(str(nid))
-            if ticker_trades is None:
-                labels[nid] = float("nan")
-                continue
-            fut = ticker_trades.filter(
-                (pl.col("created_time") >= window_end)
-                & (pl.col("created_time") < horizon_end)
-            )
-            if fut.is_empty():
-                labels[nid] = float("nan")
-                continue
-            fut_price = float(fut["yes_price"][-1])
-
-            change = fut_price - cur_price
-
-            if self.mode == "raw":
-                labels[nid] = float(change)
-            elif self.mode == "pct":
-                labels[nid] = float(change / cur_price * 100.0) if cur_price != 0 else float("nan")
+            row = data.filter(pl.col(self.series_col) == nid).tail(1)
+            cur = float(row["implied_mean"][0]) if row.height and row["implied_mean"][0] is not None else None
+            fut = self._future_mean(nid, when) if when is not None else None
+            if cur is None or fut is None:
+                out[nid] = {"delta": float("nan"), "direction": 0}
             else:
-                if abs(change) < self.flat_threshold:
-                    labels[nid] = 0
-                else:
-                    labels[nid] = 1 if change > 0 else -1
-
-        return labels
+                out[nid] = {"delta": fut - cur,
+                            "direction": int(np.sign(fut - cur)) if (fut - cur) else 0}
+        return out

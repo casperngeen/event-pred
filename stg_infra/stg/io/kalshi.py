@@ -19,8 +19,26 @@ class KalshiOHLCV:
         """Reconstruct daily OHLCV (yes_price) per market ticker from raw trades.
 
         One metadata row per ticker is kept (most recently fetched snapshot).
-        Missing days within each market's active window are forward-filled and
-        rows beyond the market close date are dropped.
+        Rows beyond the market close date are dropped.
+
+        Forward-fill is *carried alongside* the raw series rather than replacing
+        it. On a day with no trades there is no price — repeating yesterday's is
+        a modelling choice, not an observation, and silently baking it in makes
+        a no-trade day indistinguishable from a genuinely flat one.
+
+        Columns
+        -------
+        close_raw    — null on days with no trades (the actual observation)
+        close        — forward-filled (kept for backwards compatibility)
+        is_filled    — True where ``close`` is carried, not observed
+        stale_days   — calendar days since this ticker last actually traded (0 if fresh)
+
+        Why this matters: legs of the same strike ladder go stale on *different*
+        days, so an implied distribution built from ``close`` can mix prices last
+        traded days or months apart — a cross-section that never existed at any
+        instant. Measured on the archive, only ~12% of CPI event-days have every
+        leg fresh. Downstream code that needs a coherent snapshot should filter
+        on ``is_filled`` / ``stale_days`` rather than trusting ``close``.
         """
         market_meta = (
             markets
@@ -57,6 +75,9 @@ class KalshiOHLCV:
             .map_groups(lambda df:
                 df
                 .upsample(time_column="date", every="1d")
+                # preserve the unfilled observation before any carrying happens
+                .with_columns(pl.col("close").alias("close_raw"))
+                .with_columns(pl.col("close").is_null().alias("is_filled"))
                 .with_columns(pl.col("close").forward_fill())
                 .with_columns([
                     pl.col("open").fill_null(pl.col("close")),
@@ -73,6 +94,19 @@ class KalshiOHLCV:
                     pl.col("volume").fill_null(0),
                     pl.col("trade_count").fill_null(0),
                 ])
+                # days since this ticker last actually traded
+                .with_columns(
+                    pl.when(pl.col("close_raw").is_not_null())
+                    .then(pl.col("date"))
+                    .otherwise(None)
+                    .alias("_last_real")
+                )
+                .with_columns(pl.col("_last_real").forward_fill())
+                .with_columns(
+                    (pl.col("date") - pl.col("_last_real")).dt.total_days()
+                    .fill_null(0).cast(pl.Int32).alias("stale_days")
+                )
+                .drop("_last_real")
             )
             .filter(pl.col("date") <= pl.col("close_time").dt.date())
             .sort(["ticker", "date"])

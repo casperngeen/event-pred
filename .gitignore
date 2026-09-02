@@ -65,3 +65,7 @@ logs/
 *.pickle
 checkpoints/
 runs/
+
+# Refactor artifacts (Stage-1 adjacency, panels) — reproducible from data/ via
+# scripts/build_panels.py + scripts/run_structure_estimation.py
+artifacts/

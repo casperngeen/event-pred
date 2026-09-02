@@ -55,6 +55,49 @@ class SnapshotTemporal:
         return result
 
 
+class MacroResolutionTemporal:
+    """Snapshot grid for the series-level macro graph.
+
+    One snapshot per date present in the node panel (``cadence="all"``), or
+    restricted to macro-resolution dates / Mondays. The window is
+    ``[date, date + label_horizon]`` so forward-looking label strategies have a
+    lookahead bound.
+
+    Parameters
+    ----------
+    time_col : date column in the node panel (default ``"date"``).
+    snapshot_dates : optional explicit allow-list of dates; when given, only
+        panel rows on those dates become snapshots. Pass
+        ``stg.panel.snapshot_dates("event")`` for the mechanism-matched grid.
+    label_horizon_days : width of the forward window, for label lookahead.
+    """
+
+    def __init__(self, time_col: str = "date",
+                 snapshot_dates: "list | None" = None,
+                 label_horizon_days: int = 21) -> None:
+        self.time_col = time_col
+        self.snapshot_dates = set(snapshot_dates) if snapshot_dates is not None else None
+        self.label_horizon = timedelta(days=label_horizon_days)
+
+    def slice(self, data: pl.DataFrame, **kwargs: Any) -> List[Dict[str, Any]]:
+        if data.is_empty():
+            return []
+        df = data.sort(self.time_col)
+        result: List[Dict[str, Any]] = []
+        for key, group_df in df.group_by(self.time_col, maintain_order=True):
+            d = key[0]
+            if self.snapshot_dates is not None and d not in self.snapshot_dates:
+                continue
+            ws = d if isinstance(d, datetime) else datetime(d.year, d.month, d.day)
+            result.append({
+                "timestamp": ws,
+                "data": group_df,
+                "window_start": ws,
+                "window_end": ws + self.label_horizon,
+            })
+        return result
+
+
 class SlidingWindowTemporal:
     """Overlapping sliding windows via ``group_by_dynamic`` with period > every."""
 

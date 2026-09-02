@@ -12,11 +12,14 @@ dependencies = [
     "numpy>=1.22",
     "networkx>=3.0",
     "scikit-learn>=1.0",
-    "sentence-transformers>=5.3.0",
 ]
 
 [project.optional-dependencies]
 viz = ["matplotlib>=3.5"]
+# semantic-topic edges were removed in the series-level refactor; keep the
+# dependency available for anyone reviving them from git history.
+semantic = ["sentence-transformers>=5.3.0"]
+dev = ["pytest>=7.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]

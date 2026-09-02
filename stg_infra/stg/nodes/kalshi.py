@@ -1,227 +1,72 @@
-"""Kalshi-specific node strategies."""
+"""Kalshi node strategy — series-level market belief.
+
+A node is a **macro series' current market-implied belief about its nearest
+unresolved event** (see ``docs/graph_definition.md``). It persists across
+snapshots; the event it points at rolls forward as prints resolve.
+
+The primary ``data`` handed to :class:`stg.builders.GraphBuilder` is the
+node-feature panel from :func:`stg.panel.build_node_panel` — one row per
+(series, date). This strategy simply reads the rows for the current snapshot.
+
+Feature vector (11-D, order fixed)::
+
+    0  implied_mean        6  d_implied_mean   (belief momentum)
+    1  implied_std         7  days_to_close
+    2  implied_entropy     8  recent_volume
+    3  implied_skew        9  net_flow
+    4  implied_kurtosis   10  is_bucket
+    5  max_stale_days
+
+Standardisation is left to a downstream FeatureStrategy so the split boundary
+(train-fold only) is respected.
+"""
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, Hashable, List, Optional
+from typing import Any, Hashable, List
 
 import numpy as np
 import polars as pl
 
 from stg.core import NodeState
-from stg.util import seconds_to_close
 
-class KalshiTickerNodes:
-    """Node features reconstructed from the Kalshi trade data.
+FEATURE_ORDER = (
+    "implied_mean", "implied_std", "implied_entropy", "implied_skew",
+    "implied_kurtosis", "max_stale_days", "d_implied_mean", "days_to_close",
+    "recent_volume", "net_flow", "is_bucket",
+)
 
-    ``yes_price`` is used as the canonical market probability throughout.
-    YES-side trades (``taker_side == "yes"``) represent buying pressure;
-    NO-side trades represent selling pressure on YES.
 
-    Feature vector (9-D):
-        --- Price (yes_price as canonical probability) ---
-        0.  last_yes_price      yes_price of the last trade in the window
-        1.  yes_vwap            volume-weighted average yes_price across all trades
-        2.  price_return        last_yes_price – first_yes_price
-        3.  price_std           std dev of yes_price  (realised volatility)
+class SeriesBeliefNodes:
+    """One node per canonical macro series active in the snapshot.
 
-        --- Volume ---
-        4.  window_volume       total contracts traded in this window
-
-        --- Order flow ---
-        5.  net_flow            (buy_vol – sell_vol) / total_vol  (normalised, signed)
-        6.  buy_ratio           YES-side volume / total_vol  (volume-weighted)
-
-        --- Activity ---
-        7.  trade_intensity     trades per second in window
-        8.  time_to_close       seconds from window_end to market close_time  (0 if past)
-
-    Requires
-    --------
-    ``auxiliary["markets"]`` — the markets table, used to look up
-    ``close_time`` and metadata columns (``event_ticker``, ``title``,
-    ``status``, ``market_type``).  Only the last-seen row per ticker is
-    used so the stale order-book values are intentionally ignored.
+    A row with a null ``implied_mean`` (ladder too thin that day to recover a
+    distribution) is treated as the node being absent.
     """
 
-    N_FEATURES = 9
-    _META_COLS = ("event_ticker", "title", "status", "market_type", "close_time")
+    N_FEATURES = len(FEATURE_ORDER)
 
-    def __init__(self, node_col: str = "ticker", markets_df: Optional[pl.DataFrame] = None) -> None:
-        self.node_col = node_col
-        # Pre-build O(1) ticker → metadata dict to avoid per-node DataFrame filters at build time.
-        self._ticker_meta: Dict[str, Dict[str, Any]] = {}
-        if markets_df is not None:
-            cols = [c for c in (node_col, *self._META_COLS) if c in markets_df.columns]
-            for row in (
-                markets_df.select(cols)
-                .unique(subset=[node_col], keep="last")
-                .iter_rows(named=True)
-            ):
-                self._ticker_meta[str(row[node_col])] = row
-        # Cache of per-ticker slices for the current window, populated in identify_nodes
-        # and consumed in build_node_state to avoid re-scanning wd per node.
-        self._window_slices: Dict[str, pl.DataFrame] = {}
-        self._window_data_id: int = -1
+    def __init__(self, series_col: str = "series",
+                 require_belief: bool = True) -> None:
+        self.series_col = series_col
+        self.require_belief = require_belief
 
     def identify_nodes(self, data: pl.DataFrame, **kwargs: Any) -> List[Hashable]:
-        node_ids = data[self.node_col].unique().sort().to_list()
-        # Partition wd once here so build_node_state can do O(1) dict lookup
-        # instead of re-scanning the window DataFrame for every node.
-        if id(data) != self._window_data_id:
-            self._window_slices = {
-                str(k): v
-                for k, v in data.partition_by(self.node_col, as_dict=True).items()
-            }
-            self._window_data_id = id(data)
-        return node_ids
+        df = data
+        if self.require_belief and "implied_mean" in df.columns:
+            df = df.filter(pl.col("implied_mean").is_not_null())
+        return df[self.series_col].unique().sort().to_list()
 
-    def build_node_state(self, node_id: Hashable, data: pl.DataFrame, **kwargs: Any) -> NodeState:
-        window_end: Optional[datetime] = kwargs.get("window_end")
-        auxiliary: Dict[str, pl.DataFrame] = kwargs.get("auxiliary") or {}
-        markets: Optional[pl.DataFrame] = auxiliary.get("markets")
-
-        t = self._window_slices.get(str(node_id)) if self._window_slices else None
-        if t is None:
-            t = data.filter(pl.col(self.node_col) == node_id)
+    def build_node_state(self, node_id: Hashable, data: pl.DataFrame,
+                         **kwargs: Any) -> NodeState:
+        row = data.filter(pl.col(self.series_col) == node_id).tail(1)
         feats = np.zeros(self.N_FEATURES, dtype=np.float64)
-        meta: Dict[str, Any] = {}
-
-        close_time: Optional[datetime] = None
-        cached = self._ticker_meta.get(str(node_id))
-        if cached is not None:
-            for col in ("event_ticker", "title", "status", "market_type"):
-                if col in cached:
-                    meta[col] = cached[col]
-            ct = cached.get("close_time")
-            if ct is not None:
-                close_time = ct
-        elif markets is not None and not markets.is_empty():
-            mkt = markets.filter(pl.col("ticker") == node_id)
-            if not mkt.is_empty():
-                row = mkt.tail(1)
-                for col in ("event_ticker", "title", "status", "market_type"):
-                    if col in row.columns:
-                        meta[col] = row[col][0]
-                if "close_time" in row.columns:
-                    ct = row["close_time"][0]
-                    if ct is not None:
-                        close_time = ct
-
-        if t.is_empty():
-            if window_end is not None and close_time is not None:
-                feats[8] = seconds_to_close(window_end, close_time)
-            return NodeState(node_id, feats, meta)
-
-        if "created_time" in t.columns:
-            t = t.sort("created_time")
-
-        yes_prices = t["yes_price"].cast(pl.Float64)
-        counts = t["count"].cast(pl.Float64)
-        n = t.height
-        total_vol = float(counts.sum())
-
-        is_buy = t["taker_side"] == "yes"
-        t_yes = t.filter(is_buy)
-        t_no = t.filter(~is_buy)
-        buy_vol = float(t_yes["count"].sum()) if not t_yes.is_empty() else 0.0
-        sell_vol = float(t_no["count"].sum()) if not t_no.is_empty() else 0.0
-
-        feats[0] = float(yes_prices[-1])
-        feats[1] = float((yes_prices * counts).sum()) / max(total_vol, 1.0)
-        feats[2] = float(yes_prices[-1]) - float(yes_prices[0]) if n >= 2 else 0.0
-        feats[3] = float(yes_prices.std()) if n >= 2 else 0.0  # type: ignore[arg-type]
-        feats[4] = total_vol
-        feats[5] = (buy_vol - sell_vol) / max(total_vol, 1.0)
-        feats[6] = buy_vol / max(total_vol, 1.0)
-        if "created_time" in t.columns and n >= 2:
-            span = (t["created_time"][-1] - t["created_time"][0]).total_seconds()
-            feats[7] = n / max(span, 1.0)
-        if window_end is not None and close_time is not None:
-            feats[8] = seconds_to_close(window_end, close_time)
-
-        return NodeState(node_id, np.nan_to_num(feats, nan=0.0), meta)
-
-
-class KalshiEventNodes:
-    """Event-level super-nodes constructed directly from trade data.
-
-    One node per unique ``event_ticker`` active in the current time window.
-    Features are aggregated across every market belonging to the event —
-    completely independent of ``KalshiTickerNodes``.
-
-    Feature vector (7-D):
-        0.  total_volume        total contracts traded across all event markets
-        1.  event_vwap          volume-weighted yes_price across all trades
-        2.  buy_ratio           YES-side volume / total_vol  (volume-weighted)
-        3.  net_flow            (buy_vol - sell_vol) / total_vol  (normalised)
-        4.  num_markets         number of active markets for this event
-        5.  min_time_to_close   seconds to the earliest-resolving market  (0 if past)
-        6.  max_time_to_close   seconds to the latest-resolving market    (0 if past)
-
-    Requires ``auxiliary["markets"]`` to map ``ticker → event_ticker`` and to
-    provide ``close_time``.
-
-    Super-node IDs use the prefix ``"EVENT:"`` (e.g. ``"EVENT:CPI-21JUN"``) so
-    they never collide with market ticker strings.
-    """
-
-    _PREFIX = "EVENT:"
-    N_FEATURES = 7
-
-    def __init__(self, node_col: str = "ticker") -> None:
-        self.node_col = node_col
-
-    def identify_nodes(self, data: pl.DataFrame, **kwargs: Any) -> List[Hashable]:
-        markets: Optional[pl.DataFrame] = (kwargs.get("auxiliary") or {}).get("markets")
-        if markets is None or data.is_empty():
-            return []
-        active = data[self.node_col].unique()
-        event_tickers = (
-            markets.filter(pl.col(self.node_col).is_in(active))
-            .select("event_ticker")
-            .unique()
-            ["event_ticker"]
-            .drop_nulls()
-            .to_list()
-        )
-        return [f"{self._PREFIX}{et}" for et in event_tickers]
-
-    def build_node_state(self, node_id: Hashable, data: pl.DataFrame, **kwargs: Any) -> NodeState:
-        evt = str(node_id)[len(self._PREFIX):]
-        markets: Optional[pl.DataFrame] = (kwargs.get("auxiliary") or {}).get("markets")
-        window_end = kwargs.get("window_end")
-        meta: Dict[str, Any] = {"node_type": "event", "event_ticker": evt}
-        feats = np.zeros(self.N_FEATURES, dtype=np.float64)
-
-        if markets is None:
-            return NodeState(node_id, feats, meta)
-
-        event_mkts = markets.filter(pl.col("event_ticker") == evt)
-        event_tickers_list = event_mkts[self.node_col].unique().to_list()
-        feats[4] = float(len(event_tickers_list))
-
-        t = data.filter(pl.col(self.node_col).is_in(event_tickers_list))
-        if not t.is_empty():
-            if "created_time" in t.columns:
-                t = t.sort("created_time")
-            counts = t["count"].cast(pl.Float64)
-            total_vol = float(counts.sum())
-            feats[0] = total_vol
-
-            yes_prices = t["yes_price"].cast(pl.Float64)
-            feats[1] = float((yes_prices * counts).sum()) / max(total_vol, 1.0)
-
-            is_buy = t["taker_side"] == "yes"
-            buy_vol = float(t.filter(is_buy)["count"].sum())
-            sell_vol = float(t.filter(~is_buy)["count"].sum())
-            feats[2] = buy_vol / max(total_vol, 1.0)
-            feats[3] = (buy_vol - sell_vol) / max(total_vol, 1.0)
-
-        if window_end is not None and "close_time" in event_mkts.columns:
-            close_times = event_mkts["close_time"].drop_nulls()
-            if close_times.len() > 0:
-                feats[5] = seconds_to_close(window_end, close_times.min())  # type: ignore[arg-type]
-                feats[6] = seconds_to_close(window_end, close_times.max())  # type: ignore[arg-type]
-
-        return NodeState(node_id, np.nan_to_num(feats, nan=0.0), meta)
+        meta: dict[str, Any] = {"node_type": "series", "series": node_id}
+        if row.height:
+            r = row.row(0, named=True)
+            for i, col in enumerate(FEATURE_ORDER):
+                v = r.get(col)
+                feats[i] = float(v) if v is not None else 0.0
+            meta["event_ticker"] = r.get("event_ticker")
+            meta["days_to_close"] = r.get("days_to_close")
+        return NodeState(node_id=node_id, features=np.nan_to_num(feats), metadata=meta)
