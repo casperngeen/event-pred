@@ -19,7 +19,8 @@ viz = ["matplotlib>=3.5"]
 # semantic-topic edges were removed in the series-level refactor; keep the
 # dependency available for anyone reviving them from git history.
 semantic = ["sentence-transformers>=5.3.0"]
-dev = ["pytest>=7.0"]
+models = ["torch>=2.0"]           # AGCRN training study (stg/models/)
+dev = ["pytest>=7.0", "torch>=2.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]
