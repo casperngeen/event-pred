@@ -43,6 +43,16 @@ table, so it's scanned lazily and filtered down to just the candidate
 clusters' legs BEFORE collecting, one file at a time.
 
 Run with:  python -m stg_infra.examples.mece_sum_to_one_check
+
+PERFORMANCE NOTE (v2): Section 5's per-event scoring loop originally
+filtered the full `trades` table once per candidate event -- the exact
+O(events x trades) shape that made the corrected ladder script "take
+forever" before it was vectorized (build_valid_pairs() in
+pairwise_monotonicity_taker_side_check_corrected.py had the identical
+per-group-filter-in-a-loop bug). Replaced below with a single join +
+group_by/agg pass; the printed output and the `scored` list's shape
+(event_ticker, n_legs, traded_legs, n_trades) are unchanged, so nothing
+downstream (best_event selection, the top-20 printout) needed to change.
 """
 from __future__ import annotations
 
@@ -59,7 +69,16 @@ import polars as pl
 # --------------------------------------------------------------------------
 TARGET_MONTHS = ["2025-10", "2025-11"]  # confirmed actual data range: no Dec 2025
 MIN_LEGS = 3    # excludes binary tiers, matches the >=3 definition of "N-way"
-MAX_LEGS = 60   # generous cap -- avoids a handful of monster clusters dominating runtime
+# v3 -- was 60 ("generous cap, avoids monster clusters dominating runtime"), but that comment was
+# never actually checked against the data. mece_family_audit.py's oversized-event check found 2,989
+# events above 60 legs that would have passed every other single-winner/non-ladder/non-combo-prop
+# test -- almost entirely KXDOGE (64-67 legs), a crypto bracket-basket family structurally identical
+# to the already-validated KXBTC/KXETH/KXSHIBA (39 legs each), just needing more brackets to cover
+# Dogecoin's price range at the same granularity. The real gatekeeping here is n_yes==1 plus the
+# family-consistency check, not leg count -- K-of-N-shaped multi-winner clusters get excluded on
+# that basis regardless of size, so raising this doesn't reopen the door to that noise. Raised to
+# 100 to safely clear KXDOGE without removing the bound entirely.
+MAX_LEGS = 100
 
 LADDER_KEYWORDS_PATTERN = r"\b(above|below|or higher|or lower|over|under|at least|at most|exceed)\b"
 STRIKE_RE = re.compile(
@@ -218,7 +237,21 @@ print(f"Excluded {n_before_combo_filter - candidates.height} combo-prop event(s)
 # across multiple independent instances are kept -- this needs no title
 # parsing at all, so it catches all three cases above at once.
 # --------------------------------------------------------------------------
-FAMILY_RE = re.compile(r"^([A-Za-z]+)")
+# v2 -- was r"^([A-Za-z]+)" (leading letters only, stopping at the first
+# digit). That works when a series' NAME is pure letters (KXBTC vs KXBTCD,
+# KXUSDJPY vs KXUSDJPYH -- both variants hit their hyphen before any digit,
+# so they stay correctly separated either way), but breaks for any series
+# whose name embeds a digit: "KXNASDAQ100" (bracket-basket, genuine MECE)
+# and "KXNASDAQ100U" (threshold ladder, NOT MECE) both used to collapse to
+# family "KXNASDAQ", pooling the ladder's variable/multi-winner resolutions
+# into the bracket family's stats and disqualifying it entirely.
+# mece_family_key_diagnostic.py confirmed this empirically against the real
+# data: 13 old-regex keys were merging structurally distinct prefixes, and
+# 3 families -- including KXNASDAQ100 -- flipped from excluded to included
+# once separated, recovering 58 candidate events with zero regressions.
+# Fixed by taking everything before the first hyphen instead, matching the
+# actual SERIES-DATE/INSTANCE structure every ticker in this project uses.
+FAMILY_RE = re.compile(r"^([^-]+)")
 
 
 def event_family(event_ticker):
@@ -227,8 +260,13 @@ def event_family(event_ticker):
 
 
 MIN_INSTANCES_TO_JUDGE = 3
+# v2 -- also bounded by MAX_LEGS now (previously only >= MIN_LEGS, no upper
+# bound), matching big_events/candidates. Without this, an oversized event
+# that could never itself become a candidate could still contribute its
+# n_yes into a family's min/max stats and wrongly swing that family's
+# pass/fail verdict.
 all_resolved_sized = (
-    event_size.filter(pl.col("n_legs_total") >= MIN_LEGS)
+    event_size.filter((pl.col("n_legs_total") >= MIN_LEGS) & (pl.col("n_legs_total") <= MAX_LEGS))
     .join(resolved_counts, on="event_ticker", how="inner")
     .filter(pl.col("n_resolved") == pl.col("n_legs_total"))
     .with_columns(pl.col("event_ticker").map_elements(event_family, return_dtype=pl.Utf8).alias("family"))
@@ -310,17 +348,41 @@ daily_last_trade = (
 # --------------------------------------------------------------------------
 # 5. Score each candidate event by trade activity (best-case first), same
 #    as k_to_n_check.py / kof_n_stg_sparsity_demo.py.
+#
+#    v2 -- vectorized. The original version looped over every candidate
+#    event and re-filtered the full `trades` table each time (O(events x
+#    trades)): the exact shape that made build_valid_pairs() "take forever"
+#    in the ladder script before it was fixed the same way there. Replaced
+#    with one join (trades -> event_ticker) + one group_by/agg pass; the
+#    `scored` list's shape (event_ticker, n_legs, traded_legs, n_trades) is
+#    unchanged, so best_event selection and the printout below are untouched.
 # --------------------------------------------------------------------------
-scored = []
-for evt in candidate_event_tickers:
-    legs = candidate_legs_df.filter(pl.col("event_ticker") == evt)["ticker"].to_list()
-    n_legs = len(legs)
-    evt_trades = trades.filter(pl.col("ticker").is_in(legs))
-    n_trades = evt_trades.height
-    traded_legs = evt_trades["ticker"].n_unique()
-    scored.append((evt, n_legs, traded_legs, n_trades))
+trades_with_event = trades.join(
+    candidate_legs_df.select(["ticker", "event_ticker"]), on="ticker", how="inner"
+)
+event_trade_stats = (
+    trades_with_event.group_by("event_ticker")
+    .agg([
+        pl.len().alias("n_trades"),
+        pl.col("ticker").n_unique().alias("traded_legs"),
+    ])
+)
+scored_df = (
+    candidates.select(["event_ticker", "n_legs_total"])
+    .join(event_trade_stats, on="event_ticker", how="left")
+    .with_columns([
+        pl.col("n_trades").fill_null(0),
+        pl.col("traded_legs").fill_null(0),
+    ])
+    .sort("n_trades", descending=True)
+)
+scored = list(zip(
+    scored_df["event_ticker"].to_list(),
+    scored_df["n_legs_total"].to_list(),
+    scored_df["traded_legs"].to_list(),
+    scored_df["n_trades"].to_list(),
+))
 
-scored.sort(key=lambda r: r[3], reverse=True)
 print("Candidate MECE events (event_ticker, n_legs, legs_ever_traded, n_trades_total):")
 for evt, n_legs, traded_legs, n_trades in scored[:20]:
     print(f"    {evt:30s}  legs={n_legs:4d}  traded_legs={traded_legs:4d}  trades={n_trades:5d}")
@@ -453,5 +515,38 @@ else:
         )
         for leg in legs_detail.iter_rows(named=True):
             print(f"      ${leg['close']/100.0:.2f}  {leg['ticker']:20s}  {leg['title'] or ''}")
+
+# --------------------------------------------------------------------------
+# 7. Persist results for downstream PnL analysis
+#    (mece_sum_to_one_pnl_backtest.py), mirroring how
+#    pairwise_monotonicity_taker_side_check_corrected.py writes its results
+#    parquet for pairwise_monotonicity_pnl_backtest.py to consume.
+#
+#    Two files, because a basket has N legs (not a fixed 2 like the ladder
+#    pairs) -- the PnL script needs both the event-day summary (sum,
+#    deviation, time_gap) AND the individual leg prices that made up that
+#    sum, to size per-leg taker fees correctly instead of falling back to a
+#    flat assumption for every leg.
+# --------------------------------------------------------------------------
+RESULTS_OUT_PATH = "mece_sum_to_one_results.parquet"
+LEG_PRICES_OUT_PATH = "mece_sum_to_one_leg_prices.parquet"
+
+full_all.write_parquet(RESULTS_OUT_PATH)
+print(f"\nWrote {full_all.height} full-basket (event, day) snapshot(s) to {RESULTS_OUT_PATH}")
+
+if full_all.height > 0:
+    full_keys = full_all.select(["event_ticker", "date"])
+    leg_prices = (
+        daily_last_trade
+        .join(candidate_legs_df.select(["ticker", "event_ticker"]), on="ticker", how="inner")
+        .join(full_keys, on=["event_ticker", "date"], how="inner")
+        .select(["event_ticker", "date", "ticker", "close", "trade_time"])
+    )
+    leg_prices.write_parquet(LEG_PRICES_OUT_PATH)
+    print(f"Wrote {leg_prices.height} leg-level price row(s) for those snapshots to {LEG_PRICES_OUT_PATH}")
+else:
+    pl.DataFrame(schema={"event_ticker": pl.Utf8, "date": pl.Date, "ticker": pl.Utf8,
+                          "close": pl.Float64, "trade_time": pl.Datetime}).write_parquet(LEG_PRICES_OUT_PATH)
+    print(f"Wrote empty leg-price file to {LEG_PRICES_OUT_PATH} (no full-basket snapshots to detail).")
 
 print("\nDone.")
