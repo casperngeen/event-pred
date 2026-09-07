@@ -1,7 +1,7 @@
 """Kalshi node strategy — series-level market belief.
 
 A node is a **macro series' current market-implied belief about its nearest
-unresolved event** (see ``reports/graph_definition.md`` (FYP root)). It persists across
+unresolved event** (see ``reports/graph_definition.md`` (at the FYP root)). It persists across
 snapshots; the event it points at rolls forward as prints resolve.
 
 The primary ``data`` handed to :class:`stg.builders.GraphBuilder` is the
