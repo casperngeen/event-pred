@@ -1,0 +1,97 @@
+
+==============================================================================
+1  TARGET PREDICTABILITY CEILING
+==============================================================================
+R2 vs zero for oracles that CANNOT be beaten by any causal model.
+
+  k      n  |z| med  oracle: per-node mean   oracle: expanding mean  oracle: AR(1) fit
+  1   8223     0.15                +0.0024                  -0.0225            -0.0390
+  2   8126     0.19                +0.0048                  -0.0179            +0.1057
+  3   8054     0.22                +0.0064                  -0.0212            +0.2831
+  5   8003     0.27                +0.0112                  -0.0159            +0.4865
+
+If even the leaky per-node-mean oracle is ~0, the target has no predictable central tendency and no model can score positive R2.
+
+==============================================================================
+2  OVERLAPPING-WINDOW AUTOCORRELATION
+==============================================================================
+k-step-ahead Δ at consecutive snapshots shares k-1 steps, so it is
+mechanically autocorrelated. That looks like 'temporal structure' but
+carries no predictive information — the same trap as the CA report's
+consecutive-day rule (research_summary.md §3).
+
+k=1: lag-1 autocorr  overlapping=-0.061   non-overlapping (stride k)=-0.061
+k=2: lag-1 autocorr  overlapping=+0.395   non-overlapping (stride k)=-0.045
+k=3: lag-1 autocorr  overlapping=+0.481   non-overlapping (stride k)=-0.066
+k=5: lag-1 autocorr  overlapping=+0.699   non-overlapping (stride k)=-0.103
+
+==============================================================================
+3  SIGNAL CONCENTRATION — how much of the panel is trigger-adjacent?
+==============================================================================
+W= 5d: trigger-adjacent cells =  6297 / 8054 (78.2%)   |z| adjacent=0.21  quiet=0.27   var ratio=1.00
+W=10d: trigger-adjacent cells =  6994 / 8054 (86.8%)   |z| adjacent=0.21  quiet=0.35   var ratio=0.91
+W=21d: trigger-adjacent cells =  7623 / 8054 (94.6%)   |z| adjacent=0.21  quiet=0.48   var ratio=1.01
+
+==============================================================================
+4  CONDITIONAL PREDICTABILITY — restrict to trigger-adjacent cells
+==============================================================================
+A surprise-weighted linear predictor (Stage-1 rho x recent trigger
+surprise), walk-forward, scored ONLY on trigger-adjacent cells vs all.
+
+all labelled cells        n= 5752  R2 vs zero=-0.0044  dir acc=0.478
+trigger-adjacent only     n= 4879  R2 vs zero=-0.0057  dir acc=0.480
+quiet cells only          n=  873  R2 vs zero=+0.0002  dir acc=0.464
+
+==============================================================================
+5  SIGN vs MAGNITUDE on trigger-adjacent cells
+==============================================================================
+Stage-1's signal is in the DIRECTION of the surprise, not its size
+(research_log.md §2). A magnitude regression dilutes a sign-only signal
+toward zero — so the model can be 'right' on sign and still score R2<0.
+
+trigger-adjacent, non-zero incoming signal: n=833
+  sign agreement (sign of incoming signal vs sign of Δ) : 0.521
+  corr(|signal|, |Δz|)                                  : -0.031
+  corr(signal, Δz)  (signed)                            : +0.080
+  median |Δz| when signal!=0 vs overall                 : 0.13  vs  0.22
+
+==============================================================================
+6  SNAPSHOT CADENCE — how stale is a node's own sequence?
+==============================================================================
+Event-driven snapshots fire on ANY macro resolution. For a given node
+most steps carry no news about it; the GRU sees a mostly-flat sequence.
+
+  ADP            snapshots=174  median gap=   1d  p90 gap=   3d  frac near own release=0.22
+  CPI            snapshots=872  median gap=   1d  p90 gap=   3d  frac near own release=0.23
+  CPIAPPAREL     snapshots=205  median gap=   1d  p90 gap=   3d  frac near own release=0.12
+  CPICORE        snapshots=823  median gap=   1d  p90 gap=   3d  frac near own release=0.23
+  CPICOREYOY     snapshots=631  median gap=   1d  p90 gap=   3d  frac near own release=0.23
+  CPIFOOD        snapshots=143  median gap=   1d  p90 gap=   3d  frac near own release=0.17
+  CPIGAS         snapshots=247  median gap=   1d  p90 gap=   3d  frac near own release=0.21
+  CPISHELTER     snapshots=246  median gap=   1d  p90 gap=   3d  frac near own release=0.14
+  CPIUSEDCAR     snapshots=300  median gap=   1d  p90 gap=   3d  frac near own release=0.16
+  CPIYOY         snapshots=747  median gap=   1d  p90 gap=   3d  frac near own release=0.24
+  FED            snapshots=842  median gap=   1d  p90 gap=   3d  frac near own release=0.15
+  GDP            snapshots=832  median gap=   1d  p90 gap=   3d  frac near own release=0.08
+  ISMPMI         snapshots=102  median gap=   1d  p90 gap=   3d  frac near own release=0.20
+  JOBLESSCLAIMS  snapshots= 66  median gap=   1d  p90 gap=   3d  frac near own release=1.00
+  PAYROLLS       snapshots=668  median gap=   1d  p90 gap=   3d  frac near own release=0.22
+  PCECORE        snapshots=235  median gap=   1d  p90 gap=   3d  frac near own release=0.24
+  U3             snapshots=853  median gap=   1d  p90 gap=   3d  frac near own release=0.23
+  WTI            snapshots=391  median gap=   1d  p90 gap=   5d  frac near own release=1.00
+  WTIW           snapshots=133  median gap=   2d  p90 gap=  11d  frac near own release=0.85
+
+  overall: median inter-snapshot gap 1d, an L=12 window spans ~12d of very uneven time
+
+==============================================================================
+7  HORIZON — where the Stage-1 signal actually lives
+==============================================================================
+The SAME trigger->target pairs, scored at the dormant horizon (next 3
+trades, ~0.5h) vs the snapshot horizon the model predicts (~weeks).
+
+  dormant : pooled sign agreement 75.9%  (n=166)   mean corr(|surp|,|resp|) +0.26
+  liquid  : pooled sign agreement 56.5%  (n=186)   mean corr(|surp|,|resp|) +0.24
+
+  vs section 5: at the snapshot horizon the model predicts, sign
+  agreement on the same mechanism is ~52% (coin flip) and the magnitude
+  correlation is ~0. The signal has decayed out of the window.

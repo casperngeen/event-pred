@@ -1,0 +1,99 @@
+
+=== CPI -> FEDDECISION ===
+  pairs=32  median trigger->target gap=20d  median trades in target liquid window=248
+  dormant (next 3 trades)      n=32   corr(|surp|,|resp|)=-0.168  t=-0.93   mean|resp|=2.6c
+  liquid (final 7d mean)       n=32   corr(|surp|,|resp|)=-0.232  t=-1.31   mean|resp|=8.9c
+
+=== CPIYOY -> FEDDECISION ===
+  pairs=32  median trigger->target gap=20d  median trades in target liquid window=248
+  dormant (next 3 trades)      n=32   corr(|surp|,|resp|)=-0.169  t=-0.94   mean|resp|=2.6c
+  liquid (final 7d mean)       n=32   corr(|surp|,|resp|)= 0.321  t= 1.86   mean|resp|=8.8c
+
+=== U3 -> FEDDECISION ===
+  pairs=30  median trigger->target gap=26d  median trades in target liquid window=206
+  dormant (next 3 trades)      n=30   corr(|surp|,|resp|)= 0.007  t= 0.04   mean|resp|=3.1c
+  liquid (final 7d mean)       n=30   corr(|surp|,|resp|)= 0.243  t= 1.33   mean|resp|=9.4c
+
+==========================================================================
+HORIZON: dormant
+==========================================================================
+trigger->target/side                 n   sign%  spearman
+CPI->FEDDECISION/hike               30     90%     0.397
+CPI->FEDDECISION/cut                29     63%     0.298
+CPIYOY->FEDDECISION/hike            30     80%     0.472
+CPIYOY->FEDDECISION/cut             29     74%     0.418
+PAYROLLS->FEDDECISION/hike          18     50%     0.257
+PAYROLLS->FEDDECISION/cut           20     72%     0.179
+U3->FEDDECISION/hike                27     67%     0.112
+U3->FEDDECISION/cut                 27     52%     0.066
+CPI->FED/any                        46     68%     0.492
+CPIYOY->FED/any                     35     53%     0.185
+PAYROLLS->FED/any                   20     76%     0.386
+U3->FED/any                         44     64%     0.099
+
+  POOLED: n=229  sign-agreement=66.4%  mean Spearman=0.280
+  permutation null (5000 draws): sign mean=49.7% sd=2.8%   rho mean=-0.000 sd=0.053
+  ONE-SIDED p:  sign-agreement p=0.0000   Spearman p=0.0000
+
+==========================================================================
+HORIZON: liquid
+==========================================================================
+trigger->target/side                 n   sign%  spearman
+CPI->FEDDECISION/hike               27     73%     0.214
+CPI->FEDDECISION/cut                28     59%     0.154
+CPIYOY->FEDDECISION/hike            27     64%     0.128
+CPIYOY->FEDDECISION/cut             28     56%     0.005
+PAYROLLS->FEDDECISION/hike          14    100%     0.156
+PAYROLLS->FEDDECISION/cut           20     65%     0.065
+U3->FEDDECISION/hike                23     70%     0.214
+U3->FEDDECISION/cut                 26     64%     0.179
+CPI->FED/any                        45     47%     0.052
+CPIYOY->FED/any                     34     47%    -0.065
+PAYROLLS->FED/any                   20     80%     0.483
+U3->FED/any                         43     60%     0.212
+
+  POOLED: n=275  sign-agreement=59.3%  mean Spearman=0.150
+  permutation null (5000 draws): sign mean=50.6% sd=2.7%   rho mean=0.000 sd=0.054
+  ONE-SIDED p:  sign-agreement p=0.0006   Spearman p=0.0022
+strikes with >=5 trades: 418 across 57 events
+strike-level observations: 1269   (vs 368 one-strike-per-event)
+
+==============================================================================
+EDGE BY MONEYNESS — sign-invariant bucketing
+==============================================================================
+Bucketing by ENTRY price is circular: the signal picks the side, the side
+sets the entry price, and high-priced contracts mechanically win more.
+Bucket by |p0-50| instead, which does not move when the sign flips, and
+read the edge as (theory-signed - sign-flipped)/2 within each bucket.
+
+|p0-50|          n   signed  flipped    edge     se    fee  net taker
+0-10 (ATM)       7    21.86   -21.86   21.86  18.15   1.71      17.79
+10-25           49    12.39   -12.39   12.39   6.30   1.52       8.52
+25-40           59     1.32    -1.32    1.32   2.32   0.97      -2.00
+40+ (tails)   1154    -0.19     0.19   -0.19   0.14   0.14      -2.68
+
+signed and flipped are exact mirrors, so "edge" is just the signed mean —
+the point is that it is NOT the win rate, which the entry-price cut inflates.
+
+==============================================================================
+SELECTIVITY — trade only the strongest surprises
+==============================================================================
+|S| percentile cutoff, all strikes pooled:
+
+keep top         n    gross     se  net taker  net maker
+all           1269     0.49   0.32      -2.10       2.84
+50%            639     0.90   0.44      -1.70       3.25
+25%            318     1.55   0.76      -1.06       3.90
+10%            127     2.28   1.33      -0.37       4.63
+
+==============================================================================
+CONTROL — does the same structure pay without the signal?
+==============================================================================
+  theory-signed        gross   +0.49c  se 0.32  net taker   -2.10c  net maker   +2.84c
+  sign flipped         gross   -0.49c  se 0.32  net taker   -3.08c  net maker   +1.86c
+  always favourite     gross   +2.59c  se 0.31  net taker   +0.00c  net maker   +4.94c
+  always cheap side    gross   -2.59c  se 0.31  net taker   -5.19c  net maker   -0.24c
+
+NOTE: "net maker" credits the 2.35c half-spread on every fill. That credit
+is market-making revenue, not signal — it accrues to the flipped sign too.
+Read it as an upper bound that assumes fills with zero adverse selection.

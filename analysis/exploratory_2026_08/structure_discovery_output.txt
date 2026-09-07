@@ -1,0 +1,119 @@
+
+=== CPI -> FEDDECISION ===
+  pairs=32  median trigger->target gap=20d  median trades in target liquid window=248
+  dormant (next 3 trades)      n=32   corr(|surp|,|resp|)=-0.168  t=-0.93   mean|resp|=2.6c
+  liquid (final 7d mean)       n=32   corr(|surp|,|resp|)=-0.232  t=-1.31   mean|resp|=8.9c
+
+=== CPIYOY -> FEDDECISION ===
+  pairs=32  median trigger->target gap=20d  median trades in target liquid window=248
+  dormant (next 3 trades)      n=32   corr(|surp|,|resp|)=-0.169  t=-0.94   mean|resp|=2.6c
+  liquid (final 7d mean)       n=32   corr(|surp|,|resp|)= 0.321  t= 1.86   mean|resp|=8.8c
+
+=== U3 -> FEDDECISION ===
+  pairs=30  median trigger->target gap=26d  median trades in target liquid window=206
+  dormant (next 3 trades)      n=30   corr(|surp|,|resp|)= 0.007  t= 0.04   mean|resp|=3.1c
+  liquid (final 7d mean)       n=30   corr(|surp|,|resp|)= 0.243  t= 1.33   mean|resp|=9.4c
+
+==========================================================================
+HORIZON: dormant
+==========================================================================
+trigger->target/side                 n   sign%  spearman
+CPI->FEDDECISION/hike               30     90%     0.397
+CPI->FEDDECISION/cut                29     63%     0.298
+CPIYOY->FEDDECISION/hike            30     80%     0.472
+CPIYOY->FEDDECISION/cut             29     74%     0.418
+PAYROLLS->FEDDECISION/hike          18     50%     0.257
+PAYROLLS->FEDDECISION/cut           20     72%     0.179
+U3->FEDDECISION/hike                27     67%     0.112
+U3->FEDDECISION/cut                 27     52%     0.066
+CPI->FED/any                        46     68%     0.492
+CPIYOY->FED/any                     35     53%     0.185
+PAYROLLS->FED/any                   20     76%     0.386
+U3->FED/any                         44     64%     0.099
+
+  POOLED: n=229  sign-agreement=66.4%  mean Spearman=0.280
+  permutation null (5000 draws): sign mean=49.7% sd=2.8%   rho mean=-0.000 sd=0.053
+  ONE-SIDED p:  sign-agreement p=0.0000   Spearman p=0.0000
+
+==========================================================================
+HORIZON: liquid
+==========================================================================
+trigger->target/side                 n   sign%  spearman
+CPI->FEDDECISION/hike               27     73%     0.214
+CPI->FEDDECISION/cut                28     59%     0.154
+CPIYOY->FEDDECISION/hike            27     64%     0.128
+CPIYOY->FEDDECISION/cut             28     56%     0.005
+PAYROLLS->FEDDECISION/hike          14    100%     0.156
+PAYROLLS->FEDDECISION/cut           20     65%     0.065
+U3->FEDDECISION/hike                23     70%     0.214
+U3->FEDDECISION/cut                 26     64%     0.179
+CPI->FED/any                        45     47%     0.052
+CPIYOY->FED/any                     34     47%    -0.065
+PAYROLLS->FED/any                   20     80%     0.483
+U3->FED/any                         43     60%     0.212
+
+  POOLED: n=275  sign-agreement=59.3%  mean Spearman=0.150
+  permutation null (5000 draws): sign mean=50.6% sd=2.7%   rho mean=0.000 sd=0.054
+  ONE-SIDED p:  sign-agreement p=0.0006   Spearman p=0.0022
+trigger series with a usable surprise measure : 15
+target series                                 : 23
+
+==============================================================================
+1  FULL GRID — every ordered trigger->target pair
+==============================================================================
+
+pairs SEARCHED (n>=10) : 149
+pairs with p<0.05 uncorrected : 16
+expected by chance at 5%      : 7.5
+
+Benjamini-Hochberg at q=0.1: 5 edges survive
+
+trigger       target        side      n     rho         p   BH crit  targets
+CPICORE       CPI           any      24   0.744    0.0000    0.0007       24 *
+PROLLS        FED           any      10   0.879    0.0000    0.0013        8 *
+CPI           FED           any      46   0.492    0.0002    0.0020       32 *
+CPIYOY        PCECORE       any      12   0.720    0.0010    0.0027       12 *
+CPICORE       FED           any      39   0.465    0.0014    0.0034       28 *
+CPIYOY        FEDDECISION   hike     30   0.472    0.0046    0.0040       22
+FED           CPIYOY        any      21  -0.526    0.0070    0.0047       21
+CPIYOY        CPI           any      23   0.503    0.0077    0.0054       23
+CPI           CPICORE       any      29   0.427    0.0143    0.0060       29
+PAYROLLS      CPISHELTER    any      12  -0.608    0.0153    0.0067       11
+CPIYOY        FEDDECISION   cut      29  -0.418    0.0169    0.0074       20
+CPI           FEDDECISION   hike     30   0.397    0.0220    0.0081       22
+JOBLESSCLAIMS FEDDECISION   hike     15   0.504    0.0356    0.0087        4
+CPICORE       PCECORE       any      12   0.552    0.0361    0.0094       12
+CPICORE       CPICOREYOY    any      17   0.453    0.0488    0.0101       17
+CPICORE       GDP           any      27   0.365    0.0499    0.0107       14
+WTI           JOBLESS       any      11  -0.545    0.0509    0.0114        4
+PAYROLLS      CPICORE       any      21   0.395    0.0611    0.0121       21
+CPI           PCECORE       any      12   0.503    0.0654    0.0128       12
+WTI           CPIGAS        any      34   0.305    0.0702    0.0134        7
+
+==============================================================================
+2  PERMUTATION CHECK on the survivors
+==============================================================================
+edge                                 rho   perm p    n
+CPICORE->CPI/any                   0.744   0.0000   24
+PROLLS->FED/any                    0.879   0.0005   10
+CPI->FED/any                       0.492   0.0010   46
+CPIYOY->PCECORE/any                0.720   0.0095   12
+CPICORE->FED/any                   0.465   0.0030   39
+
+==============================================================================
+3  MEDIATION — direct edge, or routed through a third market?
+==============================================================================
+A pairwise sweep returns a LIST of edges. The graph question is whether
+A->C survives once B is controlled for. Partial Spearman on events where
+both A and B surprises exist, matched to the same C contract.
+
+A -> C  (controlling B)               n  rho(A,C)   partial   change
+WTI->FED | CPI                       20    -0.495    -0.473   +0.021
+CPI->FED | CPIYOY                    25     0.349     0.447   +0.098
+PAYROLLS->FED | U3                   14     0.609     0.650   +0.041
+WTI->FEDDECISION | CPI               15     0.339     0.347   +0.008
+CPI->FED | PAYROLLS                  14     0.451     0.506   +0.055
+
+A large drop means the apparent A->C edge is routed through B — i.e. the
+graph has genuine multi-hop structure rather than being a set of
+independent bilateral effects. That distinction is the case for a graph.

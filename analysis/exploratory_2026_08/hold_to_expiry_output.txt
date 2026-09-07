@@ -1,0 +1,127 @@
+
+=== CPI -> FEDDECISION ===
+  pairs=32  median trigger->target gap=20d  median trades in target liquid window=248
+  dormant (next 3 trades)      n=32   corr(|surp|,|resp|)=-0.168  t=-0.93   mean|resp|=2.6c
+  liquid (final 7d mean)       n=32   corr(|surp|,|resp|)=-0.232  t=-1.31   mean|resp|=8.9c
+
+=== CPIYOY -> FEDDECISION ===
+  pairs=32  median trigger->target gap=20d  median trades in target liquid window=248
+  dormant (next 3 trades)      n=32   corr(|surp|,|resp|)=-0.169  t=-0.94   mean|resp|=2.6c
+  liquid (final 7d mean)       n=32   corr(|surp|,|resp|)= 0.321  t= 1.86   mean|resp|=8.8c
+
+=== U3 -> FEDDECISION ===
+  pairs=30  median trigger->target gap=26d  median trades in target liquid window=206
+  dormant (next 3 trades)      n=30   corr(|surp|,|resp|)= 0.007  t= 0.04   mean|resp|=3.1c
+  liquid (final 7d mean)       n=30   corr(|surp|,|resp|)= 0.243  t= 1.33   mean|resp|=9.4c
+
+==========================================================================
+HORIZON: dormant
+==========================================================================
+trigger->target/side                 n   sign%  spearman
+CPI->FEDDECISION/hike               30     90%     0.397
+CPI->FEDDECISION/cut                29     63%     0.298
+CPIYOY->FEDDECISION/hike            30     80%     0.472
+CPIYOY->FEDDECISION/cut             29     74%     0.418
+PAYROLLS->FEDDECISION/hike          18     50%     0.257
+PAYROLLS->FEDDECISION/cut           20     72%     0.179
+U3->FEDDECISION/hike                27     67%     0.112
+U3->FEDDECISION/cut                 27     52%     0.066
+CPI->FED/any                        46     68%     0.492
+CPIYOY->FED/any                     35     53%     0.185
+PAYROLLS->FED/any                   20     76%     0.386
+U3->FED/any                         44     64%     0.099
+
+  POOLED: n=229  sign-agreement=66.4%  mean Spearman=0.280
+  permutation null (5000 draws): sign mean=49.7% sd=2.8%   rho mean=-0.000 sd=0.053
+  ONE-SIDED p:  sign-agreement p=0.0000   Spearman p=0.0000
+
+==========================================================================
+HORIZON: liquid
+==========================================================================
+trigger->target/side                 n   sign%  spearman
+CPI->FEDDECISION/hike               27     73%     0.214
+CPI->FEDDECISION/cut                28     59%     0.154
+CPIYOY->FEDDECISION/hike            27     64%     0.128
+CPIYOY->FEDDECISION/cut             28     56%     0.005
+PAYROLLS->FEDDECISION/hike          14    100%     0.156
+PAYROLLS->FEDDECISION/cut           20     65%     0.065
+U3->FEDDECISION/hike                23     70%     0.214
+U3->FEDDECISION/cut                 26     64%     0.179
+CPI->FED/any                        45     47%     0.052
+CPIYOY->FED/any                     34     47%    -0.065
+PAYROLLS->FED/any                   20     80%     0.483
+U3->FED/any                         43     60%     0.212
+
+  POOLED: n=275  sign-agreement=59.3%  mean Spearman=0.150
+  permutation null (5000 draws): sign mean=50.6% sd=2.7%   rho mean=0.000 sd=0.054
+  ONE-SIDED p:  sign-agreement p=0.0006   Spearman p=0.0022
+observations: 368   cells: 12   events: 149
+
+==============================================================================
+A  HOW MUCH REPRICING IS THERE, 3 DAYS vs ALL THE WAY TO SETTLEMENT?
+==============================================================================
+3-trade drift   : n=355  E|move|   2.39c   mean -0.23c
+to settlement   : n=368  E|move|  13.12c   mean -3.62c
+
+Holding to settlement moves 5.5x further. That is the upside
+of the idea: far more to capture, and you pay the spread once.
+median holding period: 20 days  (p90 40)
+
+==============================================================================
+B  HOLD-TO-EXPIRY PnL on the theory-signed cells
+==============================================================================
+Signal says up -> buy Yes at p0+half; says down -> buy No at (100-p0)+half.
+Cost = entry price + half-spread + taker fee on that price. No exit cost.
+
+                              n   win%   mean PnL      se      t
+before costs                368   51.6       1.08    1.18   0.91
+after entry cost            368   51.6      -1.83    1.18  -1.55
+(same, round-tripped)       368   51.6      -4.73    1.18  -4.02
+
+per-cell, after entry cost:
+cell                         n   win%   mean PnL      se
+CPI->FED/any                48   45.8      -6.09    4.27
+CPI->FEDDECISION/cut        31   48.4       2.92    3.88
+CPI->FEDDECISION/hike       31   54.8      -2.58    1.69
+CPIYOY->FED/any             36   44.4      -0.22    3.82
+CPIYOY->FEDDECISION/cut     31   38.7      -8.24    3.98
+CPIYOY->FEDDECISION/hike    31   58.1      -1.61    1.64
+PAYROLLS->FED/any           20   80.0      12.66    5.16
+PAYROLLS->FEDDECISION/cut   20   55.0      -6.30    5.59
+PAYROLLS->FEDDECISION/hike  19   42.1      -2.61    0.30
+U3->FED/any                 45   53.3      -1.36    5.01
+U3->FEDDECISION/cut         28   57.1      -1.14    4.05
+U3->FEDDECISION/hike        28   53.6      -2.24    1.79
+
+==============================================================================
+C  VARIANCE AND CAPITAL — what a binary payoff costs you in precision
+==============================================================================
+per-trade sd            : 22.6c   (vs 4.6c for the 3-day drift trade)
+signal content (pre-cost): +1.08c   info ratio 0.048
+trades to detect that at t=2 : 1,764
+observations available       : 368 in four years of in-sample data
+after entry cost the mean is -1.83c, so there is no positive
+edge left to size a sample against.
+
+mean holding period 21 days => 17.1 turns/year on committed capital.
+mean entry price 53c, so 53c of capital is tied up per contract
+to earn -1.83c => -59.0% annualised, before
+any allowance for position limits or the fact that these are not independent.
+
+==============================================================================
+D  IS IT THE SIGNAL, OR JUST BUYING THE FAVOURITE?
+==============================================================================
+A hold-to-expiry rule can look profitable purely by systematically buying
+the cheap side of a mispriced-looking book. Controls:
+
+rule                               win%   mean PnL      se      t
+theory-signed (the strategy)       51.6      -1.83    1.18  -1.55
+always buy Yes                     28.5      -6.59    1.17  -5.61
+always buy No                      71.5       0.78    1.16   0.67
+buy the favourite (p0>50)          93.5       1.19    1.16   1.03
+buy the longshot (p0<50)            6.5      -7.00    1.16  -6.01
+sign flipped (falsification)       48.4      -3.98    1.18  -3.37
+
+If "always buy No" scores like the strategy, the edge is the base rate of
+these contracts resolving No, not cross-market information.
+base rate: 71.5% of these target contracts resolved NO.

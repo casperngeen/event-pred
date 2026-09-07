@@ -1,0 +1,150 @@
+
+==============================================================================
+PANEL (in-sample only, < 2026-01-01)
+==============================================================================
+series in universe                : 23
+resolved macro events             : 1152
+snapshot dates (resolution days)  : 735
+active node-snapshots             : 9624
+  mean nodes/snapshot             : 13.1  (report: ~33)
+after own-resolution clearance    : 6426 (67% kept)
+  mean nodes/snapshot             : 8.8
+  labelled at k=1                 : 3649
+  labelled at k=2                 : 3279
+  labelled at k=3                 : 3108
+  labelled at k=14                : 3784
+
+==============================================================================
+T1  CAPACITY ACCOUNTING — AGCRN parameters vs. supervisable labels
+==============================================================================
+node-snapshots with all 3 horizons labelled : 3108
+supervisable scalar labels (x3 horizons)    : 9324
+
+ c_in  d_emb  hidden      params  params/label
+   10      2      16       3,477           0.4
+   10     10      64     145,549          15.6
+   10     10     128     535,501          57.4
+   32     10      64     189,197          20.3
+
+breakdown at the Bai et al. (2020) default (c=10, d=10, hidden=64):
+   shared_mlp         1,354
+   weight_pools     142,080
+   bias_pools         1,920
+   head                 195
+   total            145,549
+
+Smallest config above still carries 3,477 parameters.
+A linear AR(1) on the same target carries 2.
+
+==============================================================================
+T2  EFFECTIVE SAMPLE SIZE — labels are not independent observations
+==============================================================================
+distinct event nodes ever active        : 403
+median re-labellings per node           : 7   (max 191)
+
+intra-snapshot clustering of the k=3 label (547 snapshots with >=3 nodes):
+   ICC                                  : 0.309
+   design effect 1+(nbar-1)*ICC         : 2.30  (nbar=5.2)
+   effective n vs nominal               : 1,353 vs 3,108
+   effective labels vs AGCRN params     : 4,060 vs 145,549  (36 params per effective label)
+
+==============================================================================
+T3  EDGE vs. COST — is the cross-market drift big enough to pay for it?
+==============================================================================
+
+k=1  n=3649  E|drift|= 5.00c  median|drift|= 3.00c  mean drift=+0.19c  fee=1.39c/side
+     book spread 8.0c   round-trip 10.79c  break-even hit rate  157.9%   IMPOSSIBLE
+     trade-bounce 1.0c  round-trip  3.79c  break-even hit rate   87.9%
+
+k=2  n=3279  E|drift|= 6.53c  median|drift|= 4.00c  mean drift=+0.22c  fee=1.40c/side
+     book spread 8.0c   round-trip 10.79c  break-even hit rate  132.6%   IMPOSSIBLE
+     trade-bounce 1.0c  round-trip  3.79c  break-even hit rate   79.0%
+
+k=3  n=3108  E|drift|= 7.02c  median|drift|= 4.00c  mean drift=+0.20c  fee=1.40c/side
+     book spread 8.0c   round-trip 10.80c  break-even hit rate  126.9%   IMPOSSIBLE
+     trade-bounce 1.0c  round-trip  3.80c  break-even hit rate   77.0%
+
+k=14 n=3784  E|drift|=12.89c  median|drift|=10.00c  mean drift=+0.96c  fee=1.40c/side
+     book spread 8.0c   round-trip 10.80c  break-even hit rate   91.9%
+     trade-bounce 1.0c  round-trip  3.80c  break-even hit rate   64.8%
+
+==============================================================================
+T4  PERFECT-FORESIGHT ORACLE — upper bound on ANY model, after costs
+==============================================================================
+Trade every active node at every snapshot in the *realised* direction of
+the k-day move: 100% hit rate. No model, AGCRN included, can beat this.
+
+  k  trades     gross     fees    net@1c    net@8c  c/trade@1c  c/trade@8c
+  1    3649    18,246   10,178     4,419   -21,124       +1.21       -5.79
+  2    3279    21,417    9,158     8,980   -13,973       +2.74       -4.26
+  3    3108    21,817    8,689    10,020   -11,736       +3.22       -3.78
+ 14    3784    48,782   10,607    34,391     7,903       +9.09       +2.09
+
+Same oracle degraded to attainable hit rates. 65.6% is the pooled dormant
+sign accuracy from research_log.md S3 — the best in-sample directional
+result this project has produced, and itself a specification search.
+
+    hit   k   net c/trade @1c   net c/trade @8c
+  1.000   1             +1.21             -5.79
+  1.000   2             +2.74             -4.26
+  1.000   3             +3.22             -3.78
+  0.656   1             -2.23             -9.23
+  0.656   2             -1.75             -8.75
+  0.656   3             -1.61             -8.61
+  0.600   1             -2.79             -9.79
+  0.600   2             -2.49             -9.49
+  0.600   3             -2.39             -9.39
+  0.550   1             -3.29            -10.29
+  0.550   2             -3.14            -10.14
+  0.550   3             -3.09            -10.09
+
+==============================================================================
+T5  COMPLEXITY LADDER — does graph structure beat trivial baselines?
+==============================================================================
+walk-forward: 304 snapshot dates, 8 expanding folds
+first train ends 2023-08-15, last fold ends 2025-11-29; 2026 never touched
+
+pooled holdout rows: 782
+
+rung                             MAE     RMSE  R2 vs zero  dir acc %  net c/trade@1c
+zero (predict no change)        5.66     8.57      0.0000        nan            +nan
+train mean                      5.74     8.58     -0.0030       48.3           -3.84
+own state: p                    5.75     8.59     -0.0065       48.5           -3.83
+own: p, mom3                    5.75     8.62     -0.0118       48.3           -4.03
++ graph: all-node nbr           5.79     8.67     -0.0234       48.0           -4.18
++ graph: same-series nbr        5.79     8.63     -0.0157       47.1           -4.12
++ graph + activity              5.90     8.90     -0.0801       47.3           -3.99
+
+incremental R2 from graph terms, + graph: all-node nbr     : -0.01161
+
+incremental R2 from graph terms, + graph: same-series nbr  : -0.00387
+
+incremental R2 from graph terms, + graph + activity        : -0.06829
+
+R2 is against predicting zero: negative means worse than doing nothing.
+net c/trade uses the OPTIMISTIC 1c spread and a 50c fee; at the measured
+8c book spread every rung is 7c/trade worse.
+
+==============================================================================
+T6  THE SCREENING RULE behind the report's 22 relationships
+==============================================================================
+Report S4.3.1 calls a pair significant when the 95% CI on the mean
+[-3,+14] price change excludes zero for >=3 CONSECUTIVE days. The paths
+are cumulative sums normalised to zero at day 0, so consecutive days are
+near-perfectly autocorrelated: the consecutive-day rule is not a
+multiple-comparison guard. Monte Carlo under a pure random walk:
+
+  pairs n    P(false positive) per pair
+        5                         0.183
+       10                         0.121
+       28                         0.091
+      100                         0.078
+      811                         0.074
+
+series with >=5 resolved events in the IS panel : 23
+ordered trigger->target pairs in the grid       : 506
+expected false positives at the measured per-pair rate 0.102 : 52
+the report reports                                              : 22
+
+Benjamini-Hochberg on the same grid would need a per-pair p below
+   0.05 * 22 / 506 = 0.00217 for the 22nd-ranked pair to survive.
