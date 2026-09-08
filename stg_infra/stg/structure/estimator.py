@@ -21,7 +21,7 @@ import numpy as np
 import polars as pl
 
 from stg.panel._io import load_markets, scan_trades
-from stg.panel.registry import is_same_release, universe
+from stg.panel.registry import is_same_release, target_universe
 from stg.panel.surprise import usable_triggers
 from stg.panel.targets import representative_tickers, response_panel
 from stg.structure.stats import (
@@ -45,7 +45,7 @@ def estimate_adjacency(
     mk = markets if markets is not None else load_markets(is_only=True)
     tr = trades if trades is not None else scan_trades(is_only=True)
     triggers = usable_triggers(surprise_panel, min_n)
-    tgts = targets if targets is not None else universe(5, mk)
+    tgts = targets if targets is not None else target_universe(5, mk)
 
     # cache the (target, side) -> representative tickers + their trades once
     rep_cache: dict[tuple[str, str], pl.DataFrame] = {}

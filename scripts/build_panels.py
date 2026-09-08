@@ -24,7 +24,10 @@ import polars as pl
 
 sys.path.insert(0, "stg_infra")
 
-from stg.panel import build_node_panel, build_surprise_panel, event_counts, universe
+from stg.panel import (
+    build_node_panel, build_surprise_panel, event_counts,
+    target_universe, trigger_universe,
+)
 from stg.panel._io import load_markets, scan_trades
 from stg.panel.surprise import usable_triggers
 from stg.splits import OOS_START, assert_no_oos
@@ -41,18 +44,20 @@ def main() -> None:
 
     mk = load_markets(is_only=True)
     tr = scan_trades(is_only=True)
-    names = universe(args.min_events, mk)
+    trigs = trigger_universe(args.min_events, mk)
+    tgts = target_universe(args.min_events, mk)
 
     counts = event_counts(mk)
     counts.write_parquet(OUT / "universe.parquet")
 
-    print(f"universe (min_events={args.min_events}): N={len(names)}")
-    surprise = build_surprise_panel(names, markets=mk, trades=tr)
+    print(f"min_events={args.min_events}: triggers N={len(trigs)}, "
+          f"targets N={len(tgts)}")
+    surprise = build_surprise_panel(trigs, markets=mk, trades=tr)
     assert_no_oos(surprise, time_col="close_time")
     surprise.write_parquet(OUT / "surprise_panel.parquet")
     triggers = usable_triggers(surprise, 10)
 
-    node = build_node_panel(names, cadence=args.cadence, min_events=args.min_events,
+    node = build_node_panel(tgts, cadence=args.cadence, min_events=args.min_events,
                             markets=mk)
     assert_no_oos(node, time_col="date")
     node.write_parquet(OUT / f"node_panel_{args.cadence}.parquet")
@@ -62,7 +67,8 @@ def main() -> None:
         "",
         f"built: {dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')}",
         f"OOS wall: {OOS_START.date()} (in-sample only)",
-        f"min_events: {args.min_events}  ->  universe N = {len(names)}",
+        f"min_events: {args.min_events}  ->  triggers N = {len(trigs)}, "
+        f"targets N = {len(tgts)}",
         f"cadence: {args.cadence}",
         "",
         "| panel | rows | notes |",

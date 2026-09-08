@@ -38,7 +38,7 @@ from stg.events.implied import (
     parse_threshold_from_subtitle, pdf_implied_stats,
 )
 from stg.panel._io import load_markets, scan_trades
-from stg.panel.registry import SPECS, series_filter_expr, universe
+from stg.panel.registry import SPECS, series_filter_expr, target_universe
 
 _STAT_COLS = ["implied_mean", "implied_std", "implied_entropy",
               "implied_skew", "implied_kurtosis"]
@@ -145,7 +145,7 @@ def build_node_panel(
     mk = markets if markets is not None else load_markets(is_only=True)
     tr_lf = scan_trades(is_only=True)
     tr_df = tr_lf.collect()
-    names = series if series is not None else universe(min_events, mk)
+    names = series if series is not None else target_universe(min_events, mk)
 
     ev_meta = (mk.group_by("series_raw", "event_ticker")
                .agg(pl.col("close_time").min().alias("close_time")))

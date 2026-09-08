@@ -6,7 +6,8 @@
 """
 
 from stg.panel.registry import (
-    SPECS, ALIASES, canonical, universe, event_counts,
+    SPECS, ALIASES, canonical, universe, target_universe, trigger_universe,
+    event_counts,
     same_release_groups, same_release_pairs, is_same_release,
     ticker_prefixes, series_filter_expr,
 )
@@ -16,7 +17,8 @@ from stg.panel.targets import representative_tickers, response_panel
 from stg.panel.snapshots import snapshot_dates, macro_resolution_dates, weekly_dates
 
 __all__ = [
-    "SPECS", "ALIASES", "canonical", "universe", "event_counts",
+    "SPECS", "ALIASES", "canonical", "universe", "target_universe",
+    "trigger_universe", "event_counts",
     "same_release_groups", "same_release_pairs", "is_same_release",
     "ticker_prefixes", "series_filter_expr",
     "build_surprise_panel", "usable_triggers",

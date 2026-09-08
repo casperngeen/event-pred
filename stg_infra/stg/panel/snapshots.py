@@ -15,7 +15,7 @@ from typing import Optional
 import polars as pl
 
 from stg.panel._io import load_markets
-from stg.panel.registry import series_filter_expr, universe
+from stg.panel.registry import series_filter_expr, target_universe
 
 
 def macro_resolution_dates(
@@ -26,7 +26,7 @@ def macro_resolution_dates(
 ) -> list[dt.date]:
     """Sorted unique dates on which a universe event resolves (finalized)."""
     mk = markets if markets is not None else load_markets(is_only=True)
-    names = series if series is not None else universe(min_events, mk)
+    names = series if series is not None else target_universe(min_events, mk)
     sel = pl.any_horizontal([series_filter_expr(n) for n in names])
     dates = (mk.filter(sel & pl.col("close_time").is_not_null())
              .select(pl.col("close_time").dt.date().alias("d"))

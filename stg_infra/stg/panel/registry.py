@@ -20,6 +20,32 @@ Design notes
   events with a computable signed surprise). The ``role`` field here records
   the *expected* outcome and the reason, so "correctly a target-only series"
   stays distinguishable from "surprise builder has a bug".
+
+* **Triggers and targets are separate universes.** They are not the same
+  filter relaxed by a threshold — they have different *requirements*:
+
+  - a **trigger** needs a recoverable implied distribution *and* a resolved
+    outcome, so that ``surprise = actual - implied_mean`` means something;
+  - a **target** needs only a price path around the trigger's resolution.
+
+  A target is therefore strictly cheaper, which is why the target universe can
+  include series that could never be triggers. Two fields express this:
+
+  ``can_trigger``
+      Structural. ``False`` for asset-price series, which are targets *by
+      construction* — their resolution is a price snapshot, not an information
+      event, so a "surprise" computed against them is the artefact
+      ``edge_economics.md`` §2(b) diagnosed on WTI. These never enter the
+      surprise panel.
+
+  ``scheduled_release``
+      The §2(b) research criterion itself: does resolution constitute a
+      *scheduled information release*, rather than merely a resolution
+      timestamp? Annotated honestly per series (so ``WTI`` is ``False``), but
+      it only *gates* under ``trigger_universe(require_release=True)`` — which
+      defaults off, leaving current results unchanged. Turning it on is the
+      one-line form of the open "WTI in Universe A?" decision in
+      ``reports/TODO.md``.
 """
 
 from __future__ import annotations
@@ -58,10 +84,13 @@ class SeriesSpec:
     canon: str
     series_type: str           # matches stg/events/* labels where one exists
     kind: str                  # "threshold" | "bucket" | "categorical"
-    role: str                  # "trigger" | "target_only"
+    role: str                  # "trigger" | "target_only"   (a hint, not a gate)
     role_reason: str
     same_release: Optional[str] = None   # official-release group key
     aliases: tuple[str, ...] = field(default_factory=tuple)
+    # -- trigger eligibility (see module docstring) -------------------------
+    can_trigger: bool = True        # structural; False => target-only always
+    scheduled_release: bool = True  # §2(b) criterion; gates only on request
 
 
 _SPECS: tuple[SeriesSpec, ...] = (
@@ -110,11 +139,17 @@ _SPECS: tuple[SeriesSpec, ...] = (
     SeriesSpec("ISMPMI", "ism_pmi", "threshold", "target_only",
                "only ~7 IS events", "ism"),
     # ---- Oil (front-month WTI settle) -----------------------------------
+    # scheduled_release=False: the settle is a price snapshot, not a data
+    # release. edge_economics.md §2(b) -- WTI->CPIGAS, the most mechanically
+    # certain link in the grid, is flat (rho=+0.04, n=80). Left *enabled* as a
+    # trigger (require_release defaults off) because "WTI in Universe A?" is
+    # still an open decision in reports/TODO.md; flipping the gate is how that
+    # decision gets made, not this annotation.
     SeriesSpec("WTI", "wti", "bucket", "trigger",
                "85% bucket ladder; weekly cadence, highest event count",
-               "wti_settle"),
+               "wti_settle", scheduled_release=False),
     SeriesSpec("WTIW", "wti_weekly", "bucket", "trigger",
-               "weekly WTI variant", "wti_settle"),
+               "weekly WTI variant", "wti_settle", scheduled_release=False),
     # ---- Fed --------------------------------------------------------
     SeriesSpec("FED", "fed_level", "threshold", "target_only",
                "numeric 'Above X%' rate-level ladder. A surprise is computable "
@@ -128,6 +163,53 @@ _SPECS: tuple[SeriesSpec, ...] = (
                "(P(hike)/P(cut)), not as a magnitude surprise", "fomc"),
     SeriesSpec("RATECUT", "ratecut", "categorical", "target_only",
                "binary 'Cuts' contract, no numeric axis", "fomc"),
+    # ---- Asset-price targets (can_trigger=False) -------------------------
+    # Targets by construction: a macro surprise is *news to* these markets, so
+    # they carry the response but can never generate one. This is the
+    # Kuttner (2001) / Gurkaynak-Sack-Swanson (2005) design -- scheduled macro
+    # surprise -> asset-price response -- already cited in research_summary.md
+    # §6.2/§7.3, so the channel is available a priori rather than fitted.
+    #
+    # Two properties the macro targets lack. (i) Liquidity: median volume per
+    # ticker is 3,288 (INXD) and 6,999 (NASDAQ100D) against the macro
+    # contracts' 1-10 trades/day band. (ii) Identification: an equity index
+    # does not resolve off the CPI print, so the "both contracts resolve from
+    # the same official release" confound that makes the CPI clique
+    # uninterpretable (reports/TODO.md §Identification) simply does not arise.
+    #
+    # These close intraday the same day (20:00 / 21:00 UTC) while a BLS print
+    # lands at 13:30 UTC, so the target contract is live at the trigger's
+    # resolution and matches at a gap of ~0.3 days.
+    #
+    # Membership here is bounded by ``data/trades/``, not by what Kalshi
+    # listed. The public trades API retains ~67 days (verified 2026-09-08:
+    # earliest served 2026-07-02), so any series absent from the local archive
+    # can never be reconstructed for the in-sample window. TNOTED / TNOTEW /
+    # NASDAQ100D are exactly that case -- listed, with real aggregate
+    # ``volume`` in the markets metadata, but zero trades locally and
+    # unrecoverable. They are deliberately NOT registered: the 10-year yield
+    # would otherwise be the cleanest policy-path target available.
+    #
+    # ``INX`` is also omitted: it runs on the *same* 464 event days as INXU
+    # (parallel ticker families, not successive generations), so registering
+    # both would double-count the same underlying. INXD's days are largely its
+    # own, so it stands as a separate node rather than an alias.
+    #
+    # Caveat for multiple testing: INXU and INXD track one underlying, so they
+    # are not independent targets even where their event days differ.
+    SeriesSpec("INXU", "sp500_daily", "threshold", "target_only",
+               "S&P 500 daily close, threshold ladder ('above X'). 646,547 "
+               "trades over 2022-08 -> 2025-11 -- the deepest continuous "
+               "asset-price target in the archive.",
+               same_release=None, can_trigger=False, scheduled_release=False),
+    SeriesSpec("INXD", "sp500_daily_bucket", "bucket", "target_only",
+               "S&P 500 daily close, bucket ladder. 565,941 trades but stops "
+               "2024-12-31; complements INXU on mostly disjoint event days.",
+               same_release=None, can_trigger=False, scheduled_release=False),
+    SeriesSpec("NASDAQ100U", "nasdaq100_daily", "threshold", "target_only",
+               "Nasdaq-100 daily close, threshold ladder. 214,804 trades but "
+               "only from 2024-10, so it spans the late folds alone.",
+               same_release=None, can_trigger=False, scheduled_release=False),
 )
 
 SPECS: dict[str, SeriesSpec] = {s.canon: s for s in _SPECS}
@@ -177,24 +259,70 @@ def event_counts(markets: Optional[pl.DataFrame] = None) -> pl.DataFrame:
             pl.len().alias("n_contracts"),
         )
         .with_columns(pl.col("canon").is_in(list(SPECS)).alias("in_universe"))
-        .sort("n_events", descending=True)
+        # ``canon`` breaks ties. Without it the order of equal-event-count
+        # series depends on the order polars happens to emit groups in, so
+        # ``universe()`` returned a different list on identical calls (CPIFOOD
+        # / CPIUSEDCAR at 21 events, CPIGAS / CPISHELTER / GDP at 18). That
+        # order sets the grid iteration order, and any seeded RNG consumed in
+        # grid order inherits the nondeterminism -- the same failure mode
+        # already fixed in panel/targets.py::representative_tickers.
+        .sort(["n_events", "canon"], descending=[True, False])
     )
     return g
 
 
-def universe(min_events: int = 5, markets: Optional[pl.DataFrame] = None) -> list[str]:
-    """Canonical node names in the curated macro list with >= min_events IS events.
+def _eligible(min_events: int, markets: Optional[pl.DataFrame],
+              predicate) -> list[str]:
+    """Curated series with >= min_events IS events, filtered by ``predicate``.
 
-    N is a *consequence* of ``min_events`` and the alias table, reported here
-    rather than hardcoded.
+    N is a *consequence* of ``min_events`` and the alias table, reported by
+    callers rather than hardcoded. Order is by descending event count.
     """
     counts = event_counts(markets)
     keep = (
         counts.filter(pl.col("in_universe") & (pl.col("n_events") >= min_events))
         ["canon"].to_list()
     )
-    # deterministic order: by descending event count
-    return keep
+    return [c for c in keep if predicate(SPECS[c])]
+
+
+def target_universe(min_events: int = 5,
+                    markets: Optional[pl.DataFrame] = None) -> list[str]:
+    """Series usable as *targets*: every curated node clearing ``min_events``.
+
+    A target needs only a price path around the trigger's resolution, so
+    nothing is excluded on information-content grounds — including the
+    asset-price series, which exist in the registry for exactly this role.
+    """
+    return _eligible(min_events, markets, lambda s: True)
+
+
+def trigger_universe(min_events: int = 5,
+                     markets: Optional[pl.DataFrame] = None,
+                     *, require_release: bool = False) -> list[str]:
+    """Series usable as *triggers*: those that can carry a signed surprise.
+
+    ``can_trigger`` is structural and always applies, so asset-price series are
+    never triggers. ``require_release`` additionally applies the
+    ``edge_economics.md`` §2(b) criterion — resolution must be a *scheduled
+    information release*, not merely a resolution timestamp — which drops
+    WTI/WTIW. It defaults off so this filter is a no-op against the results
+    reported in ``direction_study.md``; see the open decision in
+    ``reports/TODO.md``.
+    """
+    return _eligible(
+        min_events, markets,
+        lambda s: s.can_trigger and (s.scheduled_release or not require_release),
+    )
+
+
+def universe(min_events: int = 5, markets: Optional[pl.DataFrame] = None) -> list[str]:
+    """Deprecated alias for :func:`target_universe`.
+
+    Kept so existing callers and saved scripts keep working. New code should
+    name the role it means — the two universes are no longer the same list.
+    """
+    return target_universe(min_events, markets)
 
 
 def ticker_prefixes(canon: str) -> tuple[str, ...]:

@@ -39,7 +39,7 @@ from stg.events.implied import (
     resolved_value, infer_spacing, normalise_to_exclusive,
 )
 from stg.panel._io import load_markets, scan_trades
-from stg.panel.registry import SPECS, series_filter_expr, universe
+from stg.panel.registry import SPECS, series_filter_expr, trigger_universe
 
 MIN_FRESH_LEGS = 3     # need a real cross-section to call a day's quotes a distribution
 MIN_MASS = 0.5         # bucket path: normalised mass must not be dominated by gaps
@@ -241,7 +241,7 @@ def build_surprise_panel(
     """
     mk = markets if markets is not None else load_markets(is_only=True)
     tr = trades if trades is not None else scan_trades(is_only=True)
-    names = series if series is not None else universe(min_events, mk)
+    names = series if series is not None else trigger_universe(min_events, mk)
 
     frames: list[pl.DataFrame] = []
     for canon in names:
