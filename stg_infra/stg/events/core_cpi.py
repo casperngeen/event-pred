@@ -7,16 +7,14 @@ Covers two series:
 
 from __future__ import annotations
 
-import sys
 import logging
 from pathlib import Path
 
 import polars as pl
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "stg"))
 
-from stg_infra.stg.events.implied import compute_threshold_series
-from stg_infra.stg.events.config import DATA_DIR, DATE_START, DATE_END
+from stg.events.implied import compute_threshold_series
+from stg.events.config import DATA_DIR, DATE_START, DATE_END
 
 log = logging.getLogger(__name__)
 

@@ -414,12 +414,9 @@ def compute_threshold_series(
                        pass a ``pl.date(...)`` expression if needed
     """
     # import here to avoid circular dependency (KalshiOHLCV → stg)
-    import sys
-    from pathlib import Path as _Path
-    sys.path.insert(0, str(_Path(__file__).parent.parent.parent / "stg"))
     from stg.io.kalshi import KalshiOHLCV
 
-    from stg_infra.stg.events.config import DATE_START as _DS, DATE_END as _DE
+    from stg.events.config import DATE_START as _DS, DATE_END as _DE
     ds = date_start if date_start is not None else _DS
     de = date_end   if date_end   is not None else _DE
 

@@ -13,7 +13,6 @@ Handles two market structures:
 from __future__ import annotations
 
 import re
-import sys
 import logging
 from pathlib import Path
 from typing import Optional
@@ -21,11 +20,10 @@ from typing import Optional
 import numpy as np
 import polars as pl
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "stg"))
 from stg.io.kalshi import KalshiOHLCV
 
-from stg_infra.stg.events.implied import parse_threshold, build_daily_implied_means, pdf_implied_stats
-from stg_infra.stg.events.config import DATA_DIR, DATE_START, DATE_END
+from stg.events.implied import parse_threshold, build_daily_implied_means, pdf_implied_stats
+from stg.events.config import DATA_DIR, DATE_START, DATE_END
 
 log = logging.getLogger(__name__)
 
