@@ -13,7 +13,8 @@ the `stg` package at `stg_infra/stg/`. The CA report PDFs stay outside the repo
 at the FYP root.
 
 Last reorganised 2026-09-07 — `reports/` and `analysis/` moved inside the repo,
-so everything is version-controlled under one root.
+so everything is version-controlled under one root. `direction_study.md` added
+the same day.
 
 Submission target November 2026; analysis freeze early October.
 
@@ -34,6 +35,8 @@ Submission target November 2026; analysis freeze early October.
 | [research_log.md](research_log.md) | Running findings and measurement problems, by section (§1 magnitude nulls, §2 sign survives, §5 first-print decay, §6 structure estimation, §7 staleness, §8 bucket parse bug). Most-cited document in the set. |
 | [agcrn_study.md](agcrn_study.md) | **Why AGCRN did not work** — thesis-facing writeup: question, setup, result table, five reasons, conclusion. |
 | [agcrn_postmortem.md](agcrn_postmortem.md) | The diagnostic evidence behind those five reasons — horizon comparison, oracle R² ladder, the overlapping-window artifact. *(Was `analysis/agcrn_diagnostics_2026_09/FINDINGS.md`.)* |
+| [edge_economics.md](edge_economics.md) | **Do the edges make sense, and can they be traded?** Sign restrictions (incl. the U3 dovish-flip falsification cell), the WTI-has-no-information-event finding, the jump-not-drift decomposition (which clears §4.1's staleness threat), and why pre-resolution coherence is the one remaining tradable path. |
+| [direction_study.md](direction_study.md) | **The simple-learning successor** — dormant-horizon direction prediction on the Stage-1 structure. Sign rule beats its base rate on structure-covered rows (63.0%, p=0.041); the edge, not the surprise, does the work; capacity does not pay. |
 
 ## Design and data
 
@@ -52,6 +55,8 @@ Regenerate by running the script from the repo root:
 |---|---|
 | `artifacts/adjacency_report.md` | `scripts/run_structure_estimation.py` — Stage-1 edges, 8 BH-FDR survivors |
 | `artifacts/agcrn_report.md` | `scripts/train_agcrn.py` — walk-forward results, 0 models beat predict-zero |
+| `artifacts/direction_report.md` | `scripts/run_direction_study.py` — Stage-2 ladder, per-fold edges, robustness cuts |
+| `artifacts/edge_economics.md` | `scripts/run_edge_economics.py` — sign restrictions, effective spreads, the trade ledger |
 | `artifacts/adjacency_comparison.md` | `scripts/compare_adjacency.py` — learned Ã vs Stage-1 adjacency |
 | `artifacts/panels/MANIFEST.md` | `scripts/build_panels.py` — panel provenance |
 

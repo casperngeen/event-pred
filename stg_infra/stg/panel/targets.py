@@ -59,12 +59,16 @@ def representative_tickers(
               .agg(pl.len().alias("n_trades")).collect())
     m = m.join(counts, on="ticker", how="left").with_columns(
         pl.col("n_trades").fill_null(0))
+    # ``ticker`` breaks ties in both sorts. Without it the most-traded ticker
+    # for an event, and the order of equal-close_time events, depend on the
+    # order polars happens to emit groups in — which made the panel differ by a
+    # row between identical runs.
     return (m.filter(pl.col("n_trades") > 0)
-            .sort("n_trades", descending=True)
-            .group_by("event_ticker")
+            .sort(["n_trades", "ticker"], descending=[True, False])
+            .group_by("event_ticker", maintain_order=True)
             .agg(pl.col("ticker").first(), pl.col("close_time").first(),
                  pl.col("n_trades").first())
-            .sort("close_time"))
+            .sort(["close_time", "ticker"]))
 
 
 def response_panel(
@@ -81,7 +85,20 @@ def response_panel(
 
     Returns one row per matched pair:
     ``trigger, target, side, event(trigger), target_event, surprise,
-    gap_days, p0, response, days_to_close(target at match)``.
+    gap_days, p0, response, days_to_close(target at match)``, plus the
+    execution columns ``target_ticker, t_p0, n_pre, t_entry, p_entry, t_exit``.
+
+    ``p0`` is the last trade *before* the trigger resolved — the reference the
+    structure estimator uses, but a price no one can still transact at once the
+    trigger has resolved. ``p_entry``/``t_entry`` are the first print after
+    resolution: the earliest a trader could actually have acted. The gap
+    between the two is where update_2026_08.md §5's "48% of the move is in the
+    first print" shows up as an execution cost rather than a return.
+
+    ``t_p0`` dates the reference price, so how *stale* it was at the trigger's
+    resolution is measurable rather than assumed — research_summary.md §4.1's
+    central threat, since a p0 that is days old makes ``p1 - p0`` partly a
+    staleness correction rather than a response.
     """
     mk = markets if markets is not None else load_markets(is_only=True)
     tr = trades if trades is not None else scan_trades(is_only=True)
@@ -101,7 +118,7 @@ def response_panel(
         nxt = [row for row in rep_rows if row[0] > t_res]
         if not nxt:
             continue
-        c_close, c_ticker, c_event = min(nxt, key=lambda x: x[0])
+        c_close, c_ticker, c_event = min(nxt, key=lambda x: (x[0], x[1]))
         gap = (c_close - t_res).total_seconds() / 86400
         if not (0 <= gap <= MAX_GAP_DAYS):
             continue
@@ -110,11 +127,16 @@ def response_panel(
         if pre.height == 0:
             continue
         p0 = float(pre["yes_price"][-1])
+        t_p0 = pre["created_time"][-1]
+        n_pre = pre.height
+        post = sub.filter(pl.col("created_time") > t_res)
+        t_entry = post["created_time"][0] if post.height else None
+        p_entry = float(post["yes_price"][0]) if post.height else None
         if horizon == "dormant":
-            post = sub.filter(pl.col("created_time") > t_res)
             if post.height < 3:
                 continue
             p1 = float(post["yes_price"][2])
+            t_exit = post["created_time"][2]
         elif horizon == "liquid":
             lw = sub.filter(
                 (pl.col("created_time") >= c_close - dt.timedelta(days=LIQUID_DAYS))
@@ -122,6 +144,7 @@ def response_panel(
             if lw.height < MIN_LIQUID_TRADES:
                 continue
             p1 = float(lw["yes_price"].mean())
+            t_exit = c_close
         else:
             raise ValueError(f"unknown horizon {horizon!r}")
         out.append(dict(
@@ -130,5 +153,7 @@ def response_panel(
             surprise=float(r["surprise"]), gap_days=gap,
             p0=p0, response=p1 - p0,
             days_to_close=(c_close - t_res).days,
+            target_ticker=c_ticker, t_p0=t_p0, n_pre=n_pre,
+            t_entry=t_entry, p_entry=p_entry, t_exit=t_exit,
         ))
     return pl.DataFrame(out)

@@ -252,3 +252,313 @@ bucket contracts, so WTI — the largest series by event count — is currently 
 from implied-mean output rather than handled; and the coherence-violation counter
 (`np.clip` in `recover_pdf` discards exactly the monotonicity violations
 `research_summary.md` §5 wants to measure).
+
+---
+
+## 2026-09-07 — §9 The structure predicts direction; nothing else does
+
+Full writeup: `direction_study.md`. Regenerate: `scripts/run_direction_study.py`.
+New module `stg_infra/stg/direction/`; harness tested in `tests/test_direction.py`.
+
+Stage-2 as the AGCRN post-mortem prescribed it: dormant horizon, direction
+label, transparent ladder, and — the point of the exercise — **edges re-estimated
+inside every walk-forward fold on training rows only**, so nothing consumes the
+published in-sample adjacency. 4,816 labelled (trigger event → next target
+event) rows over the same 140-pair grid; 3,487 scored out of fold; 8 expanding
+folds, 21-day purge; block-permutation null within trigger series.
+
+**(a) Pooled, nothing predicts.** Sign rule 50.6% (p = 0.35). Expected: the graph
+is sparse, so most rows carry no edge. Any pooled evaluation of this task will
+report a null regardless of what the structure contains — worth stating before
+someone reads a pooled null as a refutation.
+
+**(b) On structure-covered rows it does.** Where the *fold's own* training data
+licensed a BH-surviving edge (n = 81): sign rule 63.0% vs 59.3% base, balanced
+0.626, **p = 0.041**; at the looser p<0.05 gate (n = 221) 57.5%, **p = 0.022**.
+This is the first predictive rather than descriptive evidence for the Stage-1
+adjacency — the 75.9% in `artifacts/adjacency_report.md` conditions on in-sample
+BH survival and cannot be read this way.
+
+**(c) The edge does the work, not the surprise.** Ablation on the same 81 rows,
+edge weight removed and surprise plus context kept: 49.4%, balanced 0.473, AUC
+0.467, p = 0.75. Directional content lives in *which pair and with what sign*.
+
+**(d) Capacity hurts, again, at the bottom of the ladder.** Accuracy: sign rule
+(0 fitted weights) ≥ edge logit (2) ≥ feature logit (7) ≥ neighbour logit (8).
+Same monotone pattern as the AGCRN rungs. Caveat: the logits rank better than
+they classify (edge logit AUC 0.680 vs sign rule 0.576) — a fitted weight buys
+ordering, not decisions, and at n = 81 the difference is inside noise.
+
+**(e) Identification, quantified.** CPICORE→CPI — a *same-release* pair — supplies
+13 of the 81 covered rows at 84.6%. Drop same-release pairs entirely and the
+result is 60.7% on 61 rows, **p = 0.13**: point estimate survives, significance
+does not. §5's identification problem now has a number attached to it.
+
+**(f) WTI is mass without structure.** 56% of the panel's rows (2,705/4,816), one
+BH edge contributing a single scored row. Excluding it as a *trigger*: 64.6% on
+82 rows, **p = 0.007**, with the ablation still null (p = 0.14). Bears directly
+on the open Universe-A decision — keep WTI as a target, report it separately as a
+trigger.
+
+**Reading.** The pre-specified cell was sign rule × BH gate (named in the
+post-mortem before the run); the other 20 cells in the table are a family, not
+independent tests. All of this is walk-forward *inside* the in-sample block. It
+is a sharper hypothesis, not yet a finding — the holdout is untouched, and the
+cell to spend it on is now specified (`TODO.md`).
+
+---
+
+## 2026-09-08 — §10 The edges are economically coherent and economically unavailable
+
+Full writeup: `edge_economics.md`. Regenerate: `scripts/run_edge_economics.py`
+(spreads cached in `artifacts/effective_spreads.parquet`; `--refresh-spreads`
+to re-scan).
+
+**(a) The graph is a policy hub.** Five of the eight BH survivors point at
+`FED`/`FEDDECISION`; the rest sit inside the CPI family. The recovered
+"structure" is one documented channel — macro data → policy path — plus a
+same-release clique, not a rich network. Modest, but it is the channel whose
+signs theory fixes in advance.
+
+**(b) Sign restrictions pass, including the falsification cell.** Every hawkish
+channel is positive (CPI→FED +0.51, CPICORE→FED +0.48, PAYROLLS→FED +0.53,
+CPIYOY→PCECORE +0.72); both dovish cells flip as required (U3→FED −0.14,
+U3→FEDDECISION/hike −0.40, neither significant). This is `research_summary.md`
+§8.3 item 2's test and it is the check that would have caught the estimator
+fitting generic co-movement.
+
+**(c) The most mechanically certain edge in the grid is flat, and that explains
+WTI.** WTI→CPIGAS: ρ̂ = +0.04, n = 80, p = 0.73. Oil passes into gasoline CPI by
+construction, so this is not a power failure — **WTI has no information event**.
+Its settle is public and continuously observable, so at resolution there is no
+news; the "surprise" is an artefact of when the ladder was snapped. Consequence
+for the universe: *a trigger needs a scheduled information release, not merely a
+resolution timestamp.* This independently explains why dropping WTI as a trigger
+takes the sign rule from p = 0.041 to p = 0.007 (§9f), and it downgrades
+WTI→JOBLESSCLAIMS (ρ̂ = −0.76, n = 11) to a flagged false positive: an estimator
+that cannot find oil in gasoline should not be believed finding oil in claims.
+
+**(d) Not tradable — and the reason is not cost.** Ledger over the 81 out-of-fold
+`bh`-covered signals, ~34/yr:
+
+| measured from | cents/trade | hit rate |
+|---|---|---|
+| `p0` (last pre-resolution trade — what the estimator sees) | +0.86 | 0.630 |
+| first post-resolution print (the earliest executable price) | **+0.01** | **0.395** |
+
+The whole edge lives in the gap between the last pre-resolution trade and the
+first post-resolution print. Median lag between them: **17.5 minutes**; median
+hold to the exit print: 13 minutes. It is not a fast move being missed — no
+tradable price exists in between, because these books do not print. Costs then
+bury the remainder, and **fees dominate spread** (2.90c vs 1.38c per round trip;
+Kalshi's p(1−p) schedule is worst near 50c, charged on both legs). Net −4.25c
+taker (t = −4.94), −1.50c under the most favourable maker assumption.
+
+`research_summary.md` §6.4's "be a maker not a taker" argument assumed a
+multi-day drift and does **not** transfer to a ~13-minute window: an unfilled
+resting order misses the move, and fill probability is lowest exactly when the
+price is running away. `JOBLESSCLAIMS` could not be costed at all — not one pair
+of adjacent opposite-direction trades within 60s exists in the IS block.
+
+Read as §6.4 pre-committed: **economic significance, not profitability**. The
+signal is real in the estimator's reference frame and simultaneously unavailable
+to any trader, because the price at which it would be captured never exists. The
+friction that creates the anomaly is the friction that makes it unexploitable —
+a sharper limits-to-arbitrage result than "the margin was too thin".
+
+**(e) The edge is a jump, not a drift — and staleness did not make it.**
+Splitting the signed move at the first executable price: jump (`p0` → first
+print, untradable) +0.85c at 54.3% hit; drift (first → third print, tradable)
++0.01c at **39.5%** — below chance. So there is no decay curve to arrive early
+on; the market reprices once, completely, at its first print after resolution.
+`p0` itself is old (median 8.8 h stale, 58% > 6 h), so the estimator's window and
+a trader's window are not the same object.
+
+Critically this is **not** §4.1's staleness artifact. If stale references
+manufactured the edge, accuracy would rise with staleness; it falls monotonically
+— 0.690 (<1h, n=29) / 0.615 (1–24h, n=39) / 0.538 (>24h, n=13), with
+corr(staleness, |jump|) = +0.09. Stale prices dilute the finding. §4.1 was the
+threat the plan said to check first; checked, and it survives.
+
+And corr(|surprise|, |jump|) = **+0.02**: the first print moves in the right
+direction more often than chance by an amount unrelated to the size of the news
+— "sign survives, magnitude does not" (§1–2), now in the execution frame.
+
+**(f) Pre-emptive holding: two paths closed, one open.** Holding *before*
+resolution is the only way to capture a jump. Conditioning on the surprise is
+impossible by construction. Conditioning on an ex-ante bias in the implied mean
+fails empirically: no series shows one (max |t| = 1.66 over 17 series,
+uncorrected) — **the ladder-recovered implied mean is well calibrated**, itself
+worth reporting. What remains is pre-resolution *coherence*: trade the
+disagreement between the trigger's implied distribution and the target's price,
+and hold through resolution. That restores §6.4's maker argument (hours, not 17
+minutes, to get filled) and is the coherence-violation contribution already
+scoped in §5 / Phase 3 item 10 — which moves the Phase C panels onto the critical
+path.
+
+**(g) Reproducibility bug fixed.** Identical rebuilds of the pair panel differed
+by a row: `representative_tickers` broke trade-count ties through an unordered
+`group_by`, and `response_panel` broke close-time ties by list order. Both now
+use lexicographic tiebreaks (`panel/targets.py`), verified by four separate
+processes producing an identical panel hash, with a regression test. Every
+artifact built before 2026-09-08 carries the old nondeterminism at the
+one-row level.
+
+---
+
+## 2026-09-08 — §11 Widening coverage: the bottleneck is estimator design, not events
+
+The direction result rests on 81 out-of-fold signals (~34/yr) concentrated in
+three pairs — too thin to carry a claim. Where the coverage actually goes:
+
+    1,435 macro events in the IS archive
+      ->   799 usable trigger events (a real pre-resolution cross-section)
+      -> 4,818 matched (trigger event -> next target event) rows
+      -> 3,487 scored out of fold
+      ->    81 covered by a per-pair BH edge          <- the bottleneck
+
+The loss is at the last step, and it is a *choice*: 140 ordered pairs each
+estimated as a free parameter, each needing n >= 10 and BH survival on its own.
+Only ~5 clear it per fold.
+
+**Channel pooling recovers 5.6x of that, tested.** Group pairs by economic
+channel and impose one theory-fixed sign for the whole channel — hawkish
+triggers +1, dovish (U3, JOBLESSCLAIMS) −1 — instead of estimating 29 separate
+rho's. Over the data→policy channel (inflation→policy 318 rows/21 pairs, plus
+labour→policy 138/8, same-release excluded):
+
+| | value |
+|---|---|
+| rows | **456** (vs 81) |
+| aligned sign agreement | **55.0%** |
+| block-permutation null | 50.1% ± 2.3% |
+| one-sided p | **0.021** |
+| pooled within-pair-ranked rho | +0.085 (p = 0.07) |
+| fitted parameters | **zero** — the sign is theory-imposed, not estimated |
+
+The effect is smaller than the per-pair BH cell's 63% (which selects the
+strongest pairs, in sample) but applies to 5.6x the rows, ~114 signals/yr rather
+than 34. And because the channel rule fits *nothing*, there is no overfitting to
+undo — the in-sample/out-of-sample gap that motivates the whole walk-forward
+apparatus mostly collapses. Caveat: the channel *definition* was informed by
+Stage-1's results, so an OOS confirmation is still owed.
+
+This is `research_summary.md` §8.3 item 1 made concrete — economic structure as
+a hard sparsity prior replacing parameters the data cannot support — and it
+directly answers the "81 rows, three pairs" concentration objection.
+
+**Other multipliers, measured:**
+
+| lever | multiplier | note |
+|---|---|---|
+| channel pooling (above) | **5.6x rows** | free, tested, on-thesis |
+| use the whole strike ladder | **~11x tickers** | 1,435 macro events carry 15,899 tickers; the pipeline collapses each event to its single most-traded one. Strikes within an event are correlated, so not 11x independent — but it multiplies *executable* opportunities, lets the response be measured at the near-the-money strike rather than the most-traded one, and turns on the moneyness axis `estimate_by_horizon` half-built. |
+| sports | **~100x events** | MVENFLMULTIGAMEEXTENDED 132,094 events, MVENFLSINGLEGAME 31,291 — already local. Games *are* scheduled information reveals (unlike WTI), and the graph is mechanically known: game → season win total → division → championship. Verifiable edges rather than guessed ones. |
+| more macro series | ~510 events | 141 candidate series outside the registry, mostly gas/oil variants — which by §10(c) lack information events. Low value. |
+
+**Selection criterion carried over from §10(c):** a trigger needs a *scheduled
+information release*, not merely a resolution timestamp. That is what makes
+sports attractive and the gas/oil candidates unattractive.
+
+### §11.1 Trading beyond the ATM contract — capacity, not power
+
+**Depth.** The pipeline uses one representative ticker per target event. Measured
+usable strikes per event: FED 9.7 traded / 7.5 with >=20 trades / 4.5 with >=100;
+CPI 7.1 / 5.4 / 3.4; CPIYOY 9.6 / 5.1 / 2.2; PAYROLLS 5.1 / 4.2 / 1.9. So
+**4-7 genuinely usable strikes per event**, a 4-7x multiplier. Off-ATM is not a
+thin tail: the 15-30c band carries a *higher* median trade count than ATM for
+CPICORE (80 vs 53), PAYROLLS (139 vs 110) and CPIYOY (61 vs 47).
+
+**Spread by moneyness** (same §4.2.1 estimator, window-invariant in every band):
+
+| band | median | mean | n pairs |
+|---|---|---|---|
+| ATM ±15c | 2.0c | 2.86 | 2,540 |
+| 15-30c out | 2.0c | 2.21 | 4,567 |
+| 30-40c out | 2.0c | 2.08 | 2,766 |
+| >40c out | **1.0c** | 1.37 | 5,081 |
+
+Spreads *narrow* away from the money rather than widening.
+
+**No cost-optimal strike, though.** A surprise shifts the implied distribution, so
+the move at strike k scales with the density there — maximal at ATM. The Kalshi
+fee `0.07·p(1-p)` is *also* maximal at ATM and steps down (ceil-to-cent) once
+p < ~18c. Combining move, fee and the measured spread:
+
+| strike | price | move/0.1sd | fee | spread | cost | move/cost |
+|---|---|---|---|---|---|---|
+| ATM | 50c | 3.99c | 4c | 2c | 6.0c | **0.67** |
+| 0.5sd | 31c | 3.52c | 4c | 2c | 6.0c | 0.59 |
+| 1.0sd | 16c | 2.42c | 2c | 2c | 4.0c | **0.61** |
+| 1.5sd | 7c | 1.30c | 2c | 1c | 3.0c | 0.43 |
+| 2.0sd | 2c | 0.54c | 2c | 1c | 3.0c | 0.18 |
+
+ATM and ~1sd out are within noise; beyond that it degrades. The fee saving
+off-ATM is cancelled because the **spread has a 1c tick floor that does not scale
+with sensitivity**, so it eats proportionally more of a smaller move. (A
+fee-only calculation makes ~1sd look like a sweet spot at 1.21x — it is not, once
+the measured spread is included.) Past ~2sd the move per 0.1sd shift falls below
+the 1c tick and cannot be expressed at all.
+
+**The load-bearing caveat.** Strikes on one event are all driven by the same shift
+in the same distribution: 4-7 strikes is **one bet in larger size, not 4-7
+independent observations**. The ladder therefore multiplies deployable *capacity*
+and does nothing for the n=81 *significance* problem.
+
+| lever | capacity | significance |
+|---|---|---|
+| strike ladder (4-7x) | yes | **no** |
+| channel pooling (5.6x) | yes | **yes** |
+| sports (~100x) | yes | **yes** |
+
+So the order is **channel pooling → sports → ladder**, the ladder applied as a
+capacity multiplier to whatever survives. Its one non-capacity use: measuring the
+response at the *near-the-money* strike rather than the *most-traded* one is a
+cleaner measurement, and it activates the moneyness axis beside the term
+structure already in `structure/horizon.py`.
+
+### §11.2 Correction: the §11/§11.1 population is not the signal window
+
+The ledger numbers (81 signals, −4.25c, 17.5 min lag) are computed on the
+covered rows. The ladder-depth and spread numbers in §11/§11.1 are computed on
+the *whole life* of the six target series. Conditioning them on the moment a
+signal actually fires changes both, in the same direction.
+
+**(a) Spreads roughly double at release time.** Same §4.2.1 estimator, trades
+split by proximity to a trigger resolution:
+
+| window | median spread | mean | n pairs |
+|---|---|---|---|
+| within 0.5 h of a release | **2.0c** | 2.84c | 375 |
+| within 6 h of a release | **2.0c** | 2.37c | 2,040 |
+| quiet | **1.0c** | 1.98c | 14,514 |
+
+The book widens exactly when the signal exists — the textbook inventory /
+adverse-selection response to a release. **The ledger charged 1.38c, the
+unconditional figure, so its net of −4.25c is optimistic**; at the
+release-conditional median (2.0c) it is ≈ **−4.9c**, and at the conditional mean
+≈ −5.7c. The conclusion is unchanged and strengthened; the reported number was
+generous to the strategy.
+
+**(b) The ladder is deep over a contract's life and shallow when it matters.**
+Distinct strikes actually trading within a window after a resolution:
+
+| window | median strikes/event | mean | share of events with >=3 |
+|---|---|---|---|
+| 30 min | **1.0** | 1.79 | 0.19 |
+| 120 min | 2.0 | 2.16 | 0.29 |
+| 360 min | 2.0 | 2.50 | 0.38 |
+
+So §11.1's "4-7 usable strikes per event" is a *lifetime* count. In the dormant
+window the median event has **one strike trading** — essentially the single
+representative ticker the pipeline already uses. **The 4-7x capacity multiplier
+does not exist for the post-resolution trade.**
+
+It does exist for the pre-resolution coherence strategy (§10 Path C), where the
+position is established over hours or days and the whole ladder is reachable.
+That is a second, independent reason to prefer Path C, and it demotes the
+ladder from an independent lever to a component of that one.
+
+Both corrections point the same way: **at signal time these markets are
+simultaneously thinner and wider than their own averages.** The friction that
+sustains the anomaly peaks exactly where the anomaly is.
