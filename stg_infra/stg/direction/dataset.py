@@ -40,7 +40,7 @@ import polars as pl
 from stg.panel._io import load_markets, scan_trades
 from stg.panel.registry import is_same_release, target_universe
 from stg.panel.surprise import usable_triggers
-from stg.panel.targets import representative_tickers, response_panel
+from stg.panel.targets import response_panel, target_frames
 
 FEDDECISION_SIDES = ("hike", "cut")
 
@@ -69,13 +69,14 @@ def build_pair_panel(
     triggers = usable_triggers(surprise_panel, min_n)
     tgts = targets if targets is not None else target_universe(5, mk)
 
-    rep_cache: dict[tuple[str, str], pl.DataFrame] = {}
+    # per-target, not per-pair: see targets.py::target_frames
+    frame_cache: dict[tuple[str, str], tuple[pl.DataFrame, pl.DataFrame]] = {}
 
-    def reps(t: str, side: str) -> pl.DataFrame:
+    def reps(t: str, side: str) -> tuple[pl.DataFrame, pl.DataFrame]:
         key = (t, side)
-        if key not in rep_cache:
-            rep_cache[key] = representative_tickers(t, side, markets=mk, trades=tr)
-        return rep_cache[key]
+        if key not in frame_cache:
+            frame_cache[key] = target_frames(t, side, markets=mk, trades=tr)
+        return frame_cache[key]
 
     frames: list[pl.DataFrame] = []
     for trig in triggers:
@@ -87,10 +88,11 @@ def build_pair_panel(
                 continue
             sides = FEDDECISION_SIDES if tgt == "FEDDECISION" else ("any",)
             for side in sides:
-                if reps(tgt, side).height == 0:
+                fr = reps(tgt, side)
+                if fr[0].height == 0:
                     continue
                 rp = response_panel(s_panel, tgt, side, horizon=horizon,
-                                    markets=mk, trades=tr)
+                                    markets=mk, trades=tr, frames=fr)
                 if rp.height < min_pair_n:
                     continue
                 frames.append(rp.join(meta, on="trigger_event", how="left"))

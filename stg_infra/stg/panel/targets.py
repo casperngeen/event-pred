@@ -71,6 +71,40 @@ def representative_tickers(
             .sort(["close_time", "ticker"]))
 
 
+def target_frames(
+    target: str,
+    side: str = "any",
+    *,
+    markets: Optional[pl.DataFrame] = None,
+    trades: Optional[pl.LazyFrame] = None,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """The per-*target* work: ``(representative tickers, their trades)``.
+
+    Depends only on ``(target, side)``, never on the trigger, so a sweep over
+    many triggers should build it once. Hoisted out of :func:`response_panel`
+    because leaving it inside made the grid quadratic in the wrong variable:
+    the structure estimator calls ``response_panel`` once per (trigger,
+    target) pair, so every one of the 21 triggers rebuilt the same frames.
+    Harmless while targets were macro ladders of a few hundred tickers;
+    crippling once INXU (15,289 tickers, 646k trades) joined the target
+    universe, where a single rebuild costs ~2 minutes.
+
+    Pass the result back via ``response_panel(..., frames=...)``.
+    """
+    mk = markets if markets is not None else load_markets(is_only=True)
+    tr = trades if trades is not None else scan_trades(is_only=True)
+    reps = representative_tickers(target, side, markets=mk, trades=tr)
+    if reps.height == 0:
+        return reps, pl.DataFrame(
+            schema={"ticker": pl.Utf8, "yes_price": pl.Float64,
+                    "created_time": reps.schema.get("close_time", pl.Datetime)})
+    rep_tickers = reps["ticker"].unique().to_list()
+    tt = (tr.filter(pl.col("ticker").is_in(rep_tickers))
+          .select("ticker", "yes_price", "created_time")
+          .sort("ticker", "created_time").collect())
+    return reps, tt
+
+
 def response_panel(
     surprise_panel: pl.DataFrame,
     target: str,
@@ -79,8 +113,10 @@ def response_panel(
     horizon: str = "dormant",
     markets: Optional[pl.DataFrame] = None,
     trades: Optional[pl.LazyFrame] = None,
+    frames: Optional[tuple[pl.DataFrame, pl.DataFrame]] = None,
+    match: str = "live",
 ) -> pl.DataFrame:
-    """Match every trigger event in ``surprise_panel`` to the next target event
+    """Match every trigger event in ``surprise_panel`` to a target event
     and measure the target's price response.
 
     Returns one row per matched pair:
@@ -102,26 +138,59 @@ def response_panel(
     """
     mk = markets if markets is not None else load_markets(is_only=True)
     tr = trades if trades is not None else scan_trades(is_only=True)
-    reps = representative_tickers(target, side, markets=mk, trades=tr)
+    if frames is None:
+        frames = target_frames(target, side, markets=mk, trades=tr)
+    reps, tt = frames
     if reps.height == 0:
         return pl.DataFrame()
-    rep_rows = list(zip(reps["close_time"].to_list(), reps["ticker"].to_list(),
-                        reps["event_ticker"].to_list()))
-    rep_tickers = reps["ticker"].unique().to_list()
-    tt = (tr.filter(pl.col("ticker").is_in(rep_tickers))
-          .select("ticker", "yes_price", "created_time")
-          .sort("ticker", "created_time").collect())
+    if match not in ("live", "next_close"):
+        raise ValueError(f"unknown match {match!r}")
+    rep_rows = sorted(zip(reps["close_time"].to_list(), reps["ticker"].to_list(),
+                          reps["event_ticker"].to_list()))
+
+    # First trade per ticker, so "was this contract already trading when the
+    # trigger resolved?" is a dict lookup rather than a filter per candidate.
+    if tt.height:
+        _ft = tt.group_by("ticker").agg(pl.col("created_time").min().alias("t0"))
+        first_trade = dict(zip(_ft["ticker"].to_list(), _ft["t0"].to_list()))
+    else:
+        first_trade = {}
+
+    def _pick(t_res):
+        """The target event this trigger is matched to.
+
+        ``next_close`` is the original rule: the earliest-closing event after
+        the trigger, take it or leave it. ``live`` walks candidates in close
+        order and takes the first that was *already trading* at ``t_res``.
+
+        They agree whenever the nearest event is already open, which is the
+        normal case for macro ladders that live for weeks. They diverge for
+        daily-cadence targets, where the next event to close has often only
+        just opened -- no pre-resolution trade, so no ``p0``, and
+        ``next_close`` discards the observation rather than looking past it.
+        That is why 3,423 INXU/INXD/NASDAQ100U events yielded 9 usable pairs
+        and zero rows in the ``bh`` gate.
+        """
+        for c_close, c_ticker, c_event in rep_rows:
+            if c_close <= t_res:
+                continue
+            gap = (c_close - t_res).total_seconds() / 86400
+            if gap > MAX_GAP_DAYS:
+                return None
+            if match == "next_close":
+                return c_close, c_ticker, c_event, gap
+            ft = first_trade.get(c_ticker)
+            if ft is not None and ft <= t_res:
+                return c_close, c_ticker, c_event, gap
+        return None
 
     out: list[dict] = []
     for r in surprise_panel.iter_rows(named=True):
         t_res = r["close_time"]
-        nxt = [row for row in rep_rows if row[0] > t_res]
-        if not nxt:
+        picked = _pick(t_res)
+        if picked is None:
             continue
-        c_close, c_ticker, c_event = min(nxt, key=lambda x: (x[0], x[1]))
-        gap = (c_close - t_res).total_seconds() / 86400
-        if not (0 <= gap <= MAX_GAP_DAYS):
-            continue
+        c_close, c_ticker, c_event, gap = picked
         sub = tt.filter(pl.col("ticker") == c_ticker)
         pre = sub.filter(pl.col("created_time") <= t_res)
         if pre.height == 0:

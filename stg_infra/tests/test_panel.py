@@ -5,7 +5,9 @@ from stg.panel import (
     build_surprise_panel, event_counts, is_same_release, same_release_pairs,
     target_universe, trigger_universe, universe,
 )
-from stg.panel.registry import SPECS, canonical
+from stg.panel.registry import (
+    SPECS, canonical, assert_trade_coverage, trade_coverage,
+)
 
 from conftest import requires_archive
 
@@ -111,3 +113,39 @@ def test_event_counts_order_is_deterministic(markets):
     """Ties on n_events broke ordering run-to-run before the canon tiebreak."""
     runs = [target_universe(5, markets) for _ in range(4)]
     assert all(r == runs[0] for r in runs)
+
+
+# --- trade coverage: metadata volume is not a price path ------------------
+@requires_archive
+def test_every_registered_series_has_traded_events(markets):
+    """The guard itself: no registered series may lack a price path."""
+    assert_trade_coverage(min_events_traded=5, markets=markets)
+
+
+@requires_archive
+def test_trade_coverage_flags_a_metadata_only_series(markets):
+    """NASDAQ100D is listed with real aggregate volume but has zero trades.
+
+    It is deliberately absent from SPECS; this asserts the guard would have
+    caught it, so the three near-misses of 2026-09-08 cannot recur silently.
+    """
+    import polars as pl
+    from stg.panel._io import scan_trades
+    tr = scan_trades(is_only=True)
+    traded = (tr.select("ticker")
+              .with_columns(pl.col("ticker").str.replace(r"^KX", "")
+                            .str.split("-").list.first().alias("s"))
+              .filter(pl.col("s").is_in(["NASDAQ100D", "TNOTED", "USDJPYH"]))
+              .select(pl.len()).collect().item())
+    assert traded == 0, "these three are the metadata-only cases; expected no trades"
+    listed = markets.filter(
+        pl.col("series_raw").is_in(["NASDAQ100D", "TNOTED", "USDJPYH"])).height
+    assert listed > 0, "they should still be present in the markets metadata"
+
+
+@requires_archive
+def test_registered_asset_targets_actually_trade(markets):
+    cov = trade_coverage(markets)
+    assets = cov.filter(~pl.col("can_trigger"))
+    assert assets.height == 3
+    assert (assets["n_events_traded"] >= 300).all(), assets

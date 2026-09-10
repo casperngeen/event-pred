@@ -55,7 +55,7 @@ from typing import Optional
 
 import polars as pl
 
-from stg.panel._io import load_markets
+from stg.panel._io import load_markets, scan_trades
 
 # --------------------------------------------------------------------------
 # Canonical node -> {raw ticker-prefix aliases}. Applied before any filtering.
@@ -161,8 +161,19 @@ _SPECS: tuple[SeriesSpec, ...] = (
     SeriesSpec("FEDDECISION", "decision_bps", "categorical", "target_only",
                "ordered ladder over bps changes; modelled by side "
                "(P(hike)/P(cut)), not as a magnitude surprise", "fomc"),
-    SeriesSpec("RATECUT", "ratecut", "categorical", "target_only",
-               "binary 'Cuts' contract, no numeric axis", "fomc"),
+    # RATECUT is deliberately NOT registered. It looks like the best-traded
+    # contract in the macro set -- 9,758,096 aggregate volume over 11 markets --
+    # but `data/trades/` holds *zero* trades for any RATECUT ticker, so it has
+    # no price path and can never carry a response. It is the same
+    # metadata-outlives-history trap as TNOTED / NASDAQ100D (see the
+    # asset-target block below), caught by assert_trade_coverage() on
+    # 2026-09-08 after sitting in the universe undetected.
+    #
+    # Effect of removal is nil: representative_tickers() already returned an
+    # empty frame for it, so every (trigger, RATECUT) pair was skipped. It only
+    # ever inflated the universe count.
+    #   SeriesSpec("RATECUT", "ratecut", "categorical", "target_only",
+    #              "binary 'Cuts' contract, no numeric axis", "fomc"),
     # ---- Asset-price targets (can_trigger=False) -------------------------
     # Targets by construction: a macro surprise is *news to* these markets, so
     # they carry the response but can never generate one. This is the
@@ -337,3 +348,98 @@ def ticker_prefixes(canon: str) -> tuple[str, ...]:
 def series_filter_expr(canon: str, col: str = "series_raw") -> pl.Expr:
     """Polars predicate selecting rows belonging to a canonical node."""
     return pl.col(col).is_in(list(ticker_prefixes(canon)))
+
+
+# --------------------------------------------------------------------------
+# Trade coverage: is a registered series actually usable?
+# --------------------------------------------------------------------------
+class TradeCoverageError(AssertionError):
+    """A registered series has no usable price path in ``data/trades/``."""
+
+
+def trade_coverage(
+    markets: Optional[pl.DataFrame] = None,
+    trades: Optional[pl.LazyFrame] = None,
+) -> pl.DataFrame:
+    """Per registered series: events listed vs events that actually traded.
+
+    Motivation (2026-09-08). The markets metadata carries an aggregate
+    ``volume`` per ticker that survives long after the trade-level history is
+    gone, so a series can look deep and have no price path at all. Three
+    candidates for the asset-price target set failed exactly this way:
+
+    ======================  =================  ======
+    series                  markets metadata   trades
+    ======================  =================  ======
+    ``NASDAQ100D``          median vol 6,999   **0**
+    ``USDJPYH``             3,457 events       **0**
+    ``TNOTED``              548 events         **0**
+    ======================  =================  ======
+
+    Kalshi's public API retains ~67 days (measured 2026-09-08: earliest served
+    2026-07-02), and neither ``kalshi_orderbooks.jsonl`` nor the PMXT
+    aggregator (a live pass-through, verified against a working control)
+    reaches further back — so a series absent from the local archive cannot be
+    backfilled for the in-sample window. Registering one silently yields a
+    target that contributes zero rows.
+
+    ``targets.py::representative_tickers`` needs only ``close_time`` plus at
+    least one trade, so "events that traded" is the honest capacity measure.
+
+    Columns: ``canon, role, can_trigger, n_events_listed, n_events_traded,
+    n_trades, coverage``.
+    """
+    mk = markets if markets is not None else load_markets(is_only=True)
+    tr = trades if trades is not None else scan_trades(is_only=True)
+
+    mk = mk.with_columns(
+        pl.col("series_raw").map_elements(canonical, return_dtype=pl.Utf8)
+        .alias("canon")
+    ).filter(pl.col("canon").is_in(list(SPECS)))
+
+    per_ticker = (tr.select("ticker").group_by("ticker")
+                  .agg(pl.len().alias("n_trades")).collect())
+    joined = mk.join(per_ticker, on="ticker", how="left").with_columns(
+        pl.col("n_trades").fill_null(0))
+
+    out = (joined.group_by("canon").agg(
+        pl.col("event_ticker").n_unique().alias("n_events_listed"),
+        pl.col("event_ticker").filter(pl.col("n_trades") > 0).n_unique()
+        .alias("n_events_traded"),
+        pl.col("n_trades").sum().alias("n_trades"),
+    ).with_columns(
+        (pl.col("n_events_traded") / pl.col("n_events_listed")).alias("coverage")
+    ))
+    meta = pl.DataFrame({
+        "canon": list(SPECS),
+        "role": [SPECS[c].role for c in SPECS],
+        "can_trigger": [SPECS[c].can_trigger for c in SPECS],
+    })
+    return (meta.join(out, on="canon", how="left")
+            .with_columns(pl.col("n_events_listed", "n_events_traded", "n_trades")
+                          .fill_null(0))
+            .sort(["n_events_traded", "canon"], descending=[True, False]))
+
+
+def assert_trade_coverage(
+    min_events_traded: int = 5,
+    markets: Optional[pl.DataFrame] = None,
+    trades: Optional[pl.LazyFrame] = None,
+) -> None:
+    """Raise if any registered series lacks a usable price path.
+
+    Guards the failure mode in :func:`trade_coverage` — a series registered on
+    the strength of its markets-metadata volume that has no trades behind it.
+    Such a series is not a silent no-op: it enters the target grid, contributes
+    zero rows, and shifts nothing visible except the denominator.
+    """
+    cov = trade_coverage(markets, trades)
+    bad = cov.filter(pl.col("n_events_traded") < min_events_traded)
+    if bad.height:
+        rows = ", ".join(
+            f"{r['canon']} ({r['n_events_traded']}/{r['n_events_listed']} events traded)"
+            for r in bad.iter_rows(named=True))
+        raise TradeCoverageError(
+            f"{bad.height} registered series below {min_events_traded} traded "
+            f"events: {rows}. The markets metadata's aggregate volume outlives "
+            f"the trade history, so check data/trades/ before registering.")
