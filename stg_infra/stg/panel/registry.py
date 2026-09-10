@@ -364,9 +364,9 @@ def trade_coverage(
     """Per registered series: events listed vs events that actually traded.
 
     Motivation (2026-09-08). The markets metadata carries an aggregate
-    ``volume`` per ticker that survives long after the trade-level history is
-    gone, so a series can look deep and have no price path at all. Three
-    candidates for the asset-price target set failed exactly this way:
+    ``volume`` per ticker even when no trades for it were ever collected, so a
+    series can look deep and have no price path at all. Three candidates for
+    the asset-price target set failed exactly this way:
 
     ======================  =================  ======
     series                  markets metadata   trades
@@ -376,15 +376,32 @@ def trade_coverage(
     ``TNOTED``              548 events         **0**
     ======================  =================  ======
 
-    Kalshi's public API retains ~67 days (measured 2026-09-08: earliest served
-    2026-07-02), and neither ``kalshi_orderbooks.jsonl`` nor the PMXT
-    aggregator (a live pass-through, verified against a working control)
-    reaches further back — so a series absent from the local archive cannot be
-    backfilled for the in-sample window. Registering one silently yields a
-    target that contributes zero rows.
+    The cause is collection, not retention (corrected 2026-09-10; see
+    research_log.md §12). ``data/trades/`` was assembled one ticker at a time
+    from a supplied list — ``fetch_kalshi_data.py::fetch_trades_for_ticker`` —
+    and that list was never complete, so coverage is all-or-nothing per series:
+    350 of the 730 series with >=20 market tickers have no trades at all. The
+    decisive check is that absence tracks the *series*, not the *date*:
+    ``INXD`` holds 565,941 trades spanning 2022-05..2024-12, precisely the
+    window in which ``NASDAQ100D`` has none.
+
+    Retention bounds the *repair*, not the cause: Kalshi's public API serves
+    ~67 days (measured 2026-09-08: earliest served 2026-07-02), and neither
+    ``kalshi_orderbooks.jsonl`` (a live snapshot stream beginning ~2025-10) nor
+    the PMXT aggregator (a live pass-through, verified against a working
+    control) reaches further back — so a series omitted from the original pull
+    can no longer be fetched for the in-sample window. Registering one silently
+    yields a target that contributes zero rows.
 
     ``targets.py::representative_tickers`` needs only ``close_time`` plus at
     least one trade, so "events that traded" is the honest capacity measure.
+
+    .. warning::
+       :func:`assert_trade_coverage` bounds the *absolute* count only, so
+       partial coverage passes silently. Several registered triggers are well
+       short of their listed events (WTIW 32%, CPIFOOD 38%, WTI 64%,
+       CPIAPPAREL 68%, PAYROLLS 72%). Treat ``n`` as a floor set by collection,
+       never as a measurement of market activity.
 
     Columns: ``canon, role, can_trigger, n_events_listed, n_events_traded,
     n_trades, coverage``.

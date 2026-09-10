@@ -562,3 +562,162 @@ ladder from an independent lever to a component of that one.
 Both corrections point the same way: **at signal time these markets are
 simultaneously thinner and wider than their own averages.** The friction that
 sustains the anomaly peaks exactly where the anomaly is.
+
+---
+
+## 2026-09-10 — §12 Data quality: the archive is a convenience sample
+
+**One-line summary:** `data/trades/` was assembled by fetching one ticker at a
+time from a supplied list, and that list was never complete. Whole series are
+missing, and — the part that matters — several *registered* trigger series are
+silently running on a third to two-thirds of their events. Every `n` in this log
+is a floor set by collection, not a measurement of market activity.
+
+Backing script: `analysis/data_quality_2026_09/coverage_audit.py`
+(captured output beside it). All figures below are reproducible from it.
+
+### §12.1 How this surfaced, and the wrong explanation
+
+Registering INXU/INXD/NASDAQ100U as asset-price targets (commit `410f8fe`)
+turned up three candidates — NASDAQ100D, TNOTED, USDJPYH — carrying real
+aggregate `volume` in the markets metadata with **zero trades** in the local
+archive. RATECUT, already registered, was the same: 9,758,096 aggregate volume
+over 11 markets, no trades at all.
+
+That was attributed to Kalshi's ~67-day trade retention (measured 2026-09-08:
+earliest served 2026-07-02). **That explanation is wrong** and is corrected
+here. Retention predicts absence tracks *date*. It does not:
+
+| series | markets window | trades |
+|---|---|---|
+| NASDAQ100D | 2022-05 → 2024-01 | **0** |
+| INXD | 2022-05 → 2024-12 | **565,941** (2022-05-12 → 2024-12-31) |
+
+The archive holds trades back to **2021-06-30**. INXD's trades blanket exactly
+the window in which NASDAQ100D has none. No retention cutoff deletes one series
+and spares its contemporary. Absence tracks the **series**, not the date.
+
+Retention is still real, but it answers a different question: it is why a series
+omitted from the original pull **cannot be recovered now**, not why it is
+missing. `kalshi_orderbooks.jsonl` is no help either — it is a live snapshot
+stream beginning ~Oct 2025, so it carries no 2022–24 history for anything.
+
+### §12.2 What actually happened: two independent, partial pulls
+
+The two archives were built by different mechanisms and neither contains the
+other:
+
+|  | markets | trades |
+|---|---|---|
+| distinct series | 4,836 | 2,490 |
+| distinct tickers | 4,252,445 | 420,341 |
+| present here but not in the other | — | **227 series / 222,293 tickers** |
+
+`data/markets/` is a bulk paginated sweep — broad, shallow (one metadata row per
+ticker), and itself missing ~44% of its own page range (426 of 757 expected
+chunks). `data/trades/` is assembled **per ticker**:
+`fetch_kalshi_data.py::fetch_trades_for_ticker` calls
+`/historical/trades?ticker=…` in a loop over a caller-supplied list. Coverage is
+therefore exactly that list — about 10% of the market tickers.
+
+The signature of a list-driven pull is all-or-nothing coverage per series, and
+that is what the data shows. Across the 730 series with ≥20 market tickers:
+
+| ticker coverage | series |
+|---|---|
+| [0, 0.1%) — nothing at all | **350** |
+| [0.1%, 5%) | 25 |
+| [5%, 25%) | 61 |
+| [25%, 75%) | 129 |
+| [75%, 95%) | 69 |
+| [95%, 100%] — essentially complete | **96** |
+
+Strongly bimodal. `TNOTE`, `USDJPY` and `RATECUT` have **no ticker prefix
+whatsoever** in the trades archive, while `INX` has nine variants (`INX`,
+`INXD`, `INXU`, `INXW`, `INXY`, `INXZ`, `KXINX`, …). They were never requested.
+
+### §12.3 The consequence: registered series are silently short
+
+`assert_trade_coverage()` (added in `410f8fe`) has an **absolute floor only**
+— it catches total absence and lets partial coverage through. Five registered
+*trigger* series are materially incomplete:
+
+| series | events listed | events traded | coverage |
+|---|---|---|---|
+| WTIW | 161 | 51 | **32%** |
+| CPIFOOD | 21 | 8 | **38%** |
+| WTI | 702 | 452 | **64%** |
+| CPIAPPAREL | 22 | 15 | **68%** |
+| PAYROLLS | 46 | 33 | **72%** |
+
+The rest of the macro universe (CPI, U3, CPICORE, CPIYOY, CPICOREYOY, FED, GDP,
+PCECORE, ADP, ISMPMI) is at 100%, and the asset-price targets are at 87–99%.
+
+**This is not thin markets — it is an incomplete fetch.** The distinction
+matters for every claim in this log:
+
+- **`n` is not a liquidity measurement.** Wherever a small `n` was read as
+  evidence that a market is illiquid or an event under-traded, that inference is
+  unsupported. PAYROLLS is short 13 of 46 events for collection reasons alone.
+- **The covered events are a convenience sample, not a random one.** Whatever
+  ordered the original ticker list — alphabetical, volume-ranked, or simply
+  where a checkpointed run was interrupted (`fetch_all_econ_trades` checkpoints
+  every 50 tickers and resumes by set difference) — is now an unmodelled
+  selection mechanism upstream of every estimate. It is *not known* to be
+  ignorable, and nothing in the pipeline currently tests it.
+- **WTI is the sharpest case.** §1(b) and `edge_economics.md` §2(b) already
+  discount WTI on two independent grounds (the bucket parse bug, no scheduled
+  information event). Its 64% coverage — and WTIW's 32% — is a third.
+
+`data/MANIFEST_new_pulls.md` had already noticed the symptom in passing
+("PAYROLLS 2023 events, JOBLESSCLAIMS/ADP/ISMPMI pre-Oct-2025 history … the
+original pull simply never captured") and `trades_backfill_is/`
+(23,430 trades, 1,550 tickers, 2022-09-09 → 2025-12-31) was pulled to close it.
+**It was never merged.** That is the cheapest available remedy and it is still
+outstanding.
+
+### §12.4 What to do
+
+1. **Merge `trades_backfill_is_2022_2025.parquet` into the archive.** Zero
+   overlap is claimed by construction; dedup against existing `trade_id` before
+   concatenating. Then re-run coverage and re-estimate — the trigger panel's
+   `n` may move, and everything downstream with it.
+2. **Give `assert_trade_coverage()` a coverage-*fraction* bound**, not just the
+   absolute floor, so 32% fails loudly instead of passing.
+3. **Test the selection.** For a series at partial coverage, compare covered vs
+   uncovered events on what the metadata *does* retain for both (`volume`,
+   `open_interest`, `close_time`). If they differ systematically, the sample is
+   not ignorable and the affected series need a stated caveat or exclusion.
+4. **Correct the `registry.py::trade_coverage` docstring**, which still gives
+   retention as the cause.
+
+### §12.5 Which existing results this touches
+
+The affected series are **not peripheral** — they are load-bearing in the
+headline findings:
+
+- **Stage-1 adjacency** (`artifacts/adjacency_report.md`, 8 BH-FDR survivors).
+  The single strongest edge is **PAYROLLS→FED** (n=30, ρ=0.565, p=0.00029) at
+  **72%** trigger coverage. **PAYROLLS→FEDDECISION/hike** (p=0.0038) and
+  **WTI→JOBLESSCLAIMS** (n=13, ρ=−0.698, p=0.0012) are also survivors, the
+  latter on a trigger at **64%**. Three of eight survivors sit on incompletely
+  collected triggers.
+- **§3 pooled sign result** (65.6% over 224 dormant rows, p=0.0030). Three of
+  the twelve theory-specified cells are PAYROLLS cells (n=20, 20, 18). The
+  other nine rest on CPI, CPIYOY, U3, FED and FEDDECISION — 100%, 100%, 100%,
+  100% and 96% coverage respectively, so the *majority* of the pooled result is
+  insulated, but not all of it.
+- **Direction study** (`artifacts/direction_report.md`). WTI is the most
+  frequent trigger in the pair table by a wide margin, which is why the
+  "no WTI trigger" robustness cut already exists there. That cut now has a
+  second, independent motivation.
+
+**Nothing in §1–§11 is retracted on this basis.** Incomplete collection widens
+the uncertainty on these estimates; it does not by itself reverse them, and the
+direction of any bias is unknown until §12.4(3) is run. But the earlier reading
+that these were simply low-`n` markets is wrong, and any writeup that cites
+PAYROLLS→FED or WTI→JOBLESSCLAIMS should say so.
+
+Until §12.4(1) and (3) are done, results involving WTI, WTIW, CPIFOOD,
+CPIAPPAREL or PAYROLLS carry an explicit data-coverage caveat when cited. This
+belongs in the final report as a limitations section, not only here.

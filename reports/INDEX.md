@@ -32,7 +32,7 @@ Submission target November 2026; analysis freeze early October.
 
 | Document | What it is |
 |---|---|
-| [research_log.md](research_log.md) | Running findings and measurement problems, by section (§1 magnitude nulls, §2 sign survives, §5 first-print decay, §6 structure estimation, §7 staleness, §8 bucket parse bug). Most-cited document in the set. |
+| [research_log.md](research_log.md) | Running findings and measurement problems, by section (§1 magnitude nulls, §2 sign survives, §5 first-print decay, §6 structure estimation, §7 staleness, §8 bucket parse bug, **§12 data-quality caveat**). Most-cited document in the set. |
 | [agcrn_study.md](agcrn_study.md) | **Why AGCRN did not work** — thesis-facing writeup: question, setup, result table, five reasons, conclusion. |
 | [agcrn_postmortem.md](agcrn_postmortem.md) | The diagnostic evidence behind those five reasons — horizon comparison, oracle R² ladder, the overlapping-window artifact. *(Was `analysis/agcrn_diagnostics_2026_09/FINDINGS.md`.)* |
 | [edge_economics.md](edge_economics.md) | **Do the edges make sense, and can they be traded?** Sign restrictions (incl. the U3 dovish-flip falsification cell), the WTI-has-no-information-event finding, the jump-not-drift decomposition (which clears §4.1's staleness threat), and why pre-resolution coherence is the one remaining tradable path. |
@@ -68,6 +68,20 @@ Regenerate by running the script from the repo root:
 | `data/MANIFEST_new_pulls.md` | Manifest describing the files it sits beside. |
 | `analysis/exploratory_2026_08/README.md` | Index of the exploratory scripts in that directory. |
 | `analysis/agcrn_diagnostics_2026_09/` | `postmortem.py` + captured output; its writeup is `agcrn_postmortem.md` here. |
+| `analysis/data_quality_2026_09/` | `coverage_audit.py` + captured output; its writeup is research_log.md §12. |
+
+---
+
+## Data-quality caveat
+
+`data/trades/` is a **convenience sample**, not a complete archive — it was
+fetched one ticker at a time from a list that was never complete, so 350 series
+have no trades at all and several *registered* triggers run on a third to
+two-thirds of their events (WTIW 32%, CPIFOOD 38%, WTI 64%, CPIAPPAREL 68%,
+PAYROLLS 72%). A small `n` anywhere in these reports is a floor set by
+collection, not a measurement of market activity. Full diagnosis, affected
+results and remedies: **research_log.md §12**. Earmarked for a limitations
+section in the final report.
 
 ---
 

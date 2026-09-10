@@ -1,0 +1,97 @@
+========================================================================
+1. Is absence explained by trade retention?
+========================================================================
+trades archive spans 2021-06-30 20:09:14.185137+00:00 -> 2025-12-31 23:58:38.003472+00:00
+
+series       n_tickers      volume   close_min   close_max    trades
+NASDAQ100D        3641    50707005  2022-05-09  2024-01-19         0
+NASDAQ100U      438479    67274771  2022-08-09  2025-11-24    214804
+INXD              3482    64740834  2022-05-12  2024-12-31    565941
+INXU            439089   119352481  2022-08-09  2025-11-24    646547
+INX              11551    63843537  2022-04-28  2025-11-28    282846
+TNOTED            7463     5994805  2023-02-14  2025-11-24         0
+TNOTEW            2124    10354717  2023-02-17  2025-11-28         0
+USDJPYH         344105     1499813  2023-02-28  2025-11-20         0
+RATECUT             11     9758096  2024-01-01  2024-09-19         0
+CPI                420    16924047  2021-07-12  2025-12-18     77660
+PAYROLLS           337    12390577  2024-03-08  2026-12-04     55924
+
+The counterexample: NASDAQ100D vs INXD, same era, same window.
+  NASDAQ100D          0 trades   no trades
+  INXD           565941 trades   2022-05-12 01:00:04.070479+00:00 -> 2024-12-31 19:02:58.326273+00:00
+
+=> INXD's trades blanket the window in which NASDAQ100D has none.
+   A 67-day retention cutoff cannot delete one and spare the other.
+   Absence tracks the SERIES, not the DATE. Retention rejected.
+
+========================================================================
+2. Are the two archives nested?
+========================================================================
+distinct series  markets=   4836  trades=   2490
+distinct tickers markets=4252445  trades= 420341
+  series  in trades but NOT markets: 227
+  tickers in trades but NOT markets: 222293
+
+=> Neither archive contains the other. They are independent pulls,
+   not one filtered view of a single source.
+
+========================================================================
+3. How complete is each pull?
+========================================================================
+markets     426 files, step 10000, span 120000..7690000,   757 expected if contiguous
+trades     3890 files, step 10000, span 0..45000000,  4500 expected if contiguous
+
+=> Both are partial. markets is missing ~44% of its own page range.
+
+========================================================================
+4. Is per-series coverage bimodal (the signature of a ticker list)?
+========================================================================
+series with >=20 market tickers: 730
+  coverage [    0, 0.001):   350 series
+  coverage [0.001, 0.05 ):    25 series
+  coverage [ 0.05, 0.25 ):    61 series
+  coverage [ 0.25, 0.75 ):   129 series
+  coverage [ 0.75, 0.95 ):    69 series
+  coverage [ 0.95, 1.01 ):    96 series
+
+=> Strongly bimodal: whole series in or whole series out. That is a
+   per-ticker fetch driven by a supplied list, which is exactly what
+   scripts/fetch_kalshi_data.py::fetch_trades_for_ticker does.
+
+========================================================================
+5. Coverage of the registered universe (the actionable part)
+========================================================================
+shape: (23, 5)
+┌───────────────┬─────────────┬─────────────────┬─────────────────┬──────────┐
+│ canon         ┆ can_trigger ┆ n_events_listed ┆ n_events_traded ┆ coverage │
+│ ---           ┆ ---         ┆ ---             ┆ ---             ┆ ---      │
+│ str           ┆ bool        ┆ u32             ┆ u32             ┆ f64      │
+╞═══════════════╪═════════════╪═════════════════╪═════════════════╪══════════╡
+│ WTIW          ┆ true        ┆ 161             ┆ 51              ┆ 0.31677  │
+│ CPIFOOD       ┆ true        ┆ 21              ┆ 8               ┆ 0.380952 │
+│ WTI           ┆ true        ┆ 702             ┆ 452             ┆ 0.643875 │
+│ CPIAPPAREL    ┆ true        ┆ 22              ┆ 15              ┆ 0.681818 │
+│ PAYROLLS      ┆ true        ┆ 46              ┆ 33              ┆ 0.717391 │
+│ CPISHELTER    ┆ true        ┆ 18              ┆ 14              ┆ 0.777778 │
+│ CPIUSEDCAR    ┆ true        ┆ 21              ┆ 18              ┆ 0.857143 │
+│ NASDAQ100U    ┆ false       ┆ 1650            ┆ 1432            ┆ 0.867879 │
+│ CPIGAS        ┆ true        ┆ 18              ┆ 16              ┆ 0.888889 │
+│ JOBLESSCLAIMS ┆ true        ┆ 85              ┆ 76              ┆ 0.894118 │
+│ FEDDECISION   ┆ true        ┆ 23              ┆ 22              ┆ 0.956522 │
+│ INXU          ┆ false       ┆ 1651            ┆ 1638            ┆ 0.992126 │
+│ INXD          ┆ false       ┆ 354             ┆ 353             ┆ 0.997175 │
+│ CPI           ┆ true        ┆ 54              ┆ 54              ┆ 1.0      │
+│ U3            ┆ true        ┆ 53              ┆ 53              ┆ 1.0      │
+│ CPICORE       ┆ true        ┆ 42              ┆ 42              ┆ 1.0      │
+│ CPIYOY        ┆ true        ┆ 37              ┆ 37              ┆ 1.0      │
+│ CPICOREYOY    ┆ true        ┆ 36              ┆ 36              ┆ 1.0      │
+│ FED           ┆ true        ┆ 35              ┆ 35              ┆ 1.0      │
+│ GDP           ┆ true        ┆ 18              ┆ 18              ┆ 1.0      │
+│ PCECORE       ┆ true        ┆ 16              ┆ 16              ┆ 1.0      │
+│ ADP           ┆ true        ┆ 9               ┆ 9               ┆ 1.0      │
+│ ISMPMI        ┆ true        ┆ 7               ┆ 7               ┆ 1.0      │
+└───────────────┴─────────────┴─────────────────┴─────────────────┴──────────┘
+
+=> assert_trade_coverage() has an absolute floor only, so partial
+   coverage passes silently. WTIW runs on 32% of its events.
+
