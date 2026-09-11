@@ -32,7 +32,7 @@ Submission target November 2026; analysis freeze early October.
 
 | Document | What it is |
 |---|---|
-| [research_log.md](research_log.md) | Running findings and measurement problems, by section (§1 magnitude nulls, §2 sign survives, §5 first-print decay, §6 structure estimation, §7 staleness, §8 bucket parse bug, **§12 data-quality caveat**). Most-cited document in the set. |
+| [research_log.md](research_log.md) | Running findings and measurement problems, by section (§1 magnitude nulls, §2 sign survives, §5 first-print decay, §6 structure estimation, §7 staleness, §8 bucket parse bug, **§12 data-quality caveat**, **§13 horizon/cost and the tradability ceiling**). Most-cited document in the set. |
 | [agcrn_study.md](agcrn_study.md) | **Why AGCRN did not work** — thesis-facing writeup: question, setup, result table, five reasons, conclusion. |
 | [agcrn_postmortem.md](agcrn_postmortem.md) | The diagnostic evidence behind those five reasons — horizon comparison, oracle R² ladder, the overlapping-window artifact. *(Was `analysis/agcrn_diagnostics_2026_09/FINDINGS.md`.)* |
 | [edge_economics.md](edge_economics.md) | **Do the edges make sense, and can they be traded?** Sign restrictions (incl. the U3 dovish-flip falsification cell), the WTI-has-no-information-event finding, the jump-not-drift decomposition (which clears §4.1's staleness threat), and why pre-resolution coherence is the one remaining tradable path. |
@@ -69,6 +69,19 @@ Regenerate by running the script from the repo root:
 | `analysis/exploratory_2026_08/README.md` | Index of the exploratory scripts in that directory. |
 | `analysis/agcrn_diagnostics_2026_09/` | `postmortem.py` + captured output; its writeup is `agcrn_postmortem.md` here. |
 | `analysis/data_quality_2026_09/` | `coverage_audit.py` + captured output; its writeup is research_log.md §12. |
+| `analysis/horizon_2026_09/` | Horizon/cost scripts + captured output; its writeup is research_log.md §13. Has its own README with run order. |
+
+---
+
+## Tradability: settled
+
+`research_log.md` §13 closes the question §6.4 left open. The recovered
+structure is **economically significant and not economically exploitable**: the
+repricing completes at the target's first post-resolution print (median 6.2 min),
+leaving ~1c against a ~2.6c cost floor. Holding longer does not help — there is
+no drift to hold. Two configurations that appeared to work (PAYROLLS→FED, and
+buying against the odds) were each a few events wearing a large `n`; **§13.5
+clusters on `target_event` and neither survives.** Cite clustered figures only.
 
 ---
 

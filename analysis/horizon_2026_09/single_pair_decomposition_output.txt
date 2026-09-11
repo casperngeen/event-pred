@@ -1,0 +1,24 @@
+PAYROLLS->FED, n=25
+
+A  WHAT THE STATISTIC MEASURES vs WHAT THE TRADE NEEDS
+  Spearman rho(surprise, response)     +0.532  p=0.00256
+  sign agreement measured from p0      0.840
+  sign agreement at executable entry   0.440
+  => rho ranks magnitudes; the trade needs the sign to still be
+     predictable at a price you can transact at. They come apart.
+
+B  WHERE THE MOVE HAPPENS
+  signed jump   p0 -> first print     +1.76c  (untradable)
+  signed drift  first print -> exit   +0.96c  (tradable)
+  jump share of the total             65%
+  median lag, resolution -> 1st print 6.2 min
+
+C  THE COST FLOOR
+  mean entry price 59.3c (the p(1-p) fee peaks at 50c)
+  round-trip fee   1.61c at C=100
+  tradable signal +0.96c vs floor 2.61c (spread 1.0c + fees)
+
+D  DOES A BIGGER SURPRISE HELP?
+  |z|>=0.0: n= 25  drift +0.96c  net -1.65c  win 0.44
+  |z|>=0.5: n= 18  drift +0.72c  net -1.96c  win 0.50
+  |z|>=1.0: n= 13  drift +1.38c  net -1.35c  win 0.54

@@ -1,0 +1,26 @@
+====================================================================================================
+B  PER-PAIR HOLD-TO-SETTLEMENT (walk-forward OOF direction)
+====================================================================================================
+
+gate=bh   81 settled OOF signals
+  pair                             n   win%   strat     fav    diff  dis_n dis_strat  dis_fav
+  CPICORE->CPI/any                13    69%    13.7   -37.0    50.8      7      43.2    -51.1
+  FED->CPIYOY/any                 10    40%    -4.5     8.3   -12.8      8     -11.8      4.2
+  CPI->FED/any                    24    46%    -9.6    -2.9    -6.7     11     -10.1      4.5
+  CPICORE->FED/any                23    43%   -10.7    -3.9    -6.9     11     -10.0      4.4
+  POOLED                          81    51%    -3.0    -9.7     6.7  t=-0.69
+    on the 43 disagreement events: strategy +2.96c (t=0.51)  favourite -9.65c
+
+gate=p05   204 settled OOF signals
+  pair                             n   win%   strat     fav    diff  dis_n dis_strat  dis_fav
+  PAYROLLS->FED/any               15    80%    14.7    -8.4    23.1      6      25.5    -32.2
+  CPI->CPICORE/any                15    67%    14.4   -13.6    28.0      6      31.2    -38.8
+  CPICORE->CPI/any                13    69%    13.7   -37.0    50.8      7      43.2    -51.1
+  WTI->GDP/any                    35    60%     7.4   -51.2    58.6     19      50.3    -57.6
+  FED->CPIYOY/any                 10    40%    -4.5     8.3   -12.8      8     -11.8      4.2
+  WTI->CPIUSEDCAR/any             42    48%    -5.3    27.3   -32.6     22     -35.0     27.3
+  WTI->INXU/any                    9    56%    -5.7   -14.8     9.1      4       6.3    -14.2
+  CPI->FED/any                    24    46%    -9.6    -2.9    -6.7     11     -10.1      4.5
+  CPICORE->FED/any                23    43%   -10.7    -3.9    -6.9     11     -10.0      4.4
+  POOLED                         204    53%    -0.9    -8.0     7.1  t=-0.28
+    on the 104 disagreement events: strategy +3.46c (t=0.81)  favourite -10.50c

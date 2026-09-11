@@ -1,0 +1,26 @@
+====================================================================================================
+B  PER-PAIR HOLD-TO-SETTLEMENT (walk-forward OOF direction)
+====================================================================================================
+
+gate=bh   81 settled OOF signals
+  pair                             n   win%   strat     fav    diff  dis_n dis_strat  dis_fav
+  CPICORE->CPI/any                13    69%    13.3   -37.4    50.8      7      42.9    -51.4
+  FED->CPIYOY/any                 10    40%    -5.0     7.9   -12.8      8     -12.2      3.8
+  CPI->FED/any                    24    46%   -10.2    -3.6    -6.7     11     -10.7      3.8
+  CPICORE->FED/any                23    43%   -11.4    -4.5    -6.9     11     -10.6      3.7
+  POOLED                          81    51%    -3.6   -10.3     6.7  t=-0.81
+    on the 43 disagreement events: strategy +2.46c (t=0.42)  favourite -10.14c
+
+gate=p05   204 settled OOF signals
+  pair                             n   win%   strat     fav    diff  dis_n dis_strat  dis_fav
+  PAYROLLS->FED/any               15    80%    14.1    -8.9    23.1      6      25.0    -32.7
+  CPI->CPICORE/any                15    67%    14.0   -14.0    28.0      6      30.7    -39.3
+  CPICORE->CPI/any                13    69%    13.3   -37.4    50.8      7      42.9    -51.4
+  WTI->GDP/any                    35    60%     6.7   -51.8    58.6     19      49.7    -58.2
+  FED->CPIYOY/any                 10    40%    -5.0     7.9   -12.8      8     -12.2      3.8
+  WTI->CPIUSEDCAR/any             42    48%    -5.8    26.8   -32.6     22     -35.5     26.8
+  WTI->INXU/any                    9    56%    -6.2   -15.3     9.1      4       5.9    -14.6
+  CPI->FED/any                    24    46%   -10.2    -3.6    -6.7     11     -10.7      3.8
+  CPICORE->FED/any                23    43%   -11.4    -4.5    -6.9     11     -10.6      3.7
+  POOLED                         204    53%    -1.4    -8.5     7.1  t=-0.46
+    on the 104 disagreement events: strategy +2.93c (t=0.68)  favourite -11.03c

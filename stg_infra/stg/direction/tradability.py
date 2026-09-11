@@ -26,11 +26,20 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-# Kalshi trading fee, per contract, rounded up to the cent:
-#   fee = ceil(FEE_RATE * price * (1 - price))       price in dollars
-# 1.75c at 50c, the project's own working figure (see
-# analysis/exploratory_2026_08/spread_measurement.py::FEE50). Verify against the
-# live schedule before quoting a net number in the thesis.
+# Kalshi taker trading fee. Official schedule, verified 2026-09-11 against
+# Kalshi's published formula (last updated 2026-07-07):
+#
+#     fee = round_up(0.07 * C * P * (1 - P))     C contracts, P in dollars
+#
+# $0.0175/contract at 50c, $0.0063 at 10c or 90c -- P(1-P) is the variance of a
+# Bernoulli, so the fee is proportional to the contract's uncertainty: maximal
+# at a coin flip, near-free at a near-certainty. Takers only; settlement is not
+# a trade and carries no fee, which is why buy-and-hold pays one leg and a round
+# trip pays two.
+#
+# NOTE the round-up is applied to the ORDER, not per contract -- C sits inside
+# it. Rounding per contract overstates the fee by up to 0.25c/contract at 50c
+# and the two agree only at C=1. See research_log.md §13.3.
 FEE_RATE = 0.07
 DEFAULT_MAX_GAP_S = 60
 
@@ -94,6 +103,7 @@ def trade_ledger(
     *,
     spreads: dict[str, float] | None = None,
     fee_rate: float = FEE_RATE,
+    contracts: int = 1,
 ) -> pl.DataFrame:
     """One row per executed signal, with gross and net cents.
 
@@ -111,6 +121,13 @@ def trade_ledger(
                    orders, *earning* the spread instead of paying it, fees
                    still charged. Fill risk is not modelled, so this is an
                    upper bound, not a strategy.
+
+    ``contracts`` is the order size the fee is computed at. It defaults to 1 --
+    one contract at a time, which is what every artifact predating
+    research_log.md §13.3 assumed -- so existing outputs reproduce unchanged.
+    Pass a realistic size to get the correct per-contract fee: the saving caps
+    at 12.5% and is fully realised by ~25 contracts, so 100 is a reasonable
+    figure for anything quoted as an achievable cost.
 
     ``research_summary.md`` §6.4 argues for making rather than taking, on the
     grounds that a multi-day drift needs no immediacy. That argument does not
@@ -130,8 +147,10 @@ def trade_ledger(
     p_exit = df["p0"] + df["response"]
 
     def fee(price_cents: pl.Series) -> pl.Series:
+        """Cents per contract for an order of ``contracts``."""
         p = price_cents.to_numpy().astype(float) / 100.0
-        return pl.Series(np.ceil(fee_rate * p * (1 - p) * 100) / 100.0 * 100)
+        total = np.ceil(fee_rate * contracts * p * (1 - p) * 100) / 100.0
+        return pl.Series(total * 100.0 / contracts)
 
     df = df.with_columns(
         spread_col,
