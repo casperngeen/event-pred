@@ -1,7 +1,8 @@
 # Research Log
 
-Running log of empirical findings. Newest entry first. Companion to
-`research_summary.md` (the standing plan) and `data_prep_plan.md` (data prep).
+Running log of empirical findings, oldest entry first (§1 at the top, the
+newest section at the bottom). Companion to `research_summary.md` (the standing
+plan) and `data_prep_plan.md` (data prep).
 
 Scripts backing every claim here live in `analysis/exploratory_2026_08/`.
 
@@ -257,6 +258,17 @@ from implied-mean output rather than handled; and the coherence-violation counte
 
 ## 2026-09-07 — §9 The structure predicts direction; nothing else does
 
+> **SUPERSEDED by §14.10 (2026-09-14). Do not cite this section's headline.**
+> Both halves of the title are now wrong. The sign rule's significance rested on
+> a look-ahead in instrument choice (§14.5), an asymptotic p-value the data's
+> 98% tie rate does not license (§14.4), and — for every re-run between
+> 2026-09-08 and 2026-09-13 — a cached pair panel that never rebuilt (§14.7).
+> On the corrected panel the sign rule clears no gate (p = 0.23 at `p05`), and
+> the `no_structure` ablation that this section called "decisive" reverses for a
+> mechanical reason: it was reading the target's bounded price level. The
+> reasoning and the measurement design below stand; the numbers and the
+> conclusion do not.
+
 Full writeup: `direction_study.md`. Regenerate: `scripts/run_direction_study.py`.
 New module `stg_infra/stg/direction/`; harness tested in `tests/test_direction.py`.
 
@@ -309,6 +321,13 @@ cell to spend it on is now specified (`TODO.md`).
 ---
 
 ## 2026-09-08 — §10 The edges are economically coherent and economically unavailable
+
+> **Partly superseded by §14.11 (2026-09-14).** The ledger is re-priced on the
+> corrected panel: net −3.15c (was −4.25c), t = −4.31, entry lag 33.6 min (was
+> 17.5). The *conclusion* — coherent, not exploitable — is unchanged and firmer.
+> The sign-restriction results in this section are unaffected. But per §14.10
+> the underlying rule no longer has demonstrated skill, so read the ledger as an
+> upper bound on this class of signal rather than as costing a validated edge.
 
 Full writeup: `edge_economics.md`. Regenerate: `scripts/run_edge_economics.py`
 (spreads cached in `artifacts/effective_spreads.parquet`; `--refresh-spreads`
@@ -407,6 +426,12 @@ one-row level.
 ---
 
 ## 2026-09-08 — §11 Widening coverage: the bottleneck is estimator design, not events
+
+> **Arithmetic superseded by §14 (2026-09-14).** The funnel below (1,435 → 799 →
+> 4,818 → 3,487 → 81) is pre-correction at every stage; it is now 1,435 → 519 →
+> 3,127 → 2,347 → 45. The diagnosis — that the loss is concentrated in per-pair
+> BH selection and is a *choice* — is unaffected, and channel pooling remains
+> the proposed remedy.
 
 The direction result rests on 81 out-of-fold signals (~34/yr) concentrated in
 three pairs — too thin to carry a claim. Where the coverage actually goes:
@@ -693,6 +718,16 @@ outstanding.
 
 ### §12.5 Which existing results this touches
 
+> **Re-check against §14 (2026-09-14).** The audit below maps coverage gaps onto
+> the *pre-correction* edge set. It partly resolves in the corrected table: of
+> the three survivors this section flags as sitting on incompletely collected
+> triggers, `WTI→JOBLESSCLAIMS` has left the grid entirely and
+> `PAYROLLS→FEDDECISION/hike` and `PAYROLLS→FED` remain — so PAYROLLS at 72%
+> trigger coverage is still load-bearing on **two of four** survivors, and that
+> caveat stands undiminished. `CPI` and `CPICOREYOY`, carrying the other two,
+> are at 100% coverage. The §3 pooled-sign and direction-study assessments below
+> are superseded by §14.10.
+
 The affected series are **not peripheral** — they are load-bearing in the
 headline findings:
 
@@ -725,6 +760,25 @@ belongs in the final report as a limitations section, not only here.
 ---
 
 ## 2026-09-11 — §13 Horizon, cost and the tradability ceiling
+
+> **Numbers superseded by §14.11 (2026-09-14)**; the argument is not. Every
+> figure quoting 81 signals, −4.25c or a 17.5-minute lag is pre-correction.
+> `analysis/horizon_2026_09/` was re-run on the corrected panel (all five
+> scripts, captured outputs refreshed) and the ceiling argument **holds and
+> firms up**:
+>
+> - Every horizon is net-negative at `bh`: 1h −4.50c, 1d −2.91c, 7d −3.58c,
+>   14d −2.85c, settle −2.87c. Holding longer still does not help.
+> - §13.5's clustered inference is now decisive rather than marginal. Clustering
+>   on `target_event` at `p05`, the hold-to-settlement strategy is
+>   **net −0.42c, t = −0.09, 95% CI [−9.2, +8.5]** over 91 rows in 47 events —
+>   indistinguishable from zero. The "settlement buys breakeven" reading is
+>   superseded by "settlement buys nothing measurable".
+> - The `< 35c` entry bucket is the worst cell (−8.60c, t = −1.33), which is the
+>   favourite–longshot direction §13.4 predicted.
+>
+> Read alongside §14.10: the rule being priced has no demonstrated skill, so a
+> null here is the expected result rather than a surprising one.
 
 **One-line summary:** the strongest recovered edge does not pay at any holding
 horizon, and the two configurations that appeared to were each a handful of
@@ -908,3 +962,341 @@ extremes and at settlement, and §13.4 tested only entry price, not **strike
 selection** — expressing the same signal at a different point on the ladder.
 That needs the ladder-aware panel rebuild also required for the cross-strike
 long/short construction, and is the honest "future work" claim.
+
+---
+
+## 2026-09-13 — §14 Corrections: a measurement fix, five statistics bugs, and a look-ahead
+
+**One-line summary:** a review of the data path and the study code found one
+avoidable measurement error (the resolved value was being *inferred* when the
+true printed value was on disk), five defects in `structure/stats.py`, and a
+look-ahead in how the response instrument was chosen. Fixing them takes the
+Stage-1 edge table from **8 BH survivors to 4** — and the 4 that remain are all
+*non-same-release*, which is a better result than the 8. Nothing here was found
+out of sample; the OOS wall was not approached.
+
+Backing code: `stg/panel/_io.py`, `stg/panel/surprise.py`, `stg/panel/nodes.py`,
+`stg/panel/targets.py`, `stg/structure/stats.py`, `stg/structure/estimator.py`,
+`stg/direction/learners.py`, `stg/direction/tradability.py`. 110 tests pass,
+including a regression test for each item below.
+
+### §14.1 The resolved value was inferred when the true value was on disk
+
+`implied.py::resolved_value` reconstructs each event's outcome as the midpoint
+between the highest YES and the lowest NO strike, which is accurate only to
+`spacing / 2`. Against CPI's median |surprise| of **0.0738 pp** that error is
+**0.05 pp — 68% of the signal being measured** — and on one-sided ladders, where
+the open tail is truncated at half a strike, it is far worse: measured errors up
+to 0.35 (CPI), 0.25 (U3), 1.65 (GDP), 23,000 (JOBLESSCLAIMS), 20,000 (ADP).
+
+`data/markets_api_pull/markets_api_pull_raw.jsonl` carries `expiration_value`,
+the value actually printed, for **1,022 events (847 in sample)** once `%`, `$`
+and thousands separators are parsed. Nothing read it. `panel/_io.py::
+load_settlement_values` now does, `surprise.py` prefers it over the ladder
+midpoint, and a new `resolved_source` column records which was used:
+**442 of 519 panel rows get the true value**, 77 keep the fallback (WTIW and the
+CPI subcomponents are absent from that pull).
+
+The surprises moved by a median of **50–67% of their own previous magnitude**
+(CPI 67%, CPICORE 62%, WTI 55%, U3 50%, PAYROLLS 22%). This is a change in the
+dependent quantity, not a cosmetic one. Three events that the ladder could not
+resolve at all also came back: GDP 3.8%, core PCE 0.2%, U3 4.4%.
+
+**`settlement_ts` is not the release timestamp** and must not be used as one. On
+the same file it runs a median **4.65 h after** `close_time` (WTI 21.75 h) — it
+is Kalshi's administrative settlement. `close_time` is already the right
+instant: CPI, U3 and PAYROLLS close at **12:25 UTC, five minutes before** the
+8:30 ET BLS release, so `p0` is genuinely pre-news and §5's event-study window
+is correctly anchored. This closes the `expiration_value` half of
+`data_prep_plan.md` Phase B without a re-pull.
+
+### §14.2 The implied distributions were not being checked for being distributions
+
+`coverage` and `ladder_mass` were computed, documented as the coherence metric,
+and then never filtered on. The bucket path enforced a one-sided `MIN_MASS = 0.5`
+floor with **no ceiling**, so a WTI ladder whose mutually exclusive buckets summed
+to **2.96** was accepted and divided by its own total. That does not recover a
+distribution: the violation sits in the stale legs, not spread evenly. Measured
+over the bucket rows, mass ran p50 = 1.26, p75 = 1.48, p95 = 1.85, with **23%
+above 1.5**. Coverage was as low as 0.23 at the 5th percentile, and 166 events
+were built from exactly three legs — a five-bin PDF with two open tails placed
+half a spacing past the extreme strikes, which shrinks `implied_mean` toward the
+ladder centre and *understates* `implied_std`. That understatement propagates,
+because Stage 2's feature is `surprise / implied_std`.
+
+`surprise.py::gate_panel` now applies a two-sided mass bound `[0.7, 1.5]`, a
+`coverage >= 0.5` floor and a leg minimum, **identically to both contract
+paths** (they previously disagreed). Cost: **799 → 519 rows and no trigger
+series** — the 14 series clearing `usable_triggers(10)` are the same 14 before
+and after, and `build_panels.py` now asserts that. `[0.85, 1.15]` would have left
+WTI with 98 of 368 events, which is why it is not the default.
+
+**The dropped rows are themselves a finding.** `update_2026_08.md` §1 proposes the
+coherence violation (median mass 1.28 — WTI pricing to 128% of certainty) as a
+candidate standalone contribution. Gating it away is right for a panel whose job
+is a trustworthy implied mean and wrong for that study. Build it from
+`build_surprise_panel(gated=False)`; the gated panel is bounded by construction,
+so reading the coherence distribution off it understates the result.
+
+### §14.3 The two panels disagreed about stale prices
+
+`surprise.py` was careful — last day with `MIN_FRESH_LEGS` legs that actually
+traded, never forward-filled. `nodes.py::_threshold_daily` did the opposite,
+handing `build_daily`'s forward-filled `close` straight to
+`build_daily_implied_means`. So **74.5% of node-feature rows** were implied
+distributions assembled from legs last traded on *different days* (34.7% with a
+leg over a week stale, p99 = 137 days) — the incoherent cross-section
+`build_daily`'s own docstring warns about. One source, two opposite rules.
+
+The node panel now applies the surprise panel's rule by default
+(`freshness="fresh"`), emits `n_fresh_legs`, and keeps `freshness="filled"` for
+the AGCRN-style use that needs a value every calendar day. At ticker-day level
+the fresh rule keeps **23–59%** of days (CPI 4,972 → 1,358; CPICORE 2,562 → 590;
+PAYROLLS 1,184 → 695). Note that `max_stale_days` changes meaning: the legs
+*used* are now fresh by construction, so it is a ladder-completeness diagnostic
+("how much of the ladder was dark"), not a contamination measure, and it stays
+non-zero on most rows.
+
+### §14.4 Five defects in `structure/stats.py`
+
+1. **Ranks ignored ties.** `_rank` was `argsort(argsort(x))`, which hands
+   arbitrary distinct ranks to equal values. `response` is a difference of
+   integer cent prices — **103 distinct values over 5,315 rows, 98.1% tied** —
+   and `surprise` is 86.2% tied. Against a tie-corrected Spearman the worst
+   per-pair error was **|Δρ| = 0.238** (`JOBLESSCLAIMS→FED`: 0.329 vs 0.090).
+   Now `scipy.rankdata`; ρ matches `scipy.spearmanr` exactly.
+2. **The p-value used a normal where a t belongs.** `spearman_p` evaluated the t
+   statistic against a standard normal — anti-conservative at n = 10–46
+   (`CPIYOY→FEDDECISION/cut`: 0.014 reported, 0.062 actual, 4.3×). Now exact-t
+   on `n - 2` df.
+3. **BH was controlling the wrong p-value.** Both fixes above leave the
+   asymptotic p an *approximation* whose assumptions this much tying does not
+   meet. The permutation p is exact with the same statistic, ties included — and
+   it was already being computed, but only for survivors and near-misses, so it
+   could not be selected on. `estimate_adjacency` now computes it for **every**
+   pair and selects on it by default (`select_on="permutation"`), reporting both.
+4. **A permutation p of exactly 0.** `(|null| >= |obs|).mean()` has no `+1`
+   correction, so `adjacency_report.md` printed `p = 0.0000` — not a possible
+   estimate from 2,000 draws. Now `(1 + k) / (1 + n_perm)`, floor 1/2001.
+5. **One shared mutable RNG.** A module-level `default_rng(0)` was consumed in
+   sequence by every caller, so adding a pair — or a ladder rung — silently
+   changed every p-value computed after it. Each pair now seeds its own
+   generator from `crc32` of its identity (**not** `hash()`, which Python
+   randomises per process and would have made this worse). `bh_critical` also
+   gave tied p-values different thresholds; ties now take the largest rank in
+   the group, consistent with BH's step-up.
+
+### §14.5 The response instrument was chosen with hindsight — and it was holding up the strongest edge
+
+`targets.py::representative_tickers` picked each target event's instrument as its
+**most-traded leg over the event's whole life**, including every trade after the
+trigger fired. Restricting the count to the first half of an event's life picks a
+different leg for **56% of CPI events and 63% of WTI events**.
+
+`target_frames` now returns every traded leg and `response_panel` chooses, per
+trigger instant, the most-traded leg **among prints at or before `t_res`** — which
+is also exactly the condition `p0` requires, so the `live` match rule and the leg
+choice became one test. The trigger-independent work stays cached, so §11's INXU
+performance fix survives.
+
+The consequence is the most substantive result in this entry. **`CPICORE→CPI`,
+the strongest edge in the published table at ρ = 0.744, p = 1.7e-7, falls to
+ρ = 0.467, p_perm = 0.027 and does not survive.** `direction_study.md` already
+flagged that pair as "arithmetic, not diffusion" — its 84.6% was the mechanical
+same-release channel §5 worries about. The mechanism is now visible: the
+full-life rule was selecting the CPI ladder leg that ended up nearest the
+realised print, and for a same-release trigger that leg's move partly *is* the
+trigger's own surprise restated. Removing the look-ahead removes most of it.
+
+### §14.6 `neighbour_signal` split simultaneous triggers arbitrarily
+
+The `nbr` feature promised "only rows with an earlier `t0` contribute" and
+delivered a cumulative sum over *row order*, so a tied row saw whichever siblings
+happened to sort before it. **993 of 5,315 rows matched neither a strict (`<`) nor
+an inclusive (`<=`) past**, and **29.2% of rows share a `t0` with a sibling on the
+same target event** — the CPI family, U3 and PAYROLLS all close at the same
+instant as their co-release, which is precisely the dependence this project is
+about. Now cumulated over distinct `t0` blocks: strictly-earlier by default,
+with `include_simultaneous=True` for the other reading. Both are exact against a
+brute-force reference and invariant to row order.
+
+### §14.7 A cache with no staleness check served an eight-day-old panel
+
+`run_direction_study.py` reused `artifacts/panels/pair_panel_dormant.parquet`
+whenever the file merely *existed*, so the entire Stage-2 study ran on a
+**8 September** panel through two rounds of upstream fixes. Stage 1 builds its
+response panels in process and moved; Stage 2 did not, and that mismatch is what
+exposed it. Both scripts now compare mtimes against `surprise_panel.parquet` —
+the direction study rebuilds, and `run_edge_economics.py` refuses to price a
+pair panel older than its inputs rather than doing it silently.
+
+### §14.8 Three smaller defects in the feature panel
+
+None of these change a headline, but two of them were silently wrong on most
+rows of the node panel, which is the AGCRN input.
+
+**Rolling windows counted rows, not days.** `recent_volume` and `net_flow` used
+`rolling_sum(activity_days)` and momentum used `shift(momentum_days)`. The frame
+has one row per day the series was *active*, so every gap — a weekend, a dark
+ladder, and far more of them once the panel became fresh-only (§14.3) — stretched
+"7 days of volume" across however long the gap ran. Switching to
+`rolling_sum_by("date", "7d")`, and to an as-of join for momentum (a rolling
+aggregate cannot give you a *level* 5 days back), changed:
+
+| feature | rows changed | max \|Δ\| |
+|---|---|---|
+| `d_implied_mean` | 60.0% | 1.4e5 |
+| `recent_volume` | 69.1% | 8.9e5 contracts |
+| `net_flow` | 69.1% | 1.74 |
+
+Nulls also fell (`recent_volume`/`net_flow` 97 → 0, `d_implied_mean` 81 → 45),
+because a date window does not require a full complement of rows. That matters
+because `build_tensor` writes a missing feature as `0.0`, which for
+`max_stale_days` reads as "perfectly fresh" — a smaller footgun now, but still
+one worth a sentinel.
+
+**`clearance_days` never applied.** The filter read
+`... if False else panel`, so a documented parameter defaulting to 16 did nothing
+at any setting; `days_to_close` had a 5th percentile of 0, meaning nodes appeared
+on their own resolution day. The parameter works now and the default is **0**,
+which is what was actually in force — and is also right on the merits, so this is
+a repair rather than a behaviour change. A node feature here is "the market's
+current belief about the nearest unresolved event", and that belief is most
+informative in the days just before the print; excluding the last 16 days of
+every event's life would discard the part of the panel this thesis is about and
+halve it (the median row sits 15 days out). The constraint clearance was reaching
+for is a *label* constraint, and it already exists where it belongs, as
+`PURGE_DAYS` in `splits.py`.
+
+**Look-ahead in `aggregate_to_event_level`.** Its `*_norm` columns z-scored
+against `mean().over("event_ticker")` — the event's entire life — so a feature on
+day 3 was standardised using prices from day 40. Now expanding (prefix mean and
+variance). Its only consumer is the legacy `pairs/pipeline.py`, so nothing
+current was affected, but it was a loaded gun in a shared module.
+
+### §14.9 Stage-1 edge table, before and after
+
+| | published (2026-09-08) | corrected |
+|---|---|---|
+| ordered pairs searched | 158 | 141 |
+| selected on | asymptotic p | **permutation p** |
+| BH survivors at q = 0.1 | 8 | **4** |
+| survivors that are same-release | 1 (the strongest) | **0** |
+
+The four survivors, all macro → policy path:
+
+| trigger | target | side | n | ρ | p_perm |
+|---|---|---|---|---|---|
+| CPI | FED | any | 36 | 0.617 | 0.0005 |
+| PAYROLLS | FEDDECISION | hike | 26 | 0.596 | 0.0005 |
+| PAYROLLS | FED | any | 30 | 0.583 | 0.0010 |
+| CPICOREYOY | FEDDECISION | cut | 17 | — | 0.0025 |
+
+Two published survivors left the grid entirely rather than failing BH:
+`WTI→JOBLESSCLAIMS` (flagged in §12.5 as sitting on a 64%-coverage trigger) and
+`CPIYOY→PCECORE` no longer clear `min_n = 10` after gating.
+
+**This is a stronger claim than the eight it replaces**, and it should be written
+up that way rather than as a retreat. The recovered structure is now entirely
+scheduled-macro-surprise → policy-path — the Kuttner (2001) / GSS (2005) channel
+`research_summary.md` §6.2 cites — with no mechanical same-print pair carrying
+any of it, and with selection resting on an exact test rather than an
+approximation whose assumptions the data violate. §5's identification problem is
+no longer load-bearing on the headline.
+
+### §14.10 Stage 2 reverses: neither the structure nor the surprise predicts direction, and the rung that "won" was reading the price level
+
+This is the consequential half of §14 and it goes against the project's Stage-2
+claim. With the pair panel rebuilt on the corrected surprise panel and the
+causal instrument choice (§14.5), the ladder is **3,127 rows, 2,347 scored out
+of fold** — against 5,312 / 3,836 before, because a usable row now needs a
+pre-trigger print on the leg actually used.
+
+| rung | `all` (n=2,347) | `p05` (n=92) | `bh` (n=45) |
+|---|---|---|---|
+| `sign_rule` | 50.9%, p = 0.39 | 58.7%, p = **0.23** | 68.9%, p = **0.059** |
+| `no_structure` | 54.6%, p = 0.000 | 68.5%, p = 0.007 | 75.6%, p = 0.009 |
+
+**(a) The sign rule is no longer significant at any gate.** §9(b) reported 63.0%
+at p = 0.041 on `bh` and 57.5% at p = 0.022 on `p05`. The *point estimates barely
+moved* — the samples collapsed (221 → 92 at `p05`, 81 → 45 at `bh`). The earlier
+significance was resting on rows that the look-ahead in instrument choice had
+manufactured, and on a stale cached panel (§14.7) that survived two rounds of
+upstream fixes.
+
+**(b) `no_structure` now beats every structure rung — and that is an artifact.**
+§9(c) called the ablation "decisive" in the opposite direction: strip the edge
+weight and accuracy fell *below* chance. It now wins everywhere, which would
+invert the claim. It does not, because the win is entirely one feature. Ablating
+`CONTEXT` on the `all` cell (n = 2,061, the only well-powered one):
+
+| rung | acc | p |
+|---|---|---|
+| `p0c_only` | 53.5% | **0.001** |
+| `p0c` + `dtc` | 54.0% | **0.000** |
+| `no_structure` (full) | 54.4% | **0.000** |
+| `no_structure` **minus `p0c`** | 49.2% | 0.77 |
+| `z_only` | 49.4% | 0.72 |
+| `abs_z_only` | 49.5% | 0.76 |
+| `dtc_only` | 49.4% | 0.95 |
+
+`p0c` is `(p0 - 50) / 50` — the target's pre-trigger **price level**. Kalshi
+prices are bounded in [0, 100], so from a low `p0` the next move is
+mechanically more likely to be up, and a logit handed `p0c` will find that. It
+is bounded-support arithmetic, not cross-market propagation, and it carries
+**all** of `no_structure`'s performance: remove it and the rung sits at chance.
+
+**(c) So the honest reading is a null.** `z_only` and `abs_z_only` are at chance,
+so the surprise predicts nothing on its own; `no_p0c` is at chance, so neither
+does the context; and the sign rule clears no gate. **On the corrected panel the
+dormant-horizon direction task shows no reliable predictive signal from either
+the estimated structure or the surprise.**
+
+**(d) `p0c` invalidates the ladder's internal comparisons, not just one rung.**
+It sits in `CONTEXT`, so `feature_logit` and `neighbour_logit` contain it too —
+their apparent accuracy is contaminated by the same effect, and the R4-minus-R3
+contrast `learners.py` is built around ("what the estimated structure buys over
+the surprise alone") is not identified while both sides carry a feature that
+predicts the label mechanically. Any future run of this ladder should either drop
+`p0c` from `CONTEXT` or re-specify the label to be orthogonal to the price level
+(e.g. sign of the move net of the level-implied drift). That is a design change,
+not a bug fix, so it is left as a decision rather than applied here.
+
+**What survives.** Stage 1 is unaffected — it never used `p0c`, and its four
+survivors rest on a signed rank correlation between surprise and response with
+an exact permutation test (§14.9). The structure *exists*; what does not survive
+is the claim that it was shown to predict direction out of fold. §9's title —
+"The structure predicts direction; nothing else does" — is now wrong in both
+halves and should be read as superseded by this section.
+
+### §14.11 Ledger on the corrected panel
+
+Re-priced on the `p05` gate (now the headline gate) with the corrected spread
+estimator (§14.4 item 4 and the `frac_negative` fix):
+
+| | §13 (published) | corrected |
+|---|---|---|
+| signals | 81 | 92 |
+| costed | 81 | 53 |
+| gross vs `p0` | 1.66c | 0.91c |
+| gross vs first print | 0.84c | 0.47c |
+| spread charged | ~2.0c | 1.19c |
+| fees both legs | — | 2.60c |
+| **net per trade (taker)** | **−4.25c** | **−3.15c** |
+| net (maker bound) | −1.50c | −0.77c |
+| t on net | −4.94 | **−4.31** (n = 92) |
+| median lag to first print | 17.5 min | **33.6 min** |
+
+The tradability conclusion is unchanged and if anything firmer: net is negative
+at t = −4.31, and the executable gross has fallen to 0.47c against a 1.19c
+spread. Note the entry lag doubled to 33.6 minutes, which is the causal
+instrument choice showing up honestly — the leg a trader could actually identify
+in advance is less liquid than the one hindsight picks. Three targets
+(`CPICORE`, `FEDDECISION`, `GDP`) are now withheld for want of a usable spread,
+which is itself the §13.4 illiquidity finding.
+
+**Caveat that now matters more.** This ledger prices `sign_rule` signals, and
+per (a) above that rule no longer has demonstrated skill. The ledger should
+therefore be read as what it always literally was — an upper bound on what this
+*class* of signal could pay after frictions — and not as costing a validated
+edge.

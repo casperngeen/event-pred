@@ -8,23 +8,64 @@ Last updated 2026-09-07.
 
 ---
 
+## Done (2026-09-14)
+
+- [x] **Nine defects found and fixed across the data path and the study code**,
+      each with a regression test (110 tests pass). → `research_log.md` §14
+      - `resolved_value` was *inferred* to ±spacing/2 when the true printed
+        value (`expiration_value`) was on disk for 847 IS events — 68% of CPI's
+        median |surprise| was measurement error. Now used, 442/519 rows. (§14.1)
+      - `coverage` / `ladder_mass` were recorded and never enforced; the bucket
+        path accepted a ladder summing to 2.96. Two-sided gates, 799 → 519 rows,
+        no trigger series lost. (§14.2)
+      - The node and surprise panels applied *opposite* staleness rules; 74.5%
+        of node rows mixed legs last traded on different days. (§14.3)
+      - Spearman ranks ignored ties on data that is 98% tied (max |Δρ| = 0.238);
+        the p-value used a normal where a t belongs; BH controlled the wrong
+        p-value; permutation p could be exactly 0; one shared mutable RNG made
+        every p depend on call order. (§14.4)
+      - The response instrument was chosen using post-decision trades. (§14.5)
+      - `neighbour_signal` split simultaneous triggers by row order. (§14.6)
+      - The pair-panel cache had no staleness check and served an 8-day-old
+        panel through two rounds of fixes. (§14.7)
+      - Rolling windows counted rows not days (60-69% of node features wrong);
+        `clearance_days` was disabled by a literal `if False`;
+        `aggregate_to_event_level` z-scored against the future. (§14.8)
+- [x] **Stage 1 re-run: 4 BH survivors, not 8** — all non-same-release, all
+      macro → policy path, selected on an exact permutation p.
+      → `artifacts/adjacency_report.md`, `research_log.md` §14.9
+- [x] **AGCRN re-run** against the corrected table and rebuilt node panel —
+      conclusion unchanged in every particular. → `agcrn_study.md`
+- [x] **`p05` adopted as the headline gate** (better powered than `bh`), in the
+      direction study and the ledger.
+
+---
+
 ## Done (2026-09-07)
 
-- [x] **Stage-1 structure estimation** — 141 pairs, BH-FDR q=0.1, 8 survivors,
-      permutation-checked, with term structure and mediation → `artifacts/adjacency_report.md`
+- [x] **Stage-1 structure estimation** — 141 pairs, BH-FDR q=0.1, **4 survivors**,
+      selected on the permutation p, with term structure and mediation
+      → `artifacts/adjacency_report.md`
+      *Was 8 survivors selected on an asymptotic p; corrected 2026-09-13, see
+      `research_log.md` §14. All 4 are non-same-release — the mechanical
+      `CPICORE→CPI` pair fell out when the look-ahead in instrument choice was
+      removed, which makes this a stronger claim than the 8 it replaces.*
 - [x] **AGCRN run and post-mortem** — 0 models beat predict-zero; diagnosed as a
       target/horizon mismatch, not an architecture failure → `agcrn_study.md`,
       `agcrn_postmortem.md`
-- [x] **Stage-2 direction ladder** (`stg/direction/`, `scripts/run_direction_study.py`)
-      — the post-mortem's prescription: dormant horizon, direction label, edges
-      refit per fold. Sign rule 63.0% vs 59.3% base on structure-covered rows
-      (p=0.041); the edge, not the surprise, carries it; capacity does not pay.
-      → `direction_study.md`
-- [x] **§4.1 staleness threat cleared.** The plan's "do this first — if drift
-      does not survive, the thesis needs to change in August" check. Accuracy
-      *rises* with a fresher reference price (0.690 / 0.615 / 0.538 by p0 age),
-      corr(staleness, |jump|) = +0.09 — stale prices dilute the finding rather
-      than create it. → `edge_economics.md` §4
+- [x] **Stage-2 direction ladder built** (`stg/direction/`,
+      `scripts/run_direction_study.py`) — the post-mortem's prescription:
+      dormant horizon, direction label, edges refit per fold. The *machinery* is
+      done and correct. **Its result is now a null**: corrected 2026-09-14, the
+      sign rule reaches 58.7% vs a 54.1% null at `p05` (p=0.232) and does not
+      clear any gate; the `no_structure` rung that appears to win is reading the
+      target's bounded price level (`p0c`), not the surprise. Neither structure
+      nor surprise predicts direction on the corrected panel.
+      → `direction_study.md`, `research_log.md` §14.10
+- [x] **§4.1 staleness threat cleared** — and it survives the §14 corrections.
+      Accuracy still *rises* with a fresher reference price (0.630 / 0.622 /
+      0.450 by p0 age), corr(staleness, |jump|) = +0.12 — stale prices dilute
+      rather than create. → `edge_economics.md` §4
 - [x] **Implied means are unbiased** — no series shows an ex-ante bias (max
       |t| = 1.66 over 17, uncorrected). Validates `implied.py`'s PDF recovery
       against an economic criterion, and closes the naive pre-emptive-hold path.
@@ -33,9 +74,12 @@ Last updated 2026-09-07.
       `scripts/run_edge_economics.py`) — sign restrictions all fire as theory
       predicts, incl. the U3 dovish-flip falsification cell; WTI→CPIGAS is flat
       (WTI has no information event); the signal is fully consumed by the first
-      post-resolution print (+0.86c from p0 → +0.01c from the executable entry,
-      hit rate 63.0% → 39.5%), so net is −4.25c/trade taker, −1.50c maker bound.
-      → `edge_economics.md`
+      post-resolution print (+0.91c from p0 → +0.47c from the executable entry,
+      hit rate 58.7% → 38.0%), so net is **−3.15c**/trade taker (t = −4.31,
+      n = 92), −0.77c maker bound. Re-priced 2026-09-14; conclusion unchanged
+      and firmer, but read it as an upper bound on this *class* of signal since
+      the underlying rule no longer has demonstrated skill.
+      → `edge_economics.md`, `research_log.md` §14.11
 - [x] **Effective-spread estimator made durable** — §4.2.1's taker-direction
       method promoted from the ad-hoc script into `direction/tradability.py`
       with the window-invariance check; cached in
@@ -70,8 +114,14 @@ Last updated 2026-09-07.
       → `research_log.md` §1(b), §8
 - [ ] **Phase B — canonicalisation.** Series alias table (`CPISHELTER`→`KXSHELTERCPI`,
       `JOBLESS`→`KXJOBLESSCLAIMS`, PROLLS/PAYROLLS split), decided from
-      `rules_primary` not title similarity. Plus the event calendar table
-      (resolution timestamps, `expiration_value`). → `data_prep_plan.md` Phase B
+      `rules_primary` not title similarity. Plus the event calendar table.
+      → `data_prep_plan.md` Phase B
+      - [x] `expiration_value` — **done** 2026-09-12, no re-pull needed. 847 IS events
+            from `markets_api_pull_raw.jsonl`; `surprise_panel.resolved_value` prefers it
+            over the ladder midpoint (442 of 519 rows). → `research_log.md` §14.1
+      - [ ] resolution timestamps: keep `settlement_ts` as metadata only. It is a median
+            4.65 h *after* `close_time` — administrative settlement, not the release. Do
+            not substitute it for `close_time`, which already sits 5 min pre-print.
 - [ ] **Phase C — durable panels.** Four panels (ticker-day w/ staleness,
       trade-time, event-day implied distribution, quote panel). Everything this
       session rebuilt these ad hoc in scratch scripts. → `data_prep_plan.md` Phase C
@@ -118,13 +168,21 @@ Last updated 2026-09-07.
       near-the-money strike and for the moneyness axis.
       → `research_log.md` §11.1, §11.2
 - [ ] **Charge a release-conditional spread in the ledger.** It currently uses
-      the unconditional per-series figure (1.38c); the book widens to a 2.0c
-      median within 0.5 h of a release, which moves net from −4.25c to ≈ −4.9c.
+      the unconditional per-series figure (1.19c); the book widens near a
+      release, which would push net below the current −3.15c.
       → `research_log.md` §11.2
-- [ ] **Raise edge coverage.** The Stage-2 binding constraint is 81 covered rows
-      out of 3,487 scored, three pairs supplying 60 of them. Bucket contracts +
-      Phase B canonicalisation add triggers, and every trigger adds candidate
-      edges. This beats any further modelling. → `direction_study.md` §Next
+- [ ] **Fix the Stage-2 ladder's design before re-running it.** `p0c` (the
+      target's price level) sits in `CONTEXT`, predicts the label mechanically
+      via bounded support, and therefore contaminates `no_structure`,
+      `feature_logit` and `neighbour_logit` alike — so the R4-minus-R3 ablation
+      the ladder exists to compute is not identified. Either drop `p0c` or
+      re-specify the label orthogonal to the price level. **Highest-value change
+      to Stage 2.** → `research_log.md` §14.10
+- [ ] **Raise edge coverage.** The Stage-2 binding constraint is 92 covered rows
+      at `p05` out of 2,347 scored (45 at `bh`), five pairs supplying 75 of
+      them. Bucket contracts + Phase B canonicalisation add triggers, and
+      channel pooling (§11) recovers ~5.6x — unaffected by the §14 corrections.
+      → `direction_study.md` §Next
 - [ ] **Sports/crypto negative control through the direction ladder** — the
       harness now exists, so this is a re-run with a different panel. The ladder
       must find nothing where no channel exists.
@@ -149,8 +207,7 @@ Last updated 2026-09-07.
       from the trigger set on principle rather than on results.
       → `edge_economics.md` §2(b)
 - [ ] **Re-run the pairwise sweep** once bucket contracts are handled — the WTI
-      nulls (n≈221, the highest-powered cells) are currently invalid, not
-      informative.
+      nulls (the highest-powered cells) are currently invalid, not informative.
 - [ ] **Multiple-testing correction on the CA report's 22 relationships**, and
       report how many pairs were searched to find them. Most likely examiner
       question. → `research_summary.md` Phase 1 item 1

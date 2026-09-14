@@ -3,40 +3,37 @@
 gate=bh   fees at C=100   clustering on target_event
 ============================================================================================
   subset                          rows  events      net      t              95% CI   P(>0)
-  ALL                               81      47     0.38   0.06   [ -11.3,  12.0]   0.520
-  excl WTI->GDP                     81      47     0.38   0.06   [ -11.3,  12.2]   0.524
-  excl all WTI/WTIW triggers        80      46    -0.74  -0.12   [ -12.5,  11.1]   0.458
-  price paid < 35c                  30      19     8.25   0.96   [  -7.0,  25.3]   0.837
-  price paid < 35c, excl WTI->GDP    30      19     8.25   0.96   [  -7.3,  25.5]   0.835
-  price paid >= 65c                 30      17    -9.71  -1.11   [ -27.5,   5.6]   0.131
+  ALL                               45      26    -0.32  -0.05   [ -13.1,  12.1]   0.489
+  excl WTI->GDP                     45      26    -0.32  -0.05   [ -12.9,  12.0]   0.484
+  excl all WTI/WTIW triggers        45      26    -0.32  -0.05   [ -13.1,  12.1]   0.481
+  price paid < 35c                  15      10    -2.55  -0.28   [ -15.1,  17.2]   0.325
+  price paid < 35c, excl WTI->GDP    15      10    -2.55  -0.28   [ -15.2,  16.6]   0.316
+  price paid >= 65c                 23      18    -2.16  -0.32   [ -16.7,   8.9]   0.399
 
   per pair (clustered):
   pair                          rows  events      net      t
-  CPI->FED/any                    24      18    -7.63  -1.61
-  CPICORE->CPI/any                13      13    13.72   0.82
-  CPICORE->FED/any                23      18    -8.41  -1.77
-  FED->CPIYOY/any                 10      10    -4.52  -0.33
+  CPI->CPICORE/any                 5       5    17.47   0.71
+  CPI->CPIYOY/any                  5       5   -11.16  -0.51
+  CPI->FED/any                    16      13   -12.02  -1.90
+  CPICORE->FED/any                 8       6   -15.37  -1.12
+  PAYROLLS->FED/any               11       8    18.61   2.10
 
 ============================================================================================
 gate=p05   fees at C=100   clustering on target_event
 ============================================================================================
   subset                          rows  events      net      t              95% CI   P(>0)
-  ALL                              204      85    -0.32  -0.07   [  -9.4,   8.4]   0.470
-  excl WTI->GDP                    169      83    -0.46  -0.10   [  -9.7,   8.6]   0.461
-  excl all WTI/WTIW triggers       112      66     0.01   0.00   [ -10.5,  10.2]   0.500
-  price paid < 35c                  78      38     2.75   0.44   [  -9.0,  15.3]   0.665
-  price paid < 35c, excl WTI->GDP    61      36     1.49   0.24   [ -10.2,  14.2]   0.586
-  price paid >= 65c                 76      36   -10.48  -1.57   [ -24.0,   1.7]   0.048
+  ALL                               91      47    -0.42  -0.09   [  -9.2,   8.5]   0.467
+  excl WTI->GDP                     91      47    -0.42  -0.09   [  -9.1,   8.4]   0.466
+  excl all WTI/WTIW triggers        68      42     0.29   0.06   [  -9.6,  10.1]   0.527
+  price paid < 35c                  33      20    -8.60  -1.33   [ -19.5,   5.1]   0.096
+  price paid < 35c, excl WTI->GDP    33      20    -8.60  -1.33   [ -19.4,   5.0]   0.094
+  price paid >= 65c                 35      27     2.36   0.49   [  -7.9,  10.5]   0.707
 
   per pair (clustered):
   pair                          rows  events      net      t
-  CPI->CPICORE/any                15      15    14.39   1.05
-  CPI->FED/any                    24      18    -7.63  -1.61
-  CPICORE->CPI/any                13      13    13.72   0.82
-  CPICORE->FED/any                23      18    -8.41  -1.77
-  FED->CPIYOY/any                 10      10    -4.52  -0.33
-  PAYROLLS->FED/any               15      10    11.93   1.74
-  WTI->CPIUSEDCAR/any             42       5    -6.98  -0.83
-  WTI->GDP/any                    35       2     5.55    n/a   <- too few distinct outcomes to test
-  WTI->INXU/any                    9       9    -5.71  -0.31
-  WTIW->CPIYOY/any                 5       2    -2.07    n/a   <- too few distinct outcomes to test
+  CPI->CPICORE/any                15      15    11.90   1.06
+  CPI->CPIYOY/any                 10       9   -12.20  -1.02
+  CPI->FED/any                    17      13   -11.37  -1.82
+  CPICORE->FED/any                11       9   -13.67  -1.49
+  PAYROLLS->FED/any               13       9    12.40   1.71
+  WTI->CPICORE/any                19       3    -9.37 -11.69

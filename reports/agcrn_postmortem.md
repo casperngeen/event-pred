@@ -15,9 +15,15 @@ Same BH-surviving trigger→target pairs, pooled aligned sign agreement:
 
 | horizon | what it is | sign agreement | corr(\|surprise\|, \|response\|) |
 |---|---|---|---|
-| **dormant** | trigger resolution → next 3 trades (~0.5 h) | **75.9%** | +0.26 |
+| **dormant** | trigger resolution → next 3 trades (~0.5 h) | **75.9%** † | +0.26 |
 | liquid | → mean over target's final 7 days | 56.5% | +0.24 |
 | **snapshot** (AGCRN target) | Δ implied_mean over next 3 snapshots (~weeks) | **~52%** (coin flip) | ~0.00 |
+
+† Measured on the pre-correction edge set (8 BH survivors, full-life instrument
+choice). The corrected Stage-1 table gives 77.3% on 109 rows over 4 survivors
+(`research_log.md` §14.8). The horizon ordering this table exists to establish —
+dormant ≫ liquid ≫ snapshot — is unaffected, which is why the conclusion stands
+as written.
 
 `update_2026_08.md` §5 already measured this: ~48% of the signed move lands in the
 *first* print after resolution (median 12 min later), the 3rd trade adds nothing.

@@ -38,9 +38,16 @@ signed adjacency frozen in as Ã.
 
 More capacity is worse. On the ATM-price target every AGCRN config collapses to
 predicting ≈0. The learned Ã does not track the validated structure: rank corr
-with |ρ̂| ≈ +0.14…+0.22, **0/8 BH survivors** among its top-8 edges, ~48% of its
-mass on FDR-rejected pairs; the shared-MLP variants saturate Ã onto `ISMPMI`, the
-thinnest node.
+with |ρ̂| ≈ +0.16…+0.21, **0/4 BH survivors** among its top-ranked edges, 23–39%
+of its mass on FDR-rejected pairs; the shared-MLP variants saturate Ã onto
+`ISMPMI`, the thinnest node.
+
+*Re-run 2026-09-14 against the corrected Stage-1 table (4 survivors, not 8 — see
+`research_log.md` §14) and the rebuilt node panel. The conclusion is unchanged in
+every particular: no AGCRN variant beats predict-zero, more capacity is still
+worse, and the learned Ã still recovers none of the validated edges. If anything
+the last point sharpened — the survivor set it fails to recover is now the
+non-mechanical one.*
 
 ## Why it broke down (`analysis/agcrn_diagnostics_2026_09/`)
 

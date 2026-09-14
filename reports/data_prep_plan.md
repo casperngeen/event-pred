@@ -255,6 +255,20 @@ the strike problem at 99% (§1.2b). What the re-pull is genuinely still needed f
   148 events) the JSONL. Exact realised values and resolution timestamps — the latter is what
   §5's identification argument needs, and it has no local substitute.
 
+  **Partly resolved 2026-09-12 without a re-pull.** `markets_api_pull_raw.jsonl` already
+  carries both, for **847 in-sample events** once `%`/`$`/`,` formatting is parsed — enough
+  to cover 442 of the 519 surprise-panel rows. `panel/_io.py::load_settlement_values` reads
+  it and `panel/surprise.py` now prefers it over the ladder midpoint, recording which was
+  used in `resolved_source`. The re-pull is still wanted for the rest, but it is no longer
+  blocking: see `research_log.md` §14.1.
+
+  **`settlement_ts` is not the release timestamp.** Checked on the same file: it runs a
+  median **4.65 h after** `close_time` (WTI 21.75 h) — it is Kalshi's administrative
+  settlement, not the moment the information arrived. `close_time` is the right instant and
+  already is one: CPI/U3/PAYROLLS close at 12:25 UTC, **five minutes before** the 8:30 ET
+  BLS release. The event calendar table below should carry `settlement_ts` as metadata and
+  must not substitute it for `close_time` in any event-study window.
+
 - For every event in the universe (§2.1 below), `GET /historical/markets?event_ticker=`.
   This is far cheaper than the current per-ticker `_fetch_single_market` loop and works on
   delisted events.

@@ -1,5 +1,16 @@
 # Do the edges make economic sense, and can they be traded?
 
+> **Re-priced 2026-09-14 on the corrected panel (`research_log.md` §14).** Net
+> per trade is **−3.15c** (was −4.25c) over **92** signals on the `p05` gate,
+> t = **−4.31**, with the entry lag widening to **33.6 min**. The conclusion —
+> coherent but not exploitable — is unchanged and firmer. Two things did change
+> and are flagged inline: the direction study's sign rule **no longer has
+> demonstrated skill** (§14.10), so this ledger is an upper bound on a *class*
+> of signal rather than the cost of a validated edge; and `CPICORE→CPI`, row 1
+> of the mediation table below, was an artifact of look-ahead in instrument
+> choice and is no longer a surviving edge (§14.5).
+
+
 *Companion to `direction_study.md`, which established that the Stage-1 edges
 carry out-of-fold directional information. Two questions that raises and does
 not answer. Reproduce with `venv/bin/python scripts/run_edge_economics.py`;
@@ -71,9 +82,9 @@ release. CPI, payrolls and the FOMC decision are scheduled disclosures of
 genuinely unknown information; WTI is not.
 
 This makes the direction study's finding that WTI is *mass without structure*
-(56% of panel rows, one BH edge, and dropping it as a trigger takes the sign
-rule from p = 0.041 to p = 0.007) not a data quirk but an economic prediction
-that came true. It also sharpens the inclusion criterion for the node universe:
+(most of the panel's rows, no surviving BH edge, and dropping it as a trigger
+still improves the sign rule — p = 0.232 → 0.116 at `p05`) not a data quirk but
+an economic prediction that came true. It also sharpens the inclusion criterion for the node universe:
 **a trigger needs a scheduled information release, not merely a resolution
 timestamp.**
 
@@ -98,27 +109,34 @@ Ranked by how much the economics licenses a causal reading:
 This is the sharpest form of `research_summary.md` §5 available without new
 data: the mechanical edges are separable *by construction*, and the remainder
 is one economically coherent channel rather than a scattering of pairs. The
-direction study's same-release robustness cut (63.0% → 60.7%, p = 0.041 →
-0.13) is exactly the price of removing row 1 of this table.
+direction study's same-release robustness cut now *improves* the sign rule
+(58.7% → 60.0% at `p05`; 68.9% → 73.0% at `bh`, p = 0.059 → 0.042) rather than
+costing it — because row 1 of this table, `CPICORE→CPI`, was the mechanical pair
+that the look-ahead in instrument choice had inflated (§14.5). Removing the
+mechanical channel is no longer a price paid; it is a correction.
 
 ---
 
 ## 4. Can they be traded? No — and the reason is precise
 
-Every out-of-fold `sign_rule` signal on `bh`-covered rows, priced as a round
-trip. 81 signals, ~34 per year.
+Every out-of-fold `sign_rule` signal on `p05`-covered rows, priced as a round
+trip. 92 signals, ~36 per year; 53 carry a usable spread estimate and are costed.
 
 | | cents per trade |
 |---|---|
-| gross, measured from `p0` (what the estimator sees) | **+0.86** |
-| gross, from the first post-resolution print (what a trader can get) | **+0.01** |
-| — lost to entering after the first print | −0.85 |
-| effective spread (taker, one round trip) | −1.38 *(see note)* |
-| Kalshi fees, both legs | −2.90 |
-| **net, taker (central case)** | **−4.25** |
-| net, maker on both legs (upper bound, fill risk ignored) | **−1.50** |
+| gross, measured from `p0` (what the estimator sees) | **+0.91** |
+| gross, from the first post-resolution print (what a trader can get) | **+0.47** |
+| — lost to entering after the first print | −0.45 |
+| effective spread (taker, one round trip) | −1.19 *(see note)* |
+| Kalshi fees, both legs | −2.60 |
+| **net, taker (central case)** | **−3.15** |
+| net, maker on both legs (upper bound, fill risk ignored) | **−0.77** |
 
-t = −4.94 on n = 81. Median net −3.00c; the sample loses 340c in total.
+t = −4.31 on n = 92. Median net −3.00c; the sample loses 167c in total.
+Three targets (`CPICORE`, `FEDDECISION`, `GDP`) are withheld for want of a
+usable spread estimate — too few adjacent opposite-direction pairs, or too many
+negative ones, meaning the pairing is reading drift rather than the book. That
+illiquidity is itself part of the answer.
 
 > **Note — the spread charged here is optimistic.** 1.38c is each contract's
 > *unconditional* effective spread, averaged over its whole life. Measured
@@ -129,31 +147,40 @@ t = −4.94 on n = 81. Median net −3.00c; the sample loses 340c in total.
 > table is the one most favourable to the strategy.
 > (`research_log.md` §11.2)
 
-### Why it vanishes: it was never a drift
+### Why it vanishes: neither leg has directional skill
 
 Split the signed move at the first executable price:
 
 | leg | cents | hit rate | median abs move |
 |---|---|---|---|
-| jump: `p0` → first post-resolution print (**untradable**) | **+0.85** | 0.543 | 2.0c |
-| drift: first → third print (**tradable**) | **+0.01** | 0.395 | 1.0c |
+| jump: `p0` → first post-resolution print (**untradable**) | **+0.45** | 0.500 | 2.0c |
+| drift: first → third print (**tradable**) | **+0.47** | 0.380 | 1.0c |
 
-**The tradable leg is below chance.** The estimator is not detecting a
-dislocation that decays over the following minutes — it is detecting a single
-repricing that is *complete at the first print*. There is no decay curve to
-arrive early on, because there is no decay.
+This is a different shape from the pre-correction version, and a worse one for
+the signal. Previously the jump carried +0.85c at a 54.3% hit rate and the drift
+was empty (+0.01c) — "the edge is all in the jump" was the finding. Now the two
+legs carry *similar cents* but **neither has directional skill**: the jump hits
+at exactly chance (0.500) and the drift at **below** chance (0.380). Positive
+mean cents on a coin-flip hit rate means the cents come from magnitude on a
+handful of rows, not from being right more often.
 
-Two facts explain why the two legs differ so much.
+That is the honest statement, and it is consistent with §14.10: the rule being
+priced here has no demonstrated skill, so a ledger built on it should show
+exactly this — no reliable sign, and whatever mean it has is noise plus
+frictions.
+
+Two facts explain why the estimator nonetheless *measures* a positive gross.
 
 **(a) `p0` is not a live price.** It is the last trade before resolution, and in
-these books it is old: median **8.8 hours**, 75th percentile 19.6 h, 58% of
-signals more than 6 hours stale. So `p1 − p0` spans a median of ~9 hours of
-accumulated repricing, of which only the final ~30 minutes (17.5 min to the
-first print, then 13 min to the third) is executable. The estimator's reference
+these books it is old: median **8.7 hours**, 75th percentile 22.5 h,
+57% of signals more than 6 hours stale. So `p1 - p0` spans a median of
+~9 hours of accumulated repricing, of which only the final
+~71 minutes (33.6 min to the first print, then 38 min to
+the third) is executable. The estimator's reference
 frame and a trader's reference frame are simply not the same window.
 
 **(b) The first print has already absorbed the information.** Once a fresh price
-exists, the residual is a coin flip (0.395). That is what an efficient — if
+exists, the residual is a coin flip (0.380). That is what an efficient — if
 infrequent — market looks like: it does not reprice continuously, but when it
 finally reprices, it does so in one step.
 
@@ -185,9 +212,10 @@ not", now visible in the execution frame.
 ### The signal is gone before any cost is charged
 
 This is the finding, and it is not about costs at all. Measured from `p0` — the
-last trade *before* the trigger resolved — the sign rule earns +0.86c. Measured
-from the first print *after* resolution, it earns **+0.01c**. The hit rate falls
-from 63.0% to **39.5%** on the same 81 signals.
+last trade *before* the trigger resolved — the sign rule earns +0.91c. Measured
+from the first print *after* resolution, it earns **+0.47c**. The hit rate falls
+from 58.7% to **38.0%** on the same 92 signals — below chance at the executable
+entry.
 
 The entire edge lives in the jump between the last pre-resolution trade and the
 first post-resolution trade. By the time a price exists that anyone could
@@ -195,7 +223,9 @@ transact at, there is nothing left. `update_2026_08.md` §5 measured ~48% of the
 signed move landing in the first print; on the executable margin it is
 effectively 100%.
 
-The median lag from resolution to that first print is **17.5 minutes**, and the
+The median lag from resolution to that first print is **33.6 minutes** — double
+the pre-correction figure, because the leg a trader could actually identify in
+advance is less liquid than the one hindsight picks — and the
 median holding time to the exit print is **13 minutes**. So this is not a case
 of a slow trader missing a fast move — it is that no tradable price exists
 between the two, because these markets simply do not print in between.

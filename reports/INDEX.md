@@ -32,11 +32,11 @@ Submission target November 2026; analysis freeze early October.
 
 | Document | What it is |
 |---|---|
-| [research_log.md](research_log.md) | Running findings and measurement problems, by section (§1 magnitude nulls, §2 sign survives, §5 first-print decay, §6 structure estimation, §7 staleness, §8 bucket parse bug, **§12 data-quality caveat**, **§13 horizon/cost and the tradability ceiling**). Most-cited document in the set. |
+| [research_log.md](research_log.md) | Running findings and measurement problems, by section (§1 magnitude nulls, §2 sign survives, §5 first-print decay, §6 structure estimation, §7 staleness, §8 bucket parse bug, **§12 data-quality caveat**, **§13 horizon/cost and the tradability ceiling**, **§14 corrections: true settlement values, five statistics bugs, a look-ahead in instrument choice**). Most-cited document in the set. |
 | [agcrn_study.md](agcrn_study.md) | **Why AGCRN did not work** — thesis-facing writeup: question, setup, result table, five reasons, conclusion. |
 | [agcrn_postmortem.md](agcrn_postmortem.md) | The diagnostic evidence behind those five reasons — horizon comparison, oracle R² ladder, the overlapping-window artifact. *(Was `analysis/agcrn_diagnostics_2026_09/FINDINGS.md`.)* |
 | [edge_economics.md](edge_economics.md) | **Do the edges make sense, and can they be traded?** Sign restrictions (incl. the U3 dovish-flip falsification cell), the WTI-has-no-information-event finding, the jump-not-drift decomposition (which clears §4.1's staleness threat), and why pre-resolution coherence is the one remaining tradable path. |
-| [direction_study.md](direction_study.md) | **The simple-learning successor** — dormant-horizon direction prediction on the Stage-1 structure. Sign rule beats its base rate on structure-covered rows (63.0%, p=0.041); the edge, not the surprise, does the work; capacity does not pay. |
+| [direction_study.md](direction_study.md) | **The simple-learning successor** — dormant-horizon direction prediction on the Stage-1 structure. **Result is a null** (rewritten 2026-09-14): the sign rule clears no gate (58.7%, p=0.232 at `p05`), and the rung that appears to win is reading the target's bounded price level, not the surprise. The earlier 63.0% / p=0.041 claim did not survive the §14 corrections. |
 
 ## Design and data
 
@@ -53,7 +53,7 @@ Regenerate by running the script from the repo root:
 
 | Artifact | Produced by |
 |---|---|
-| `artifacts/adjacency_report.md` | `scripts/run_structure_estimation.py` — Stage-1 edges, 8 BH-FDR survivors |
+| `artifacts/adjacency_report.md` | `scripts/run_structure_estimation.py` — Stage-1 edges, 4 BH-FDR survivors (was 8 before the §14 corrections; all 4 are non-same-release) |
 | `artifacts/agcrn_report.md` | `scripts/train_agcrn.py` — walk-forward results, 0 models beat predict-zero |
 | `artifacts/direction_report.md` | `scripts/run_direction_study.py` — Stage-2 ladder, per-fold edges, robustness cuts |
 | `artifacts/edge_economics.md` | `scripts/run_edge_economics.py` — sign restrictions, effective spreads, the trade ledger |

@@ -5,6 +5,17 @@ target the post-mortem prescribed. Reproduce with
 `venv/bin/python scripts/run_direction_study.py`; the generated tables are
 `artifacts/direction_report.md`. In-sample only; 2026 is never read.*
 
+> **Rewritten 2026-09-14 after the §14 corrections. The answer changed to "no".**
+> This document previously reported that the estimated structure predicts
+> direction out of fold (63.0%, p = 0.041) and that the edge rather than the
+> surprise carried it. Neither survives. Three defects were doing the work: the
+> response instrument was chosen using trades from after the decision
+> (`research_log.md` §14.5), the p-values came from a normal approximation the
+> data's 98% tie rate does not license (§14.4), and every re-run between
+> 2026-09-08 and 2026-09-13 silently read a cached pair panel that never
+> rebuilt (§14.7). The measurement design below is unchanged and still the right
+> design — only the result moved.
+
 ## The question
 
 `agcrn_postmortem.md` concluded that the AGCRN failure was a **task/horizon
@@ -20,7 +31,7 @@ regression aggregating over active Stage-1 neighbours") are the same
 experiment. This is it.
 
 It also closes a gap in the Stage-1 claim. `artifacts/adjacency_report.md`
-reports 75.9% aligned sign agreement **among BH survivors** — but those
+reports 77.3% aligned sign agreement **among BH survivors** — but those
 survivors were selected on the same rows, so that number is a coherence check,
 not a predictive claim. Here every edge is re-estimated inside each fold on
 training rows only, so the structure a prediction consumes is structure that
@@ -29,12 +40,16 @@ fold could have known.
 ## Setup
 
 - **Unit.** One row per (trigger event → next target event) match, over the
-  same 140-pair grid Stage-1 searched: **4,816 labelled rows**, 14 triggers, 19
-  targets, 2022-01 → 2025-12 (ZIRP burn-in excluded). 3,487 are scored out of
-  fold.
+  same grid Stage-1 searched (141 pairs): **3,127 labelled rows**, 14 triggers,
+  22 targets, 2022-01 → 2025-12 (ZIRP burn-in excluded). 2,347 are scored out of
+  fold. The row count is roughly half what this document previously reported,
+  because a usable row now needs a pre-trigger print on the leg actually used
+  (`research_log.md` §14.5) and the surprise panel is quality-gated (§14.2).
 - **Label.** `sign(response)` — the target's dormant-window move; rows with a
-  flat 3rd print are dropped. 50.9% up, so the pooled task is near-balanced by
-  construction.
+  flat 3rd print are dropped. 50.8% up, so the pooled task is near-balanced by
+  construction. **Caveat established below:** the label is *not* independent of
+  the target's price level, which is what makes the `p0c` result in Result
+  point 2 a design problem rather than a finding.
 - **Feature.** `z_surprise = surprise / implied_std`: the market's own forecast
   error in units of its own implied sd, all of it observable at the trigger's
   resolution.
@@ -55,126 +70,192 @@ fold could have known.
 
 The pre-specified primary cell is **`sign_rule` × `bh`** — the rung and the
 gate the post-mortem named before the run. Everything else in the table is
-exploratory and is read as such.
+exploratory and is read as such. `p05` is reported as the headline gate because
+it is the better powered of the two structure gates; both are shown.
 
 ## Result
 
-Pooled over all 3,487 scored rows, **nothing predicts.** The sign rule scores
-50.6% (p = 0.35); the best pooled cell is `neighbour_logit` at 51.4%
-(p = 0.030), a 1.4 pp edge that is one of 21 cells examined and does not
-reappear on the covered subsets. This is the expected consequence of a sparse
-graph: most rows have no edge, so most rows have no signal.
+Pooled over all 2,347 scored rows, **nothing predicts.** The sign rule scores
+50.9% (p = 0.39). The cells that do clear significance pooled —
+`no_structure`, `feature_logit`, `neighbour_logit`, all at p < 0.001 — share one
+feature and it is not structure; see "What the winning rung was actually
+reading" below.
 
 On the rows the structure actually claims:
 
 | rung | subset | n | acc | perm null | majority | bal. acc | AUC | perm p |
 |---|---|---|---|---|---|---|---|---|
-| base_rate | bh | 81 | 0.593 | 0.593 | 0.593 | 0.500 | 0.403 | 1.000 |
-| **sign_rule** | **bh** | **81** | **0.630** | **0.522** | 0.593 | **0.626** | 0.576 | **0.041** |
-| edge_logit | bh | 81 | 0.617 | 0.522 | 0.593 | 0.611 | **0.680** | 0.062 |
-| *no_structure* | *bh* | *81* | *0.494* | *0.515* | *0.593* | *0.473* | *0.467* | *0.746* |
-| feature_logit | bh | 81 | 0.605 | 0.526 | 0.593 | 0.596 | 0.659 | 0.105 |
-| neighbour_logit | bh | 81 | 0.593 | 0.529 | 0.593 | 0.580 | 0.649 | 0.171 |
-| sign_rule | p05 | 221 | 0.575 | 0.501 | 0.570 | 0.573 | 0.561 | 0.022 |
+| base_rate | p05 | 92 | 0.554 | 0.554 | 0.554 | 0.500 | 0.465 | 1.000 |
+| **sign_rule** | **p05** | **92** | **0.587** | **0.541** | 0.554 | 0.572 | 0.466 | **0.232** |
+| edge_logit | p05 | 92 | 0.587 | 0.541 | 0.554 | 0.572 | 0.668 | 0.230 |
+| *no_structure* | *p05* | *92* | *0.685* | *0.565* | *0.554* | *0.665* | *0.641* | *0.007* |
+| feature_logit | p05 | 92 | 0.609 | 0.562 | 0.554 | 0.587 | 0.707 | 0.199 |
+| neighbour_logit | p05 | 92 | 0.620 | 0.563 | 0.554 | 0.595 | 0.709 | 0.147 |
+| sign_rule | bh | 45 | 0.689 | 0.564 | 0.644 | 0.647 | 0.499 | 0.059 |
+| sign_rule | all | 2347 | 0.509 | 0.506 | 0.508 | 0.505 | 0.492 | 0.388 |
+
+`p05` is the headline gate: better powered than `bh`, which selects harder edges
+but leaves half the rows. Full table in `artifacts/direction_report.md`.
 
 **Reading this table.** `perm null` is what these same predictions score against
 labels shuffled within trigger series; that, not `majority`, is the yardstick
 for `acc`. The two diverge because always-guess-the-majority-class is a
-*different strategy*: on a 59%-up subset it scores 0.593 while carrying no
-directional information at all (balanced accuracy 0.500, AUC 0.403). So the
-sign rule's margin is **+10.8 pp over its own null**, not the +3.7 pp that
-comparing it to the majority rate suggests — and `no_structure`, at 0.494
-against a null of 0.515, is *below* chance rather than merely unimpressive.
+*different strategy*: on a 64%-up subset it scores 0.644 while carrying no
+directional information at all (balanced accuracy 0.500, AUC 0.370).
 
-Three things follow.
+Three things follow, and they are not what this document said before.
 
-**1. The estimated structure carries out-of-fold directional information.** The
-sign rule beats its permutation null on the covered rows — 63.0% vs 52.2%
-(p = 0.041, `bh`) and 57.5% vs 50.1% (p = 0.022, `p05`) — against a null that
-respects the same-print dependence. This is
-the first predictive — rather than descriptive — evidence for the Stage-1
-adjacency, and it is not the 75.9% figure recycled: the edges were refit inside
-each fold, on training rows only.
+**1. The estimated structure does not carry demonstrated out-of-fold directional
+information.** The sign rule is +4.6 pp over its own null at `p05` (58.7% vs
+54.1%) and does not clear significance: **p = 0.232**. At `bh` it is +12.5 pp
+but on 45 rows, **p = 0.059**. Pooled it is nothing (p = 0.39). The point
+estimates are close to what was reported before; the samples are half the size,
+because a usable row now requires a pre-trigger print on the leg actually used
+rather than on the leg hindsight would pick (`research_log.md` §14.5). The
+earlier significance was not robust to that.
 
-**2. What predicts is the edge, not the surprise.** The ablation is decisive:
-strip the edge weight, keep the surprise and context, and accuracy on the same
-81 rows falls to 49.4% (balanced 0.473, AUC 0.467, p = 0.75). The directional
-content is in *which pair, with what sign* — exactly the object Stage-1
-estimates, and not something a model recovers from the surprise alone.
+**2. What the winning rung was actually reading — the price level, not the
+surprise.** `no_structure` (surprise + context, edge weight removed) now wins at
+every gate, which read naively would invert the previous claim. It does not.
+Ablating its features on the pooled cell, the only well-powered one (n = 2,061):
 
-**3. Capacity does not pay — again.** Ranked by accuracy on the covered rows:
-`sign_rule` (0 fitted weights) ≥ `edge_logit` (2) ≥ `feature_logit` (7) ≥
-`neighbour_logit` (8). This reproduces the AGCRN study's monotone
-capacity-hurts pattern at the *bottom* of the ladder, and gives the ablation
-promised in the CA report §5.3 an empirical stopping point: **zero
-parameters**.
+| rung | acc | perm p |
+|---|---|---|
+| `p0c` only | 53.5% | **0.001** |
+| `p0c` + `dtc` | 54.0% | **0.000** |
+| `no_structure` (full) | 54.4% | **0.000** |
+| `no_structure` **minus `p0c`** | 49.2% | 0.77 |
+| `z` only | 49.4% | 0.72 |
+| `abs_z` only | 49.5% | 0.76 |
 
-One honest qualification to (3): the logits *rank* better than they
-*classify* — `edge_logit` has the best AUC (0.680) while scoring below the sign
-rule at a 0.5 threshold. A fitted weight buys ordering and calibration, not
-decisions. On 81 rows that gap is well inside noise; it is a reason to report
-both metrics rather than to prefer either model.
+`p0c` is `(p0 - 50) / 50`, the target's **pre-trigger price level**. Kalshi
+contracts are bounded in [0, 100], so from a low `p0` the next print is
+mechanically more likely to be up, and a logit handed that feature will find it.
+It is bounded-support arithmetic, not propagation — and it carries *all* of
+`no_structure`'s performance. Remove it and the rung is at chance. The surprise
+alone (`z`, `abs_z`) is at chance throughout.
+
+**3. So the result is a null, and it is a null on both sides.** Neither the
+estimated structure nor the surprise predicts the dormant-horizon direction on
+the corrected panel. The one thing that does predict is a property of the target
+contract's price, available without any macro data at all.
+
+**This also invalidates the ladder's internal comparison.** `p0c` sits in
+`CONTEXT`, so `feature_logit` and `neighbour_logit` contain it too. The
+R4-minus-R3 contrast the ladder is built around — what the structure buys over
+the surprise alone — is not identified while both sides carry a feature that
+predicts the label mechanically. Re-running this design means either dropping
+`p0c` from `CONTEXT` or re-specifying the label to be orthogonal to the price
+level. That is a design decision, not a defect, and it is deliberately left open
+rather than patched.
+
+**What does survive.** Stage 1. Its four BH survivors rest on a signed rank
+correlation between surprise and response with an exact permutation test, and
+`p0c` plays no part in it — see `artifacts/adjacency_report.md` and
+`research_log.md` §14.9. The structure appears to exist; the claim that it was
+shown to *predict* does not.
 
 ## What weakens it
 
-- **Coverage is tiny.** 81 of 3,487 scored rows (2.3%); 221 at `p05` (6.3%).
-  Whatever this is, it applies to a small corner of the panel.
-- **Concentration.** Three pairs supply 60 of the 81 covered rows: CPI→FED (24
-  rows, 66.7%), CPICORE→FED (23, 56.5%), CPICORE→CPI (13, 84.6%).
-- **The strongest carrier is mechanical.** CPICORE→CPI is a *same-release* pair
-  — one print resolves both — so its 84.6% is arithmetic, not diffusion, and
-  belongs to the identification problem in `research_summary.md` §5. Excluding
-  same-release pairs entirely: **60.7% on 61 rows, p = 0.13.** The point
-  estimate survives; the significance does not. The non-mechanical carriers are
-  the two CPI→FED channels.
+- **Coverage is tiny.** 92 of 2,347 scored rows (3.9%) at `p05`; 45 (1.9%) at
+  `bh`. Whatever this is, it applies to a small corner of the panel — and after
+  §14's corrections it is a smaller corner than before (221 / 81 previously).
+- **Concentration.** At `p05`, five pairs supply 75 of 92 rows: WTI→CPICORE
+  (19 rows, 47.4% acc), CPI→FED (17, 64.7%), CPI→CPICORE (15, 46.7%),
+  PAYROLLS→FED (13, 76.9%), CPICORE→FED (11, 72.7%). The largest single
+  contributor scores *below* chance, and two of the five are same-release.
+- **Two of the five carriers are mechanical.** CPI→CPICORE and CPI→CPIYOY are
+  *same-release* pairs — one print resolves both — so they belong to the
+  identification problem in `research_summary.md` §5 rather than to diffusion.
+  Note that `CPICORE→CPI`, previously the single strongest carrier at 84.6% on
+  13 rows, now contributes **one row**: the look-ahead in instrument choice was
+  what made it look strong (`research_log.md` §14.5).
+- **The pooled significant cells are an artifact.** See point 2 of the Result:
+  every rung that clears significance contains `p0c`, and `p0c` alone reproduces
+  the whole effect. This is the most serious weakness in the design, not a
+  caveat on the margin.
 - **Multiplicity.** The main table is 21 rung × subset cells. One was
-  pre-specified; the rest are a family, not seven independent tests.
+  pre-specified; the rest are a family, not seven independent tests. With the
+  primary cell at p = 0.059 and the headline cell at p = 0.232, no correction is
+  needed to conclude nothing is established.
 - **Skewed base rates.** Covered rows concentrate on a few pairs and periods, so
-  the majority class runs at 59.3% there. Read `acc` against `perm null`, not
-  against `majority` — see the note under the results table.
+  the majority class runs at 55.4% (`p05`) and 64.4% (`bh`). Read `acc` against
+  `perm null`, not against `majority` — see the note under the results table.
 - **Still in-sample.** Walk-forward *inside* the in-sample block is not the
-  holdout. This remains an IS-generated hypothesis.
+  holdout. This remains an IS-generated hypothesis — and on the corrected panel
+  it is one that failed in sample, so there is nothing here to take to the
+  holdout yet.
 
-## What strengthens it
+## What, if anything, strengthens it
 
-Excluding WTI as a **trigger** — the open Universe-A question in
-`data_prep_plan.md` §5 — improves every structure rung and leaves the ablation
-null:
+Two robustness cuts move the sign rule in the right direction, neither far
+enough to rescue the claim.
 
-| rung | subset | n | acc | perm null | majority | bal. acc | AUC | perm p |
-|---|---|---|---|---|---|---|---|---|
-| sign_rule | bh | 82 | 0.646 | 0.520 | 0.573 | 0.651 | 0.648 | **0.007** |
-| edge_logit | bh | 82 | 0.646 | 0.519 | 0.573 | 0.651 | 0.687 | 0.005 |
-| *no_structure* | *bh* | *82* | *0.585* | *0.529* | *0.573* | *0.576* | *0.610* | *0.137* |
+**Excluding same-release pairs** — the cut that removes the mechanical channel —
+*helps* rather than hurts, which is the opposite of the pre-correction finding:
 
-WTI supplies **56% of the panel's rows** (2,705 of 4,816) and one BH edge —
-WTI→JOBLESSCLAIMS — which contributes a single scored row. On this evidence it
-is *mass without structure*, and the answer to "WTI in Universe A?" is: as a
-**target**, yes; as a pooled **trigger**, report it separately rather than
-letting it dominate a pooled estimate.
+| rung | subset | n | acc | perm null | bal. acc | perm p |
+|---|---|---|---|---|---|---|
+| sign_rule | p05 | 65 | 0.600 | 0.554 | 0.585 | 0.290 |
+| sign_rule | bh | 37 | 0.730 | 0.590 | 0.686 | **0.042** |
+| *no_structure* | *bh* | *37* | *0.784* | *0.582* | *0.763* | *0.008* |
+
+The `bh` cell clears 0.05 on 37 rows. But `no_structure` still beats it there,
+and per Result point 2 that comparison is contaminated by `p0c` — so this is not
+evidence for structure, it is one small cell in a family of 21 where the
+structure-free rung remains ahead.
+
+**Excluding WTI as a trigger** (the open Universe-A question in
+`data_prep_plan.md` §5) also helps and also falls short: sign_rule 60.3% at
+`p05`, p = 0.116; 73.5% at `bh` on 34 rows, p = 0.088. WTI is *mass without
+structure* — it supplies most of the panel's rows and no surviving edge — so the
+recommendation stands unchanged: keep it as a **target**, report it separately
+as a **trigger**, never let it dominate a pooled estimate.
+
+Taken together: the sign rule's point estimate is consistently above its null
+across cuts (58.7%, 60.0%, 60.3%, 68.9%, 73.0%, 73.5%), and never convincingly
+so once power is accounted for. That pattern is what a weak real effect looks
+like, and also what noise looks like at n ≈ 40–90. This design cannot tell them
+apart, which is the honest statement of where it lands.
 
 ## Where this leaves the thesis
 
-- Stage 1 (`stg_infra/stg/structure/`) remains the primary deliverable, and now
-  has a predictive validation beside its hypothesis tests — edges refit per
-  fold, scored forward, with an ablation isolating their contribution.
-- Stage 2's answer to "how much capacity does consuming the structure need?" is
-  **none beyond the sign of the edge**, argued along a ladder whose rungs run
-  from 0 parameters to AGCRN's 290k. That is a finding, not an unfinished
-  deliverable.
-- The identification problem is unresolved and now *quantified*: remove the
-  same-release pairs and the effect loses its significance. Separating
-  transmission from shared information arrival is the binding constraint on the
-  claim — not model class.
+- **Stage 1 remains the primary deliverable, and it is intact.** Four BH
+  survivors on an exact permutation test, all non-same-release, all
+  macro → policy path, with theory-consistent signs. Nothing in this document's
+  reversal touches it: it never used `p0c`, and the look-ahead that inflated
+  Stage 2 also inflated the *mechanical* Stage-1 edge, whose removal made that
+  table cleaner rather than weaker (`research_log.md` §14.5, §14.9).
+- **Stage 2 no longer supplies a predictive validation.** The previous claim —
+  structure predicts direction out of fold, and the edge rather than the surprise
+  carries it — does not survive the corrections. What the ladder now shows is a
+  null on both sides plus one mechanical regularity in the target's price level.
+- **This changes the shape of the contribution, not its existence.** The thesis
+  claim becomes "cross-market belief updates in event prediction markets are
+  *structured*, estimated directly and FDR-controlled" — which is what
+  `research_summary.md` §3.2 actually set out to establish — without the
+  additional claim that the structure is *predictively exploitable*. The
+  tradability work (`edge_economics.md`) already argued the second claim was
+  economically empty; it now turns out to be statistically unestablished too,
+  which is a more coherent overall position than the two in tension.
+- The identification problem is *less* binding than before: no surviving Stage-1
+  edge is same-release, and removing same-release pairs improves rather than
+  degrades Stage 2.
 
 ## Next
 
-1. **Do not spend the holdout yet.** The OOS test should be one pre-registered
-   cell — `sign_rule` × `bh`, same-release pairs excluded — run once, at the
-   end (`TODO.md`; `research_log.md` §5).
-2. **Raise coverage before raising capacity.** The binding constraint is 81
-   rows, not model class. Bucket contracts and the Phase B canonicalisation add
-   triggers, and every added trigger adds candidate edges.
+1. **Do not spend the holdout.** There is no longer an in-sample result worth
+   confirming out of sample. The pre-registered cell should be re-specified
+   against Stage 1's edge table (does the estimated adjacency replicate?), not
+   against a direction rule that failed in sample.
+2. **Fix the ladder's design before re-running it.** Drop `p0c` from `CONTEXT`
+   or re-specify the label orthogonal to the price level; until then the
+   R4-minus-R3 ablation is not identified. This is the single highest-value
+   change to the Stage-2 design.
+3. **Raise coverage.** The binding constraint is 45–92 rows, not model class.
+   Phase B canonicalisation adds triggers, and channel pooling
+   (`research_log.md` §11) recovers ~5.6x of the coverage that per-pair BH
+   selection discards — that remedy is unaffected by these corrections.
 3. **Sports/crypto negative control** through this exact pipeline — the ladder
    should find nothing where no channel exists. Cheap now that the harness
    exists (`stg_infra/stg/direction/`, `scripts/run_direction_study.py`).

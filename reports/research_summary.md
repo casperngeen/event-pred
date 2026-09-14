@@ -33,6 +33,16 @@ Surveyed 2026-08-14. What exists versus what the report implies:
 
 **Missing or disconnected — the four that matter:**
 
+> **Status since the survey** (added 2026-09-14). This list is a dated snapshot,
+> kept as written. Three of the four are now closed: (1) model code exists
+> (`stg/models/`, `stg/direction/`, `stg/structure/`); (2) `implied.py` is wired —
+> `panel/surprise.py` and `panel/nodes.py` both consume it, and the "weaker
+> scheme feeding the results" is no longer true, though `aggregate_to_event_level`
+> survives in the legacy `pairs/` path (its look-ahead z-scores fixed in
+> `research_log.md` §14.8); (4) there are 110 tests. Item (3), strike values
+> discarded at ingest, still stands — `implied.py` still regex-parses thresholds,
+> and that fragility is exactly what §14.1 had to work around.
+
 1. **Zero lines of model code.** No AGCRN, no GNN, no regression. The graph framework produces tensors that nothing consumes. A NeuralCDE temporal-interpolation module (286 lines) existed and was deleted in commit `0aa92e9`. `requirements.txt` still carries dead `torch`/`torchcde` deps, and diverges from `pyproject.toml`.
 2. **`implied.py` is unwired.** It implements `recover_pdf()` (successive differences over the threshold ladder → discrete PDF), `pdf_implied_stats()` (mean, std, skew, kurtosis, entropy, median), `build_daily_implied_means()`, and `resolved_value()`. It is imported *only* by `events/*.py` analysis scripts — never by `builders`, `nodes`, `labels`, or `pairs`. The actual pipeline instead uses the cruder VWAP collapse in `io/kalshi.py:aggregate_to_event_level` (lines 104–115), which volume-weights raw yes-prices **across different strike thresholds without reference to what each threshold means**. Two competing aggregation schemes coexist; the weaker one feeds the results.
 3. **Strike values are discarded at ingest.** `scripts/fetch_kalshi_data.py:normalize_markets` (lines 216–280) drops Kalshi's `cap_strike`/`floor_strike`/`strike_type`. `implied.py` compensates by regex-parsing thresholds out of ticker strings (`-T3.2` suffix) — works, but fragile against any naming change.
