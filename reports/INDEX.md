@@ -44,6 +44,7 @@ Submission target November 2026; analysis freeze early October.
 |---|---|
 | [graph_definition.md](graph_definition.md) | The single authoritative STG definition — node, edge, snapshot, label. Settled 2026-09-02. |
 | [data_prep_plan.md](data_prep_plan.md) | Data pipeline plan, Phases A–D, source-by-source. Phases B/C/D still partly open. |
+| [relations_study_plan.md](relations_study_plan.md) | **Design doc, not findings (2026-09-14)** — better surprise measures (PIT/quantile surprise, surprisal), richer edge metrics (order-flow and distributional responses, uncertainty and attention channels, state-conditional ρ), and structure beyond the pair (release-vector triggers, the PAYROLLS−U3 double trigger, CPI-family collapse, channel pooling as a block model). Ends with a suggested order and where it cuts across `TODO.md`. |
 
 ---
 
