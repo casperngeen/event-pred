@@ -35,3 +35,12 @@ def surprise_panel():
     if not p.exists():
         pytest.skip("surprise panel not built — run scripts/build_panels.py")
     return pl.read_parquet(p)
+
+
+@pytest.fixture(scope="session")
+def pair_panel():
+    import polars as pl
+    p = Path("artifacts/panels/pair_panel_dormant.parquet")
+    if not p.exists():
+        pytest.skip("pair panel not built — run scripts/run_direction_study.py")
+    return pl.read_parquet(p)

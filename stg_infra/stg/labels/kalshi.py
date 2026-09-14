@@ -48,9 +48,16 @@ class ImpliedMeanChangeLabels:
         df = self._by_series.get(str(series))
         if df is None:
             return None
-        idx = df["date"].search_sorted(when)
+        idx = int(df["date"].search_sorted(when))
         if self.unit == "snapshots":
-            j = int(idx) + self.horizon
+            # search_sorted is side="left", so when ``when`` is absent from this
+            # series' index it already points one past the gap. Adding the
+            # horizon on top of that looked k+1 rows ahead, not k.
+            if idx < df.height and df["date"][idx] != when:
+                idx -= 1
+            if idx < 0:
+                return None
+            j = idx + self.horizon
         else:
             target = when + dt.timedelta(days=self.horizon)
             j = int(df["date"].search_sorted(target))

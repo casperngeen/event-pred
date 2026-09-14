@@ -13,7 +13,9 @@ from stg.panel.registry import (
 )
 from stg.panel.surprise import build_surprise_panel, usable_triggers
 from stg.panel.nodes import build_node_panel
-from stg.panel.targets import representative_tickers, response_panel
+from stg.panel.targets import (
+    representative_tickers, response_panel, target_legs,
+)
 from stg.panel.snapshots import snapshot_dates, macro_resolution_dates, weekly_dates
 
 __all__ = [
@@ -23,6 +25,6 @@ __all__ = [
     "ticker_prefixes", "series_filter_expr",
     "build_surprise_panel", "usable_triggers",
     "build_node_panel",
-    "representative_tickers", "response_panel",
+    "representative_tickers", "response_panel", "target_legs",
     "snapshot_dates", "macro_resolution_dates", "weekly_dates",
 ]

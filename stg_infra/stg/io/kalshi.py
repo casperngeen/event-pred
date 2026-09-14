@@ -174,22 +174,23 @@ class KalshiOHLCV:
             (pl.col("total_volume") + 1).log().alias("log_volume")
         )
 
-        df = df.with_columns([
-            (
-                (pl.col("implied_mean_raw") -
-                 pl.col("implied_mean_raw").mean().over("event_ticker")) /
-                (pl.col("implied_mean_raw").std().over("event_ticker") + 1e-8)
-            ).alias("implied_mean_norm"),
-            (
-                (pl.col("log_volume") -
-                 pl.col("log_volume").mean().over("event_ticker")) /
-                (pl.col("log_volume").std().over("event_ticker") + 1e-8)
-            ).alias("log_volume_norm"),
-            (
-                (pl.col("price_spread") -
-                 pl.col("price_spread").mean().over("event_ticker")) /
-                (pl.col("price_spread").std().over("event_ticker") + 1e-8)
-            ).alias("price_spread_norm"),
+        # Expanding, not whole-event. ``mean().over("event_ticker")`` averages
+        # the event's *entire* life, so a feature on day 3 was standardised
+        # against prices from day 40 -- a look-ahead in every ``*_norm`` column.
+        # These are z-scores of a level against its own past, so the honest
+        # version uses only rows up to and including the current date.
+        def _expanding_z(col: str, alias: str) -> pl.Expr:
+            n = pl.col(col).cum_count().over("event_ticker")
+            mean = pl.col(col).cum_sum().over("event_ticker") / n
+            # E[x^2] - E[x]^2, floored: the population variance of the prefix.
+            var = ((pl.col(col) ** 2).cum_sum().over("event_ticker") / n
+                   - mean ** 2).clip(lower_bound=0.0)
+            return ((pl.col(col) - mean) / (var.sqrt() + 1e-8)).alias(alias)
+
+        df = df.sort(["event_ticker", "date"]).with_columns([
+            _expanding_z("implied_mean_raw", "implied_mean_norm"),
+            _expanding_z("log_volume", "log_volume_norm"),
+            _expanding_z("price_spread", "price_spread_norm"),
         ])
 
         return df.select([

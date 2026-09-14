@@ -18,6 +18,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Optional
 
+import numpy as np
 import polars as pl
 
 from stg.panel._io import load_markets, scan_trades
@@ -28,6 +29,28 @@ MIN_LIQUID_TRADES = 3
 MAX_GAP_DAYS = 60
 
 
+def _group_times(tt: pl.DataFrame):
+    """``(tickers, sorted epoch-ns arrays)`` for binary-search lookups.
+
+    Epoch integers rather than ``datetime64``: numpy has no tz-aware dtype, so
+    converting a UTC-aware polars column to ``datetime64[ns]`` warns and relies
+    on both sides being silently naive-ised the same way. Comparing int64
+    nanoseconds is unambiguous.
+    """
+    g = (tt.sort("ticker", "created_time")
+         .with_columns(pl.col("created_time").dt.epoch("ns").alias("_ns"))
+         .group_by("ticker", maintain_order=True).agg(pl.col("_ns")))
+    arrays = [np.asarray(v, dtype=np.int64) for v in g["_ns"].to_list()]
+    return g["ticker"].to_list(), arrays
+
+
+def _epoch_ns(ts) -> int:
+    """UTC epoch nanoseconds for a tz-aware or naive datetime."""
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=dt.timezone.utc)
+    return int(round(ts.timestamp() * 1_000_000_000))
+
+
 def _side_expr() -> pl.Expr:
     """FEDDECISION side from the ticker suffix: -H* hike, -C* cut, -H0 hold."""
     return (pl.when(pl.col("ticker").str.contains(r"-H0$")).then(pl.lit("hold"))
@@ -36,19 +59,64 @@ def _side_expr() -> pl.Expr:
             .otherwise(pl.lit("any")).alias("side"))
 
 
-def representative_tickers(
+def target_legs(
     target: str,
     side: str = "any",
     *,
     markets: Optional[pl.DataFrame] = None,
     trades: Optional[pl.LazyFrame] = None,
 ) -> pl.DataFrame:
-    """One row per target event: the most-traded ticker and its close time.
+    """Every traded leg of every target event: ``event_ticker, ticker,
+    close_time, n_trades``, one row per leg rather than per event.
 
-    Columns: ``event_ticker, ticker, close_time, n_trades``.
+    The candidate set. Which leg *represents* an event is decided at match time
+    against the trigger's resolution instant, not here -- see
+    :func:`response_panel`.
     """
     mk = markets if markets is not None else load_markets(is_only=True)
     tr = trades if trades is not None else scan_trades(is_only=True)
+    m = (mk.filter(series_filter_expr(target) & pl.col("close_time").is_not_null())
+         .select("event_ticker", "ticker", "close_time")
+         .with_columns(_side_expr()))
+    if side != "any":
+        m = m.filter(pl.col("side") == side)
+    tk = m["ticker"].unique().to_list()
+    counts = (tr.filter(pl.col("ticker").is_in(tk)).group_by("ticker")
+              .agg(pl.len().alias("n_trades")).collect())
+    return (m.join(counts, on="ticker", how="left")
+            .with_columns(pl.col("n_trades").fill_null(0))
+            .filter(pl.col("n_trades") > 0)
+            .unique(subset=["event_ticker", "ticker"])
+            .sort(["close_time", "event_ticker", "ticker"]))
+
+
+def representative_tickers(
+    target: str,
+    side: str = "any",
+    *,
+    as_of: Optional[dt.datetime] = None,
+    markets: Optional[pl.DataFrame] = None,
+    trades: Optional[pl.LazyFrame] = None,
+) -> pl.DataFrame:
+    """One row per target event: the most-traded ticker and its close time.
+
+    Columns: ``event_ticker, ticker, close_time, n_trades``.
+
+    ``as_of`` restricts the trade count to prints at or before that instant.
+    **Leave it None only for descriptive use.** Without it the count runs over
+    the event's whole life, including everything after the trigger fired, so the
+    instrument the response is measured on is chosen with information from after
+    the decision. Measured: the leg picked on full-life volume differs from the
+    one picked on first-half volume for 56% of CPI events and 63% of WTI events.
+    It does not bias the *direction* (the chosen leg settles YES 43-52% of the
+    time, near the at-the-money 50% you would expect), which is why the
+    published sign results survived it -- but it is still a look-ahead, and
+    ``response_panel`` now avoids it by selecting per trigger instant.
+    """
+    mk = markets if markets is not None else load_markets(is_only=True)
+    tr = trades if trades is not None else scan_trades(is_only=True)
+    if as_of is not None:
+        tr = tr.filter(pl.col("created_time") <= as_of)
     m = (mk.filter(series_filter_expr(target) & pl.col("close_time").is_not_null())
          .select("event_ticker", "ticker", "close_time")
          .with_columns(_side_expr()))
@@ -78,7 +146,7 @@ def target_frames(
     markets: Optional[pl.DataFrame] = None,
     trades: Optional[pl.LazyFrame] = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """The per-*target* work: ``(representative tickers, their trades)``.
+    """The per-*target* work: ``(candidate legs, their trades)``.
 
     Depends only on ``(target, side)``, never on the trigger, so a sweep over
     many triggers should build it once. Hoisted out of :func:`response_panel`
@@ -90,19 +158,26 @@ def target_frames(
     universe, where a single rebuild costs ~2 minutes.
 
     Pass the result back via ``response_panel(..., frames=...)``.
+
+    Returns **all** traded legs, not one per event. Picking the representative
+    leg needs the trigger's resolution instant (see
+    :func:`representative_tickers` on ``as_of``), which is not known here -- so
+    the trigger-independent half of the work stays cached and the per-trigger
+    choice happens in :func:`response_panel`. The cost is carrying every leg's
+    prints rather than one leg's: 646k rows for INXU, which fits.
     """
     mk = markets if markets is not None else load_markets(is_only=True)
     tr = trades if trades is not None else scan_trades(is_only=True)
-    reps = representative_tickers(target, side, markets=mk, trades=tr)
-    if reps.height == 0:
-        return reps, pl.DataFrame(
+    legs = target_legs(target, side, markets=mk, trades=tr)
+    if legs.height == 0:
+        return legs, pl.DataFrame(
             schema={"ticker": pl.Utf8, "yes_price": pl.Float64,
-                    "created_time": reps.schema.get("close_time", pl.Datetime)})
-    rep_tickers = reps["ticker"].unique().to_list()
-    tt = (tr.filter(pl.col("ticker").is_in(rep_tickers))
+                    "created_time": legs.schema.get("close_time", pl.Datetime)})
+    leg_tickers = legs["ticker"].unique().to_list()
+    tt = (tr.filter(pl.col("ticker").is_in(leg_tickers))
           .select("ticker", "yes_price", "created_time")
           .sort("ticker", "created_time").collect())
-    return reps, tt
+    return legs, tt
 
 
 def response_panel(
@@ -140,24 +215,53 @@ def response_panel(
     tr = trades if trades is not None else scan_trades(is_only=True)
     if frames is None:
         frames = target_frames(target, side, markets=mk, trades=tr)
-    reps, tt = frames
-    if reps.height == 0:
+    legs, tt = frames
+    if legs.height == 0:
         return pl.DataFrame()
     if match not in ("live", "next_close"):
         raise ValueError(f"unknown match {match!r}")
-    rep_rows = sorted(zip(reps["close_time"].to_list(), reps["ticker"].to_list(),
-                          reps["event_ticker"].to_list()))
 
-    # First trade per ticker, so "was this contract already trading when the
-    # trigger resolved?" is a dict lookup rather than a filter per candidate.
+    # Events in close order, each carrying its candidate legs. One entry per
+    # event, so the walk below is over events and the leg choice happens inside.
+    ev_rows: dict = {}
+    for c_close, c_event, c_ticker in zip(legs["close_time"].to_list(),
+                                          legs["event_ticker"].to_list(),
+                                          legs["ticker"].to_list()):
+        ev_rows.setdefault((c_close, c_event), []).append(c_ticker)
+    event_order = sorted(ev_rows)
+
+    # Per-leg print times, sorted, so "how many prints had this leg seen by
+    # t_res" is a binary search rather than a filter.
+    times: dict = {}
     if tt.height:
-        _ft = tt.group_by("ticker").agg(pl.col("created_time").min().alias("t0"))
-        first_trade = dict(zip(_ft["ticker"].to_list(), _ft["t0"].to_list()))
-    else:
-        first_trade = {}
+        for tk, g in zip(*_group_times(tt)):
+            times[tk] = g
+
+    def _best_leg(tickers, t_res):
+        """The leg that represents this event at ``t_res``.
+
+        The most-traded leg **among prints at or before the trigger resolved**.
+        Counting over the event's whole life instead -- what this did before --
+        chooses the instrument using trades that happen after the decision; for
+        CPI that picks a different leg 56% of the time. Ties break on ticker
+        name so identical rebuilds agree.
+
+        Returns ``(ticker, n_pre)``; ``n_pre == 0`` means no leg had traded yet,
+        so there is no ``p0`` and the observation is not usable.
+        """
+        cut = _epoch_ns(t_res)
+        best, best_n = None, 0
+        for tk in sorted(tickers):
+            ts = times.get(tk)
+            if ts is None or len(ts) == 0:
+                continue
+            n = int(np.searchsorted(ts, cut, side="right"))
+            if n > best_n:
+                best, best_n = tk, n
+        return best, best_n
 
     def _pick(t_res):
-        """The target event this trigger is matched to.
+        """The target event this trigger is matched to, and the leg to use.
 
         ``next_close`` is the original rule: the earliest-closing event after
         the trigger, take it or leave it. ``live`` walks candidates in close
@@ -170,17 +274,23 @@ def response_panel(
         ``next_close`` discards the observation rather than looking past it.
         That is why 3,423 INXU/INXD/NASDAQ100U events yielded 9 usable pairs
         and zero rows in the ``bh`` gate.
+
+        "Already trading" is now the same condition as "has a usable leg":
+        ``_best_leg`` returns a leg only if it has a pre-``t_res`` print, which
+        is exactly what ``p0`` needs.
         """
-        for c_close, c_ticker, c_event in rep_rows:
+        for c_close, c_event in event_order:
             if c_close <= t_res:
                 continue
             gap = (c_close - t_res).total_seconds() / 86400
             if gap > MAX_GAP_DAYS:
                 return None
+            c_ticker, n_pre = _best_leg(ev_rows[(c_close, c_event)], t_res)
             if match == "next_close":
+                if c_ticker is None:
+                    return None
                 return c_close, c_ticker, c_event, gap
-            ft = first_trade.get(c_ticker)
-            if ft is not None and ft <= t_res:
+            if c_ticker is not None:
                 return c_close, c_ticker, c_event, gap
         return None
 
