@@ -15,7 +15,7 @@ not inherit item 1's fate either way.
 | # | item | verdict |
 |---|---|---|
 | 1b | Stage-1 measure swap | **Caution.** No edge disappears (all four stay nominally significant, ρ falls 0.04–0.19), but BH survivors go 4 → 1 → 1 → 0. Partly a resolution artefact: the permutation floor (0.0005) sits just under BH's rank-1 bar (0.00071). `CPI→FED` is the robust edge. |
-| 1 | PIT surprise + calibration | **Finding, with a control.** The ladder is not calibrated: outcomes land high. Dropping events that escaped the grid removes ~1/4 of the effect and leaves the rest (CPI family interior: 72.8% above centre, p<0.0001), but two series fall below 0.05 under the control. A claimed 27% "escape rate" was **retracted** — it measured the traded ladder, not the listed one (true rate ~3.5%). **Overturns `edge_economics.md` §5B**, whose table predates §14.1. |
+| 1 | PIT surprise + calibration | **Substantially retracted.** A direct test on traded prices (`settlement_trade.py`) finds the market *accurate* at the 50/50 contract (priced 50.9%, realised 48%, n=299). The PIT result is most likely a property of the reconstruction, not the market. Original reading follows: outcomes land high. Dropping events that escaped the grid removes ~1/4 of the effect and leaves the rest (CPI family interior: 72.8% above centre, p<0.0001), but two series fall below 0.05 under the control. A claimed 27% "escape rate" was **retracted** — it measured the traded ladder, not the listed one (true rate ~3.5%). **Overturns `edge_economics.md` §5B**, whose table predates §14.1. |
 | 2 | Surprisal / \|s_pit\| cross-validation | **Reopens the magnitude decision.** \|s_pit\| cross-validates at 0.588 in §2's headline cell where \|surprise\| gave 0.332 (0.242 as published). Restricted to events the ladder could express, **surprisal is the best measure of any kind (0.526/0.505), above signed surprise** — its earlier weak showing was saturation in the open tails. |
 | 3 | CPI-family collapse, PAYROLLS−U3 | **Split.** The CPI collapse **does not pay** — it buys rows and loses ρ. The labour index **does**, and it rehabilitates U3 — but the rehabilitation is confounded with the sample period. |
 | 4 | Channel pooling as a block model | **Strong, and the best result of the four.** data→policy: 598 rows over 53 target-event clusters, 63.2% aligned sign agreement vs a 50.0% ± 3.4% clustered null, **p = 0.0004**, zero fitted parameters. Improves on §11's 456 rows / 55.0% / p = 0.021. |
@@ -156,7 +156,39 @@ price the full listed ladder from last-known prices rather than same-day trades
 only. **This is a new data-prep item and it sits upstream of every surprise
 measure in this document.**
 
-### But the calibration bias is not a coverage artefact
+### Superseded — a direct price test contradicts the calibration finding
+
+`settlement_trade.py` prices the bias directly, using **real traded strike prices
+and real outcomes, with no distribution reconstruction at all**: buy the contract
+actually priced nearest 50c, hold to settlement.
+
+| subset | n | mean price | hit rate | edge (pp) | net |
+|---|---|---|---|---|---|
+| ALL series | 299 | 50.90c | 0.48 | **−3.07** | −5.56c (t = −2.10) |
+| CPI family | 113 | 50.86c | 0.47 | **−3.96** | −6.54c |
+| PAYROLLS | 32 | 45.56c | 0.53 | +7.56 | +4.91c (n.s.) |
+
+**At the genuinely 50/50 contract the market is accurate** — priced 50.9%,
+realised 48%. That cannot be reconciled with a PIT saying outcomes land above the
+market's centre ~70% of the time.
+
+The likely explanation is that the PIT measures position within the *recovered*
+pdf, whose centre is not where the market's traded 50/50 sits. That is precisely
+what the coverage defect predicts: 20-35% of listed strikes missing,
+disproportionately far-from-the-money, plus open-tail mass at an assumed point.
+The coverage check below does **not** rule this out — every band uses the same
+reconstruction, so it is internally circular. The price test is not.
+
+**Read item 1 as a finding about the reconstruction, not about the market**, until
+this is resolved. The honest statement is "the recovered implied distribution is
+biased low relative to traded prices", which is a measurement result and an
+argument for fixing the snapshot to price the full listed ladder.
+
+Year instability closes it independently: the CPI-family hit rate runs 0.58 /
+0.50 / **0.69** / **0.26** over 2022-2025, year-clustered CI [−21.3, +10.5],
+P(mean ≤ 0) = 0.70.
+
+### The coverage check (kept, but it does not settle the question)
 
 Tested directly, since a ladder missing its upper strikes would bias the implied
 mean down and manufacture exactly the observed result:
