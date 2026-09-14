@@ -15,7 +15,7 @@ not inherit item 1's fate either way.
 | # | item | verdict |
 |---|---|---|
 | 1b | Stage-1 measure swap | **Caution.** No edge disappears (all four stay nominally significant, ρ falls 0.04–0.19), but BH survivors go 4 → 1 → 1 → 0. Partly a resolution artefact: the permutation floor (0.0005) sits just under BH's rank-1 bar (0.00071). `CPI→FED` is the robust edge. |
-| 1 | PIT surprise + calibration | **Finding.** The ladder is *not* calibrated. 9 of 14 series land above their own implied centre significantly often; the CPI family does so 71–83% of the time. This **overturns `edge_economics.md` §5B**, whose table predates §14.1. |
+| 1 | PIT surprise + calibration | **Finding, with a control.** The ladder is not calibrated: outcomes land high. Dropping events that escaped the grid removes ~1/4 of the effect and leaves the rest (CPI family interior: 72.8% above centre, p<0.0001), but two series fall below 0.05 under the control. Separately, **~25% of CPI outcomes fell outside the ladder entirely**, censoring their surprise. **Overturns `edge_economics.md` §5B**, whose table predates §14.1. |
 | 2 | Surprisal / \|s_pit\| cross-validation | **Partially reopens the magnitude decision.** In §2's own headline cell, \|s_pit\| cross-validates at r = 0.588 where \|surprise\| gave 0.332 (0.242 as published). Across all five sibling pairs the advantage shrinks to a rank-correlation edge (0.46 vs 0.37). |
 | 3 | CPI-family collapse, PAYROLLS−U3 | **Split.** The CPI collapse **does not pay** — it buys rows and loses ρ. The labour index **does**, and it rehabilitates U3 — but the rehabilitation is confounded with the sample period. |
 | 4 | Channel pooling as a block model | **Strong, and the best result of the four.** data→policy: 598 rows over 53 target-event clusters, 63.2% aligned sign agreement vs a 50.0% ± 3.4% clustered null, **p = 0.0004**, zero fitted parameters. Improves on §11's 456 rows / 55.0% / p = 0.021. |
@@ -89,6 +89,60 @@ replaced ladder-inferred resolved values with the true printed
 `expiration_value` for 442 of 519 rows. Inferring the outcome from the ladder
 biases it toward the ladder's centre, which is exactly what would manufacture an
 unbiasedness result.
+
+### Is it the market, or the contract grid? — mostly the market
+
+The recovered distribution has *open* tails: one bin for everything below the
+lowest strike and one for everything above the highest. If the ladders simply
+did not extend far enough up during the surge, the recovered mean would be
+capped and outcomes would pile into the upper tail even under perfectly
+calibrated beliefs — a **contract-grid artefact, not a market error**. The
+discriminating test is to drop every event that escaped the ladder and
+re-measure the interior.
+
+| | all events | interior only |
+|---|---|---|
+| CPI family pooled | n=113, mean u = 0.715 | n=81, mean u = **0.661**, 72.8% above centre, **p < 0.0001** |
+
+Truncation accounts for roughly a quarter of the effect; the rest is a genuine
+belief bias. Per series the interior figures are CPI 0.676 (p=0.024), PCECORE
+0.813 (11 of 11, p=0.001), U3 0.655 (p=0.024) — but **CPICORE (p=0.093) and
+CPIYOY (p=0.143) no longer clear 0.05**, so the claim is nine of fourteen
+series *before* this control and materially fewer after it. Quote the interior
+figures.
+
+**PAYROLLS shows no bias at all** on the interior (mean u = 0.483, p = 0.70).
+This is an inflation-and-rates phenomenon, not a property of the ladder.
+
+### The escape rates are a finding in their own right
+
+| series | below lowest strike | above highest strike |
+|---|---|---|
+| CPICOREYOY | 5% | **35%** |
+| CPI | 2% | **27%** |
+| CPICORE | 0% | **26%** |
+| PCECORE | 7% | 20% |
+| U3 | 8% | 16% |
+| CPIGAS | **25%** | 8% |
+| JOBLESSCLAIMS | **21%** | 7% |
+| WTI | 7% | 3% |
+
+For about a quarter of CPI events the realised value sits **outside the range
+the contract grid could express**, so `surprise` is *censored* there and the
+recorded magnitude is a lower bound. Three consequences:
+
+1. It is the concrete mechanism behind §14.2's "open tails drag the mean toward
+   the ladder centre", and it is larger than that note implies.
+2. **It contaminates item 2.** The magnitude cross-validation compares
+   `|surprise|` across sibling ladders whose censoring points differ. That is a
+   plausible part of why `|surprise|` cross-validates at 0.33 while `|s_pit|`,
+   which is bounded and indifferent to how far outside the grid a value landed,
+   reaches 0.59. **Item 2 should be re-run on interior-only events** before its
+   conclusion is relied on.
+3. It is a limitations-section item: the instrument could not measure the events
+   that mattered most, during the period they mattered most.
+
+`resolved_bin` and `n_bins` were added to the panel to support this test.
 
 **What it does not touch.** No edge result moves. Stage 1 is a Spearman computed
 *within* a pair, and a location shift common to a trigger series does not reorder

@@ -75,7 +75,7 @@ from stg.events.implied import (
     classify_contract, parse_bucket, parse_threshold,
     parse_threshold_from_subtitle, recover_pdf, pdf_implied_stats,
     resolved_value, infer_spacing, normalise_to_exclusive,
-    pit as pmf_pit, surprisal as pmf_surprisal,
+    pit as pmf_pit, surprisal as pmf_surprisal, pmf_bin_index,
 )
 from stg.panel._io import load_markets, load_settlement_values, scan_trades
 from stg.panel.registry import SPECS, series_filter_expr, trigger_universe
@@ -91,7 +91,8 @@ _SCHEMA = [
     "implied_mean", "implied_std", "implied_entropy", "implied_skew",
     "implied_kurtosis", "implied_median", "resolved_value",
     "resolved_source", "surprise", "surprise_median", "pit", "s_pit",
-    "surprisal", "n_legs", "n_ladder", "coverage", "ladder_mass", "is_bucket",
+    "surprisal", "resolved_bin", "n_bins", "n_legs", "n_ladder", "coverage",
+    "ladder_mass", "is_bucket",
 ]
 
 
@@ -101,7 +102,7 @@ def _empty() -> pl.DataFrame:
                                     pl.Boolean if c == "is_bucket" else
                                     pl.Datetime if c == "close_time" else
                                     pl.Date if c == "snap_date" else
-                                    pl.Int32 if c in ("n_legs", "n_ladder") else
+                                    pl.Int32 if c in ("n_legs", "n_ladder", "resolved_bin", "n_bins") else
                                     pl.Float64) for c in _SCHEMA})
 
 
@@ -134,8 +135,16 @@ def _pit_cols(mids, probs, rv: float) -> dict:
     the estimated mean's error (§1.5).
     """
     u = pmf_pit(mids, probs, rv)
+    # ``resolved_bin`` and ``n_bins`` exist to separate a real belief bias from
+    # a contract-grid artefact.  Bins 0 and ``n_bins - 1`` are the *open* tails
+    # -- everything below the lowest strike and above the highest.  An outcome
+    # landing there means the ladder could not express it, so the recovered mean
+    # is capped and a calibration miss may be the grid's fault rather than the
+    # market's.  Dropping those rows and re-measuring is the discriminating test.
     return dict(pit=u, s_pit=2.0 * u - 1.0,
-                surprisal=pmf_surprisal(mids, probs, rv))
+                surprisal=pmf_surprisal(mids, probs, rv),
+                resolved_bin=int(pmf_bin_index(mids, rv)),
+                n_bins=int(len(probs)))
 
 
 def gate_panel(panel: pl.DataFrame, *, min_mass: float = MIN_MASS,
@@ -262,7 +271,7 @@ def _threshold_surprise(canon: str, mk: pl.DataFrame, tr: pl.LazyFrame,
             coverage=thr.size / max(n_ladder, 1), ladder_mass=mass,
             is_bucket=False,
         ))
-    return pl.DataFrame(rows, schema_overrides={c: pl.Int32 for c in ("n_legs", "n_ladder")}).select(_SCHEMA) if rows else _empty()
+    return pl.DataFrame(rows, schema_overrides={c: pl.Int32 for c in ("n_legs", "n_ladder", "resolved_bin", "n_bins")}).select(_SCHEMA) if rows else _empty()
 
 
 # --------------------------------------------------------------------------
@@ -377,7 +386,7 @@ def _bucket_surprise(canon: str, mk: pl.DataFrame, tr: pl.LazyFrame,
             coverage=mids.size / max(bk.height, 1), ladder_mass=mass,
             is_bucket=True,
         ))
-    return pl.DataFrame(rows, schema_overrides={c: pl.Int32 for c in ("n_legs", "n_ladder")}).select(_SCHEMA) if rows else _empty()
+    return pl.DataFrame(rows, schema_overrides={c: pl.Int32 for c in ("n_legs", "n_ladder", "resolved_bin", "n_bins")}).select(_SCHEMA) if rows else _empty()
 
 
 # --------------------------------------------------------------------------
