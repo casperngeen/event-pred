@@ -16,7 +16,7 @@ not inherit item 1's fate either way.
 |---|---|---|
 | 1b | Stage-1 measure swap | **Caution.** No edge disappears (all four stay nominally significant, ρ falls 0.04–0.19), but BH survivors go 4 → 1 → 1 → 0. Partly a resolution artefact: the permutation floor (0.0005) sits just under BH's rank-1 bar (0.00071). `CPI→FED` is the robust edge. |
 | 1 | PIT surprise + calibration | **Finding, with a control.** The ladder is not calibrated: outcomes land high. Dropping events that escaped the grid removes ~1/4 of the effect and leaves the rest (CPI family interior: 72.8% above centre, p<0.0001), but two series fall below 0.05 under the control. Separately, **~25% of CPI outcomes fell outside the ladder entirely**, censoring their surprise. **Overturns `edge_economics.md` §5B**, whose table predates §14.1. |
-| 2 | Surprisal / \|s_pit\| cross-validation | **Partially reopens the magnitude decision.** In §2's own headline cell, \|s_pit\| cross-validates at r = 0.588 where \|surprise\| gave 0.332 (0.242 as published). Across all five sibling pairs the advantage shrinks to a rank-correlation edge (0.46 vs 0.37). |
+| 2 | Surprisal / \|s_pit\| cross-validation | **Reopens the magnitude decision.** \|s_pit\| cross-validates at 0.588 in §2's headline cell where \|surprise\| gave 0.332 (0.242 as published). Restricted to events the ladder could express, **surprisal is the best measure of any kind (0.526/0.505), above signed surprise** — its earlier weak showing was saturation in the open tails. |
 | 3 | CPI-family collapse, PAYROLLS−U3 | **Split.** The CPI collapse **does not pay** — it buys rows and loses ρ. The labour index **does**, and it rehabilitates U3 — but the rehabilitation is confounded with the sample period. |
 | 4 | Channel pooling as a block model | **Strong, and the best result of the four.** data→policy: 598 rows over 53 target-event clusters, 63.2% aligned sign agreement vs a 50.0% ± 3.4% clustered null, **p = 0.0004**, zero fitted parameters. Improves on §11's 456 rows / 55.0% / p = 0.021. |
 
@@ -133,12 +133,16 @@ recorded magnitude is a lower bound. Three consequences:
 
 1. It is the concrete mechanism behind §14.2's "open tails drag the mean toward
    the ladder centre", and it is larger than that note implies.
-2. **It contaminates item 2.** The magnitude cross-validation compares
-   `|surprise|` across sibling ladders whose censoring points differ. That is a
-   plausible part of why `|surprise|` cross-validates at 0.33 while `|s_pit|`,
-   which is bounded and indifferent to how far outside the grid a value landed,
-   reaches 0.59. **Item 2 should be re-run on interior-only events** before its
-   conclusion is relied on.
+2. **It distorts item 2 — and not in the direction first supposed.** Note what
+   is and is not censored. Since §14.1 `resolved_value` is the *true printed
+   value*, so the numerator of `surprise` is exact; it is the **mean** that is
+   capped, which makes `surprise` on an escape event *overstated*, not a lower
+   bound. What genuinely saturates is `s_pit` and `surprisal`, which sit in the
+   open bin and cannot distinguish a small escape from a large one. That raised
+   the opposite worry — that `|s_pit|`'s advantage is two siblings saturating
+   near 1.0 on the same months, i.e. mechanical agreement. **Tested: it is
+   not.** On interior events `|s_pit|` still beats `|surprise|` (gated 0.632 vs
+   0.440; ungated 0.378 vs 0.128, Pearson).
 3. It is a limitations-section item: the instrument could not measure the events
    that mattered most, during the period they mattered most.
 
@@ -261,6 +265,29 @@ Across all five CPI-family sibling pairs the effect is smaller: mean Spearman
 4 of 5 pairs; on Pearson the two are level, because Pearson on |surprise| is
 inflated by a handful of large events — §2's own critique). `surprisal` is the
 weaker of the two new measures, at 0.431, and its discreteness shows.
+
+### Restricted to events the ladder could express, surprisal wins
+
+Escapes are where `surprisal` structurally cannot work: every outcome beyond the
+last strike is assigned the same open-tail probability, so the measure is
+constant across events of very different size. Dropping them (ungated, mean
+n = 17.6 per pair):
+
+| measure | Pearson | Spearman |
+|---|---|---|
+| **surprisal** | **0.526** | **0.505** |
+| surprise (signed) | 0.424 | 0.382 |
+| \|s_pit\| | 0.378 | 0.271 |
+| \|surprise\| | 0.128 | 0.134 |
+
+On all events `surprisal` looked mediocre (0.407 / 0.431); on interior events it
+is the best measure of any kind, **above signed surprise**. That is §1.5's
+hypothesis confirmed, and it says the earlier reading was an artefact of judging
+the measure on events where it is undefined in all but name.
+
+*Caveat:* the interior restriction removes the large-magnitude events, so every
+correlation falls in level (signed surprise 0.691 → 0.424). The two tables are
+not comparable in level; only the ranking *within* the interior column is.
 
 **Verdict.** "Magnitude does not cross-validate" is too strong: on a
 distribution-relative measure, sibling ladders agree on size at ρ ≈ 0.46–0.61.
