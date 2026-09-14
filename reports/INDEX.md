@@ -38,6 +38,7 @@ Submission target November 2026; analysis freeze early October.
 | [agcrn_postmortem.md](agcrn_postmortem.md) | The diagnostic evidence behind those five reasons — horizon comparison, oracle R² ladder, the overlapping-window artifact. *(Was `analysis/agcrn_diagnostics_2026_09/FINDINGS.md`.)* |
 | [edge_economics.md](edge_economics.md) | **Do the edges make sense, and can they be traded?** Sign restrictions (incl. the U3 dovish-flip falsification cell), the WTI-has-no-information-event finding, the jump-not-drift decomposition (which clears §4.1's staleness threat), and why pre-resolution coherence is the one remaining tradable path. |
 | [direction_study.md](direction_study.md) | **The simple-learning successor** — dormant-horizon direction prediction on the Stage-1 structure. **Result is a null** (rewritten 2026-09-14): the sign rule clears no gate (58.7%, p=0.232 at `p05`), and the rung that appears to win is reading the target's bounded price level, not the surprise. The earlier 63.0% / p=0.041 claim did not survive the §14 corrections. |
+| [settlement_distribution_findings.md](settlement_distribution_findings.md) | **Wing calibration — the gate result (2026-09-14).** The macro-release wings are **fair** (−0.13c, P(≤0)=0.55), which retires the plan's motivating premise and is a third independent efficiency result. The entire wing mispricing is in **WTI's bucket ladders** (−6.6pp, +4.96c, 93% of 397 events positive) and survives overround, missing-winner, concentration and single-series kills — but it is **decaying** (2022 +5.81c → 2024 +2.43c). Reads as a σ result, not a forecasting one, and independently confirms the WTI half of `relations_findings.md` item 1. |
 
 ## Design and data
 
@@ -72,7 +73,7 @@ Regenerate by running the script from the repo root:
 | `analysis/exploratory_2026_08/README.md` | Index of the exploratory scripts in that directory. |
 | `analysis/agcrn_diagnostics_2026_09/` | `postmortem.py` + captured output; its writeup is `agcrn_postmortem.md` here. |
 | `analysis/data_quality_2026_09/` | `coverage_audit.py` + captured output; its writeup is research_log.md §12. |
-| `analysis/settlement_dist_2026_09/` | Working directory for `settlement_distribution_plan.md`. Empty so far — design only. |
+| `analysis/settlement_dist_2026_09/` | Wing-calibration scripts + captured output; its writeup is `settlement_distribution_findings.md`. Has its own README with run order. |
 | `analysis/horizon_2026_09/` | Horizon/cost scripts + captured output; its writeup is research_log.md §13. Has its own README with run order. |
 
 ---
