@@ -91,7 +91,8 @@ _SCHEMA = [
     "implied_mean", "implied_std", "implied_entropy", "implied_skew",
     "implied_kurtosis", "implied_median", "resolved_value",
     "resolved_source", "surprise", "surprise_median", "pit", "s_pit",
-    "surprisal", "resolved_bin", "n_bins", "n_legs", "n_ladder", "coverage",
+    "surprisal", "resolved_bin", "n_bins", "p_tail_low", "p_tail_high",
+    "n_legs", "n_ladder", "coverage",
     "ladder_mass", "is_bucket",
 ]
 
@@ -144,7 +145,11 @@ def _pit_cols(mids, probs, rv: float) -> dict:
     return dict(pit=u, s_pit=2.0 * u - 1.0,
                 surprisal=pmf_surprisal(mids, probs, rv),
                 resolved_bin=int(pmf_bin_index(mids, rv)),
-                n_bins=int(len(probs)))
+                n_bins=int(len(probs)),
+                # what the market *charged* for an escape: the mass it put on
+                # the two open bins.  Compared against how often outcomes
+                # actually escaped, this prices the top-strike trade directly.
+                p_tail_low=float(probs[0]), p_tail_high=float(probs[-1]))
 
 
 def gate_panel(panel: pl.DataFrame, *, min_mass: float = MIN_MASS,

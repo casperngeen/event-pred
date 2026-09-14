@@ -15,7 +15,7 @@ not inherit item 1's fate either way.
 | # | item | verdict |
 |---|---|---|
 | 1b | Stage-1 measure swap | **Caution.** No edge disappears (all four stay nominally significant, ρ falls 0.04–0.19), but BH survivors go 4 → 1 → 1 → 0. Partly a resolution artefact: the permutation floor (0.0005) sits just under BH's rank-1 bar (0.00071). `CPI→FED` is the robust edge. |
-| 1 | PIT surprise + calibration | **Finding, with a control.** The ladder is not calibrated: outcomes land high. Dropping events that escaped the grid removes ~1/4 of the effect and leaves the rest (CPI family interior: 72.8% above centre, p<0.0001), but two series fall below 0.05 under the control. Separately, **~25% of CPI outcomes fell outside the ladder entirely**, censoring their surprise. **Overturns `edge_economics.md` §5B**, whose table predates §14.1. |
+| 1 | PIT surprise + calibration | **Finding, with a control.** The ladder is not calibrated: outcomes land high. Dropping events that escaped the grid removes ~1/4 of the effect and leaves the rest (CPI family interior: 72.8% above centre, p<0.0001), but two series fall below 0.05 under the control. A claimed 27% "escape rate" was **retracted** — it measured the traded ladder, not the listed one (true rate ~3.5%). **Overturns `edge_economics.md` §5B**, whose table predates §14.1. |
 | 2 | Surprisal / \|s_pit\| cross-validation | **Reopens the magnitude decision.** \|s_pit\| cross-validates at 0.588 in §2's headline cell where \|surprise\| gave 0.332 (0.242 as published). Restricted to events the ladder could express, **surprisal is the best measure of any kind (0.526/0.505), above signed surprise** — its earlier weak showing was saturation in the open tails. |
 | 3 | CPI-family collapse, PAYROLLS−U3 | **Split.** The CPI collapse **does not pay** — it buys rows and loses ρ. The labour index **does**, and it rehabilitates U3 — but the rehabilitation is confounded with the sample period. |
 | 4 | Channel pooling as a block model | **Strong, and the best result of the four.** data→policy: 598 rows over 53 target-event clusters, 63.2% aligned sign agreement vs a 50.0% ± 3.4% clustered null, **p = 0.0004**, zero fitted parameters. Improves on §11's 456 rows / 55.0% / p = 0.021. |
@@ -114,39 +114,62 @@ figures.
 **PAYROLLS shows no bias at all** on the interior (mean u = 0.483, p = 0.70).
 This is an inflation-and-rates phenomenon, not a property of the ladder.
 
-### The escape rates are a finding in their own right
+### The "escape rates" were a measurement artefact — corrected
 
-| series | below lowest strike | above highest strike |
-|---|---|---|
-| CPICOREYOY | 5% | **35%** |
-| CPI | 2% | **27%** |
-| CPICORE | 0% | **26%** |
-| PCECORE | 7% | 20% |
-| U3 | 8% | 16% |
-| CPIGAS | **25%** | 8% |
-| JOBLESSCLAIMS | **21%** | 7% |
-| WTI | 7% | 3% |
+An earlier version of this section reported that ~27% of CPI outcomes fell
+outside the contract grid and priced a "buy the top strike" trade off it. **That
+was wrong, and the trade does not exist.**
 
-For about a quarter of CPI events the realised value sits **outside the range
-the contract grid could express**, so `surprise` is *censored* there and the
-recorded magnitude is a lower bound. Three consequences:
+`_threshold_surprise` builds the ladder from the strikes that **traded on the
+snapshot day**, not the strikes the market *listed*. So `resolved_bin ==
+n_bins - 1` means "above the highest strike that printed that day", which is a
+liquidity statement, not a contract-design one. Checked against the listed
+ladder for the CPI family:
 
-1. It is the concrete mechanism behind §14.2's "open tails drag the mean toward
-   the ladder centre", and it is larger than that note implies.
-2. **It distorts item 2 — and not in the direction first supposed.** Note what
-   is and is not censored. Since §14.1 `resolved_value` is the *true printed
-   value*, so the numerator of `surprise` is exact; it is the **mean** that is
-   capped, which makes `surprise` on an escape event *overstated*, not a lower
-   bound. What genuinely saturates is `s_pit` and `surprisal`, which sit in the
-   open bin and cannot distinguish a small escape from a large one. That raised
-   the opposite worry — that `|s_pit|`'s advantage is two siblings saturating
-   near 1.0 on the same months, i.e. mechanical agreement. **Tested: it is
-   not.** On interior events `|s_pit|` still beats `|surprise|` (gated 0.632 vs
-   0.440; ungated 0.378 vs 0.128, Pearson).
-3. It is a limitations-section item: the instrument could not measure the events
-   that mattered most, during the period they mattered most.
+| | count |
+|---|---|
+| events flagged as escaping the top bin | 30 |
+| **genuinely above the highest listed strike** | **4** |
+| merely above the highest strike that traded that day | 26 |
 
-`resolved_bin` and `n_bins` were added to the panel to support this test.
+By year the gap is starkest in 2024: flagged escape rate 55.2%, **true escape
+rate 0.0%**. The true rate across the family is ~3.5%, not 27%.
+
+Consequences:
+
+- Any trade built on "the market underprices the top bin" is **not tradable** —
+  the instrument you would buy is the top *listed* strike, which sat well above
+  where these outcomes landed.
+- The interior/exterior split used above and in item 2 partitions on the
+  *traded* ladder. It remains a valid robustness split (it separates events the
+  snapshot could locate from events it could not), but it must not be described
+  as contract-grid truncation.
+
+### The underlying defect, which is real
+
+Mean ladder coverage is 0.64-0.83, so **20-35% of listed strikes are absent from
+every recovered distribution**, and the absent ones are disproportionately
+far-from-the-money because those trade least. The recovered distribution is
+therefore systematically too narrow, which inflates `surprisal`, biases
+`implied_std` down, and makes any open-tail diagnosis unreliable. The fix is to
+price the full listed ladder from last-known prices rather than same-day trades
+only. **This is a new data-prep item and it sits upstream of every surprise
+measure in this document.**
+
+### But the calibration bias is not a coverage artefact
+
+Tested directly, since a ladder missing its upper strikes would bias the implied
+mean down and manufacture exactly the observed result:
+
+| ladder coverage | n | mean u | frac above centre | sign p |
+|---|---|---|---|---|
+| <0.60 | 28 | 0.725 | 0.786 | 0.004 |
+| 0.60-0.75 | 30 | 0.746 | 0.800 | 0.001 |
+| 0.75-0.90 | 27 | 0.688 | 0.778 | 0.006 |
+| **0.90-1.00** | 28 | **0.696** | **0.786** | **0.004** |
+
+Flat across coverage bands, holding at p = 0.004 on the best-covered quarter,
+`corr(coverage, pit) = -0.08`. The bias survives.
 
 **What it does not touch.** No edge result moves. Stage 1 is a Spearman computed
 *within* a pair, and a location shift common to a trigger series does not reorder
