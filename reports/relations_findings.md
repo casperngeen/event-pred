@@ -240,8 +240,12 @@ Three things to note:
 1. **It improves substantially on §11**, which measured 456 rows, 55.0% and
    p = 0.021 on the pre-correction panel. Now 598 rows, 63.2%, p = 0.0004 — and
    clustered, which §11 was not.
-2. **The effective sample is 53 target-event clusters, not 598 rows.** Quote it
-   that way; the row count is the number of signals, not the degrees of freedom.
+2. **The effective sample is ~212, not 598.** Clustering inflates the null's
+   standard deviation from a naive 0.0204 to 0.0343 (1.68x), which corresponds
+   to an effective n of about 212 — the 598 rows sit across 53 target-event
+   clusters, but rows within a cluster are correlated, not identical, so the
+   effective figure lands between the two. Quote 598 rows / 53 clusters and the
+   clustered p; do not quote a naive binomial interval on 598.
 3. **Energy→policy is a clean falsification.** 397 rows — the largest channel —
    sitting *below* chance at 46.5%, pooled ρ = −0.128. The theory sign is wrong
    for WTI, which is what `edge_economics.md` §2(b) predicts for a series with no
