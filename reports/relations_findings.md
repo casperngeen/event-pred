@@ -14,6 +14,7 @@ not inherit item 1's fate either way.
 
 | # | item | verdict |
 |---|---|---|
+| 1b | Stage-1 measure swap | **Caution.** No edge disappears (all four stay nominally significant, ρ falls 0.04–0.19), but BH survivors go 4 → 1 → 1 → 0. Partly a resolution artefact: the permutation floor (0.0005) sits just under BH's rank-1 bar (0.00071). `CPI→FED` is the robust edge. |
 | 1 | PIT surprise + calibration | **Finding.** The ladder is *not* calibrated. 9 of 14 series land above their own implied centre significantly often; the CPI family does so 71–83% of the time. This **overturns `edge_economics.md` §5B**, whose table predates §14.1. |
 | 2 | Surprisal / \|s_pit\| cross-validation | **Partially reopens the magnitude decision.** In §2's own headline cell, \|s_pit\| cross-validates at r = 0.588 where \|surprise\| gave 0.332 (0.242 as published). Across all five sibling pairs the advantage shrinks to a rank-correlation edge (0.46 vs 0.37). |
 | 3 | CPI-family collapse, PAYROLLS−U3 | **Split.** The CPI collapse **does not pay** — it buys rows and loses ρ. The labour index **does**, and it rehabilitates U3 — but the rehabilitation is confounded with the sample period. |
@@ -47,11 +48,18 @@ Per-series, gated panel, exact KS against U(0,1):
 `tail20` is the share landing in the outer decile pair; 0.20 under calibration.
 Two distinct failures, in opposite directions:
 
-- **The macro-release ladders are overconfident and biased high.** CPI-family,
-  PCECORE, U3, FED all have mean `u` ≈ 0.65–0.91 and roughly 25–75% of outcomes
-  in the tails against 20% expected. Prints came in above the market's central
-  forecast far more often than not, over a sample dominated by the 2022–24
-  inflation surge.
+- **The macro-release ladders are biased low — and this is a location error, not
+  an overconfidence one.** CPI-family, PCECORE, U3 and FED all have mean `u` ≈
+  0.65–0.91. Splitting the tails shows the miss is one-sided: the *lower* decile
+  holds 0–5% of outcomes against 10% expected, while the upper decile holds
+  25–75%. A genuinely too-narrow distribution would overpopulate **both** tails,
+  so the implied distributions are roughly the right width and simply sit too
+  low. That also rules out a discretisation or open-tail artifact from
+  `recover_pdf`, which would be symmetric and cannot empty one tail while
+  filling the other. Prints came in above the market's central forecast far more
+  often than not, over a sample dominated by the 2022-24 inflation surge — which
+  is a known stylised fact about forecasters in that period, so recovering it is
+  evidence the measure works rather than a surprise.
 - **The asset-price ladders are underconfident.** WTI's distribution is too
   *wide*: 3.5% of outcomes in the tails against 20%, 83% in the central half
   against 50%. Consistent with `edge_economics.md` §2(b) — WTI's resolution is a
@@ -82,6 +90,20 @@ replaced ladder-inferred resolved values with the true printed
 biases it toward the ladder's centre, which is exactly what would manufacture an
 unbiasedness result.
 
+**What it does not touch.** No edge result moves. Stage 1 is a Spearman computed
+*within* a pair, and a location shift common to a trigger series does not reorder
+that series' events — so the 4 edges, the channel-pooling result and the
+direction study all stand unchanged. The finding sits beside them rather than
+underneath them.
+
+**What it gives back.** The PIT is also a *single-series* diagnostic, needing no
+edge, no target and no horizon: WTI's signature is the exact inverse of CPI's
+(3.5% of outcomes in the tails against 20%, 83% in the central half against
+50%), which is what a resolution that is a price snapshot near the prevailing
+price looks like. That is an independent test for the trigger-inclusion
+criterion, and it bears on the open "WTI in Universe A?" decision without
+reference to any result.
+
 **Consequence.** §5B is cited as closing the "hold on an ex-ante bias" path
 (`edge_economics.md` §5B, path B). That path is *not* closed on this evidence —
 though note the bias is a level effect over a specific macro regime, so it is
@@ -89,6 +111,73 @@ much weaker as a trading claim than as a measurement one, and a pre-registered
 OOS test would be the only honest way to make it.
 
 `analysis/relations_2026_09/out/pit_calibration.txt`.
+
+---
+
+## Item 1b — the 4 Stage-1 edges are measure-dependent, and the BH gate is too coarse
+
+The full sweep, re-run four times over the same 141-pair grid changing only the
+number fed in as the trigger's surprise:
+
+| measure | nominal p<0.05 | **BH survivors** |
+|---|---|---|
+| `surprise` (published) | 14 | **4** |
+| `s_pit` | 17 | **1** |
+| `z_surprise` | 14 | **1** |
+| `surprise_median` | 14 | **0** |
+
+The baseline reproduces `adjacency_report.md` exactly, so the machinery is
+confirmed. But read the survivor counts against what happened to the edges
+themselves:
+
+| edge | surprise | s_pit | z_surprise | median |
+|---|---|---|---|---|
+| CPI→FED/any | +0.617 | +0.580 | +0.570 | +0.567 |
+| PAYROLLS→FED/any | +0.583 | +0.544 | +0.554 | +0.501 |
+| PAYROLLS→FEDDECISION/hike | +0.596 | +0.483 | +0.484 | +0.449 |
+| CPICOREYOY→FEDDECISION/cut | −0.683 | −0.497 | −0.685 | −0.670 |
+
+**No edge disappears.** Every one keeps its sign, keeps a substantial ρ, and
+stays *nominally* significant under all four measures (worst case p = 0.0475).
+The largest fall is PAYROLLS→hike, 0.596 → 0.483. So "4 survivors → 1" is not
+three edges evaporating; it is three edges drifting across a threshold.
+
+### The threshold is the problem
+
+BH at q = 0.10 over 141 tests requires the smallest p to clear
+**0.10/141 = 0.00071**. The permutation p is computed at `n_perm = 2000`, whose
+floor is **1/2001 = 0.0005**. There is no achievable p-value between the two, so
+an edge can occupy BH rank 1 *only by landing exactly on the permutation floor*.
+
+Under `surprise` the four p's are 0.0005, 0.0005, 0.0010, 0.0025 against a BH
+ladder of 0.00071, 0.00142, 0.00213, 0.00284 — all four clear. Under
+`surprise_median` the smallest p is 0.0010, one grid step above the floor, and
+**nothing survives** — even though CPICOREYOY sits at p = 0.0020 with ρ = −0.670,
+a stronger showing than the `s_pit` version that did survive in its own sweep.
+
+That is a resolution artefact, not a measurement result.
+
+**Two consequences.**
+
+1. **The published "4 BH survivors" is more fragile than it reads**, and the
+   fragility is partly mechanical. `n_perm` should be raised to ~20,000 (floor
+   0.00005, comfortably clear of the rank-1 bar) and the sweep re-run before
+   anything is concluded from survivor counts. This matters directly: the
+   pre-registered OOS cell is `sign_rule` × **`bh`**, so which pairs populate
+   that gate currently depends on a permutation grid nobody chose deliberately.
+2. **`CPI→FED` is the robust edge** — the only one surviving under three of four
+   measures, and the only one whose ρ barely moves (0.617 → 0.567). The other
+   three carry a real scale dependence worth reporting as such.
+
+### And it strengthens item 4
+
+Note the contrast with channel pooling, which was **measure-independent**:
+63.2% on `surprise`, 62.8% on `s_pit`, p ≤ 0.0004 either way. Per-pair FDR
+selection is sensitive to a scaling choice that has never been justified; the
+pooled channel test is not. That is an argument for pooling on grounds
+independent of power.
+
+`analysis/relations_2026_09/out/stage1_variants.txt`.
 
 ---
 
