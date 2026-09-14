@@ -449,6 +449,62 @@ Three things to note:
 
 ---
 
+## Addendum — the dormant-horizon trade is structurally dead
+
+Not a conclusion about any of items 1-4, but it came out of testing whether
+strike selection could rescue the ledger, and it bounds everything above.
+
+The pipeline trades one leg per target event. Opening the whole ladder (477
+signals, 2,173 legs, median 4 tradable legs per signal) and granting **perfect
+foresight over both the direction and the choice of strike** gives:
+
+| foresight | net, taker |
+|---|---|
+| leg only (direction from the channel rule) | −0.41c |
+| direction only (most-traded leg) | −1.45c |
+| **both direction and leg — the absolute ceiling** | **+0.09c** |
+
+An omniscient trader nets nine hundredths of a cent. Only **27.9%** of signals
+carry any net-positive leg even under perfect foresight, and the median best leg
+is **−0.21c**.
+
+The cause is arithmetic, not predictive:
+
+| | |
+|---|---|
+| median \|move\| entry→exit, all legs | **0.00c** |
+| median round-trip cost | 1.14c |
+| share of legs with \|move\| > cost | 7.5% |
+| ATM ±15c: median \|move\| | 1.00c |
+| ATM ±15c: median cost | **5.34c** (3.5c of it fee) |
+
+The two ends of the ladder fail for opposite reasons. Deep-OTM strikes are cheap
+(1.14c) and essentially static; ATM strikes move (1.00c) but cost 5.34c, because
+Kalshi's `0.07·p(1-p)` peaks at 1.75c per contract per side exactly where the
+contract is most responsive. **The ATM fee alone exceeds the entire
+dormant-window move.**
+
+**What this does and does not condemn.** It kills the dormant-horizon taker
+trade outright, independently of signal quality — no predictor can help. It does
+*not* touch the structural finding: channel pooling remains 63.2% aligned at
+p = 0.0004 clustered. The propagation is real and smaller than the cost of
+harvesting it. This is `INDEX.md`'s "economically significant and not
+economically exploitable", now demonstrated with perfect foresight across the
+whole ladder rather than on one leg.
+
+The only survivors are paths that change the cost or horizon structure rather
+than the signal: maker execution (fill probability is the open unknown — every
+rule turns positive under the maker bound) and pre-resolution positioning, which
+holds *through* the jump (median 2c, mean ~4c) instead of chasing the ~1c drift
+after it.
+
+One caveat on the statistics: legs within a signal are one bet in larger size
+(§11.1), so the reported t-values are inflated and are not clustered on
+`target_event` per §13.5. The verdict does not depend on them — the ceiling is a
+point estimate of what perfect foresight earns, not a significance claim.
+
+---
+
 ## What follows
 
 - **Item 4 is ready to be promoted** out of exploration into a script + report

@@ -21,6 +21,16 @@ fitted, so no fold machinery is needed and there is no in-sample edge selection
 contaminating the comparison. It is also the strongest signal in the project
 (63.2% aligned, p=0.0004 clustered; see channel_pooling.py).
 
+**The decisive number is the perfect-foresight ceiling** (printed last): the best
+leg per signal when the *direction* is also known in advance. It comes to
++0.09c/trade, with only 27.9% of signals carrying any net-positive leg and a
+median of -0.21c. An omniscient trader barely breaks even, so the dormant-horizon
+taker trade is structurally dead and no predictor can rescue it. The cause is in
+the cost arithmetic: the median leg moves **0.00c** entry-to-exit against a 1.14c
+round trip, and at the money -- where the move is real at 1.00c -- the cost is
+5.34c, of which 3.5c is Kalshi's fee, since ``0.07*p(1-p)`` peaks exactly where
+the contract is most responsive.
+
 **Read the ``oracle`` row first.** It picks the leg that actually moved most in
 the predicted direction -- not a strategy, an upper bound. If the
 best-leg-in-hindsight still loses after costs, no selection rule can work and
@@ -205,6 +215,34 @@ def main() -> None:
             pl.col("cost").mean().alias("cost"),
             pl.col("net").mean().alias("net"),
             (pl.col("gross") > 0).mean().alias("hit")).sort("net", descending=True))
+
+    print("\n=== ceilings under foresight (the question that decides it) ===")
+    key = ["trigger_event", "target_event"]
+    dd = d.with_columns((pl.col("p1") - pl.col("p_entry")).abs().alias("abs_move"))
+    dd = dd.with_columns((pl.col("abs_move") - pl.col("cost")).alias("net_perfect"))
+    rows = [
+        dict(scenario="foresight: leg only (direction from channel rule)",
+             mean_net=float(dd.sort("net", descending=True)
+                            .group_by(key, maintain_order=True).first()["net"].mean())),
+        dict(scenario="foresight: direction only (most-traded leg)",
+             mean_net=float(dd.sort("n_pre", descending=True)
+                            .group_by(key, maintain_order=True).first()["net_perfect"].mean())),
+        dict(scenario="foresight: BOTH direction and leg (absolute ceiling)",
+             mean_net=float(dd.sort("net_perfect", descending=True)
+                            .group_by(key, maintain_order=True).first()["net_perfect"].mean())),
+    ]
+    with pl.Config(tbl_rows=10, float_precision=3, tbl_width_chars=200):
+        print(pl.DataFrame(rows))
+    best = dd.group_by(key).agg(pl.col("net_perfect").max().alias("best"))
+    print(f"signals with any net-positive leg under perfect foresight: "
+          f"{(best['best'] > 0).mean():.3f}   median best leg "
+          f"{best['best'].median():+.3f}c")
+    print(f"median |move| all legs {dd['abs_move'].median():.2f}c vs median cost "
+          f"{dd['cost'].median():.2f}c;  share |move|>cost "
+          f"{(dd['abs_move'] > dd['cost']).mean():.3f}")
+    atm = dd.filter(pl.col("moneyness") <= 15)
+    print(f"ATM +/-15c: median |move| {atm['abs_move'].median():.2f}c vs cost "
+          f"{atm['cost'].median():.2f}c  (fee alone is 3.5c of that)")
 
     OUT.mkdir(parents=True, exist_ok=True)
     d.write_parquet(OUT / "strike_legs.parquet")
