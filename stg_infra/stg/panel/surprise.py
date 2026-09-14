@@ -75,6 +75,7 @@ from stg.events.implied import (
     classify_contract, parse_bucket, parse_threshold,
     parse_threshold_from_subtitle, recover_pdf, pdf_implied_stats,
     resolved_value, infer_spacing, normalise_to_exclusive,
+    pit as pmf_pit, surprisal as pmf_surprisal,
 )
 from stg.panel._io import load_markets, load_settlement_values, scan_trades
 from stg.panel.registry import SPECS, series_filter_expr, trigger_universe
@@ -88,8 +89,9 @@ MIN_N_DEFAULT = 10     # events needed before a series counts as a usable trigge
 _SCHEMA = [
     "series", "event_ticker", "close_time", "snap_date",
     "implied_mean", "implied_std", "implied_entropy", "implied_skew",
-    "implied_kurtosis", "resolved_value", "resolved_source", "surprise",
-    "n_legs", "n_ladder", "coverage", "ladder_mass", "is_bucket",
+    "implied_kurtosis", "implied_median", "resolved_value",
+    "resolved_source", "surprise", "surprise_median", "pit", "s_pit",
+    "surprisal", "n_legs", "n_ladder", "coverage", "ladder_mass", "is_bucket",
 ]
 
 
@@ -119,6 +121,21 @@ def _resolved(event: str, true_vals: "dict[str, float]",
         return float(v), "expiration_value"
     fb = fallback()
     return (None, None) if fb is None else (float(fb), "ladder")
+
+
+def _pit_cols(mids, probs, rv: float) -> dict:
+    """The three distribution-relative surprise measures for one event.
+
+    Computed here rather than downstream because the recovered pmf is discarded
+    once the moments are taken, and neither the PIT nor the surprisal can be
+    reconstructed from the moments alone. ``s_pit`` is the signed, unit-free
+    surprise that makes cross-series pooling meaningful (``relations_study_plan``
+    §1.4); ``surprisal`` is the unsigned magnitude channel that does not inherit
+    the estimated mean's error (§1.5).
+    """
+    u = pmf_pit(mids, probs, rv)
+    return dict(pit=u, s_pit=2.0 * u - 1.0,
+                surprisal=pmf_surprisal(mids, probs, rv))
 
 
 def gate_panel(panel: pl.DataFrame, *, min_mass: float = MIN_MASS,
@@ -236,8 +253,11 @@ def _threshold_surprise(canon: str, mk: pl.DataFrame, tr: pl.LazyFrame,
             series=canon, event_ticker=ev, close_time=close, snap_date=day,
             implied_mean=st["mean"], implied_std=st["std"],
             implied_entropy=st["entropy"], implied_skew=st["skew"],
-            implied_kurtosis=st["kurtosis"], resolved_value=float(rv),
+            implied_kurtosis=st["kurtosis"], implied_median=st["median"],
+            resolved_value=float(rv),
             resolved_source=src, surprise=float(rv) - st["mean"],
+            surprise_median=float(rv) - st["median"],
+            **_pit_cols(mids, probs, float(rv)),
             n_legs=int(thr.size), n_ladder=int(n_ladder),
             coverage=thr.size / max(n_ladder, 1), ladder_mass=mass,
             is_bucket=False,
@@ -348,8 +368,11 @@ def _bucket_surprise(canon: str, mk: pl.DataFrame, tr: pl.LazyFrame,
             series=canon, event_ticker=ev, close_time=close, snap_date=best,
             implied_mean=st["mean"], implied_std=st["std"],
             implied_entropy=st["entropy"], implied_skew=st["skew"],
-            implied_kurtosis=st["kurtosis"], resolved_value=float(rv),
+            implied_kurtosis=st["kurtosis"], implied_median=st["median"],
+            resolved_value=float(rv),
             resolved_source=src, surprise=float(rv) - st["mean"],
+            surprise_median=float(rv) - st["median"],
+            **_pit_cols(mids[order], pmf[order], float(rv)),
             n_legs=int(mids.size), n_ladder=int(bk.height),
             coverage=mids.size / max(bk.height, 1), ladder_mass=mass,
             is_bucket=True,

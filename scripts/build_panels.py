@@ -6,6 +6,7 @@
 Writes to ``artifacts/panels/``:
 
     surprise_panel.parquet   one row per usable macro event
+    surprise_panel_ungated.parquet   the same, before the quality gates
     node_panel_<cadence>.parquet   (series, date) belief-state features
     universe.parquet         canonical series, event counts, in/out of universe
     MANIFEST.md              row counts, universe N, build timestamp
@@ -56,6 +57,13 @@ def main() -> None:
     # cost, rather than leaving the drop invisible in a row count.
     raw = build_surprise_panel(trigs, markets=mk, trades=tr, gated=False)
     gates = gate_report(raw)
+    # The ungated panel is now written too. The calibration study in
+    # analysis/relations_2026_09/ has to run on it: the mass and coverage gates
+    # keep the ladders that already sum to ~1, so a PIT measured on the gated
+    # panel is bounded and near-uniform by construction and cannot detect the
+    # miscalibration it exists to look for.
+    assert_no_oos(raw, time_col="close_time")
+    raw.write_parquet(OUT / "surprise_panel_ungated.parquet")
     surprise = gate_panel(raw)
     assert_no_oos(surprise, time_col="close_time")
     surprise.write_parquet(OUT / "surprise_panel.parquet")

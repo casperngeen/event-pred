@@ -333,6 +333,61 @@ def pdf_implied_stats(
     }
 
 
+def pmf_bin_index(midpoints: np.ndarray, value: float) -> int:
+    """Index of the bin containing ``value``, given only the bin midpoints.
+
+    Both contract paths hand around ``(midpoints, probs)`` and discard the bin
+    *edges*, so the edges are reconstructed as the halfway points between
+    consecutive midpoints. For a threshold ladder with uniform spacing and
+    ``tail_width = spacing`` this recovers the original thresholds exactly (the
+    first two midpoints are ``t0 - s/2`` and ``t0 + s/2``, whose midpoint is
+    ``t0``); for the bucket path it reproduces the stated bucket boundaries
+    whenever the buckets tile without gaps. Uneven ladders — payrolls steps by
+    25k mid-ladder and 100k in the tails — get an edge placed proportionally,
+    which is the intended behaviour rather than an approximation error.
+    """
+    m = np.asarray(midpoints, dtype=float)
+    if m.size == 1:
+        return 0
+    edges = (m[:-1] + m[1:]) / 2.0
+    return int(np.searchsorted(edges, float(value), side="right"))
+
+
+def pit(midpoints: np.ndarray, probs: np.ndarray, value: float) -> float:
+    """Probability-integral transform of ``value`` under a discrete pmf.
+
+    Returns ``u = P(X < bin) + 0.5 * P(X = bin)`` — the *mid*-PIT. The plain
+    CDF is the wrong object here: the recovered distribution is a pmf over 5-10
+    ladder bins, not a density, so ``F(value)`` is discretisation-biased upward
+    by half a bin's mass on average and ``u`` cannot be uniform even under a
+    perfectly calibrated market. The mid-PIT is uniform in expectation for a
+    calibrated discrete forecast, which is what makes the calibration test in
+    ``analysis/relations_2026_09/`` meaningful.
+
+    ``2u - 1`` is the signed, unit-free replacement for ``resolved - mean``:
+    bounded in [-1, +1] and comparable across percentage points of CPI and
+    thousands of jobless claims.
+    """
+    p = np.asarray(probs, dtype=float)
+    i = pmf_bin_index(midpoints, value)
+    below = float(p[:i].sum())
+    return below + 0.5 * float(p[i])
+
+
+def surprisal(midpoints: np.ndarray, probs: np.ndarray, value: float,
+              floor: float = 1e-6) -> float:
+    """``-log p(bin containing value)`` in nats — surprise in Shannon's sense.
+
+    The unsigned magnitude channel. Unlike ``|resolved - implied_mean|`` it does
+    not inherit the estimated mean's error, and unlike the raw difference it is
+    unit-free. ``floor`` bounds the value for outcomes the ladder gave zero mass
+    to, which the open-tail construction makes rare but not impossible.
+    """
+    p = np.asarray(probs, dtype=float)
+    i = pmf_bin_index(midpoints, value)
+    return float(-np.log(max(float(p[i]), floor)))
+
+
 def resolved_value(event_markets: pl.DataFrame) -> Optional[float]:
     """Infer the resolved value from submarket yes/no results.
 

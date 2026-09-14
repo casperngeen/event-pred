@@ -11,7 +11,8 @@ import pytest
 
 from stg.events.implied import (
     BUCKET, THRESHOLD, classify_contract, infer_spacing, parse_bucket,
-    parse_threshold, recover_pdf, resolved_value,
+    parse_threshold, pit, pmf_bin_index, recover_pdf, resolved_value,
+    surprisal,
 )
 from stg.panel.registry import SPECS, series_filter_expr, universe
 
@@ -59,3 +60,53 @@ def test_bucket_parse_coverage_for_wti(markets):
         if classify_contract(t, s) == BUCKET and parse_bucket(t, s) is None
     ]
     assert not misses, f"WTI: {len(misses)} BUCKET contracts parsed to None"
+
+
+# --------------------------------------------------------------------------
+# PIT / surprisal — the distribution-relative surprise measures (§1.4, §1.5)
+# --------------------------------------------------------------------------
+def test_pmf_bin_index_recovers_the_original_thresholds():
+    """Edges are reconstructed from midpoints, so they must land on the strikes."""
+    mids, _ = recover_pdf(np.array([3.0, 3.1, 3.2]), np.array([0.8, 0.5, 0.2]))
+    assert pmf_bin_index(mids, 2.80) == 0     # below the lowest strike
+    assert pmf_bin_index(mids, 3.05) == 1     # (3.0, 3.1]
+    assert pmf_bin_index(mids, 3.15) == 2     # (3.1, 3.2]
+    assert pmf_bin_index(mids, 3.40) == 3     # above the highest strike
+
+
+def test_mid_pit_is_half_at_the_centre_of_a_symmetric_ladder():
+    mids, probs = recover_pdf(np.array([3.0, 3.1]), np.array([0.75, 0.25]))
+    # mass 0.25 / 0.50 / 0.25 -> the middle bin's mid-PIT is 0.25 + 0.5*0.5
+    assert pit(mids, probs, 3.05) == pytest.approx(0.5)
+
+
+def test_pit_is_monotone_and_bounded():
+    mids, probs = recover_pdf(np.array([3.0, 3.1, 3.2]), np.array([0.8, 0.5, 0.2]))
+    us = [pit(mids, probs, v) for v in (2.8, 3.05, 3.15, 3.4)]
+    assert us == sorted(us)
+    assert all(0.0 <= u <= 1.0 for u in us)
+
+
+def test_surprisal_is_larger_for_the_less_likely_outcome():
+    mids, probs = recover_pdf(np.array([3.0, 3.1, 3.2]), np.array([0.95, 0.90, 0.05]))
+    # nearly all mass sits in (3.1, 3.2]; a print below 3.0 is the surprise
+    assert surprisal(mids, probs, 2.8) > surprisal(mids, probs, 3.15)
+    assert surprisal(mids, probs, 3.15) == pytest.approx(-np.log(probs[2]))
+
+
+def test_surprisal_floors_a_zero_mass_outcome():
+    mids = np.array([0.0, 1.0, 2.0])
+    probs = np.array([0.5, 0.0, 0.5])
+    assert np.isfinite(surprisal(mids, probs, 1.0))
+
+
+@requires_archive
+def test_surprise_panel_carries_the_pit_columns(surprise_panel):
+    for c in ("pit", "s_pit", "surprisal", "implied_median", "surprise_median"):
+        assert c in surprise_panel.columns, f"{c} missing from the surprise panel"
+    u = surprise_panel["pit"].drop_nulls().to_numpy()
+    assert u.size == surprise_panel.height
+    assert ((u >= 0.0) & (u <= 1.0)).all()
+    s = surprise_panel["s_pit"].to_numpy()
+    assert ((s >= -1.0) & (s <= 1.0)).all()
+    assert (surprise_panel["surprisal"].to_numpy() >= 0).all()
