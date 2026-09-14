@@ -3,6 +3,40 @@
 Rank/sign based throughout: the CPI/CPIYOY consistency check (research_log.md
 §2) showed the signal is in the *direction* of a surprise, not its magnitude,
 so Pearson dilutes it toward zero.
+
+Ties
+----
+``response`` is a difference of integer cent prices, so it takes only ~103
+distinct values over 5,315 panel rows — **98.1% of the mass is tied** (and
+``surprise`` is 86.2% tied). Ranking therefore has to average ties: the old
+``argsort(argsort(x))`` handed arbitrary distinct ranks to equal values, which
+moved individual edge weights by up to |Δρ| = 0.238 against a tie-corrected
+Spearman (``JOBLESSCLAIMS->FED``: 0.329 vs 0.090).
+
+P-values
+--------
+Two are available per pair and they are not interchangeable:
+
+``spearman_p``
+    the t-approximation. Exact-t now, not normal — the old version evaluated
+    the t statistic against a standard normal, which is anti-conservative at
+    the n = 10-46 this grid runs on (``CPIYOY->FEDDECISION/cut``: 0.014
+    reported, 0.062 actual). Still only an *approximation*: under this much
+    tying its distributional assumption is not met, so treat it as a screen.
+
+``permutation_p``
+    exact by construction. A permutation test stays valid with a non-standard
+    statistic, ties included, because the null is generated with the same
+    statistic. **This is the one to select on.** Applying BH to the asymptotic
+    p instead cost the published edge table six of its eight survivors; see
+    ``estimate_adjacency(select_on=...)``.
+
+Randomness
+----------
+Every permutation routine takes an explicit ``seed``. The module previously
+held one shared ``default_rng(0)`` that all callers drew from in sequence, so
+adding a pair — or a ladder rung — silently changed every p-value computed
+after it.
 """
 
 from __future__ import annotations
@@ -10,12 +44,21 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from scipy.stats import rankdata, t as _t_dist
 
-_RNG = np.random.default_rng(0)
+DEFAULT_SEED = 0
+
+
+def _rng(rng, seed: int):
+    """A generator that does not depend on how many callers ran before us."""
+    if rng is not None:
+        return rng
+    return np.random.default_rng(seed)
 
 
 def _rank(x: np.ndarray) -> np.ndarray:
-    return np.argsort(np.argsort(x)).astype(float)
+    """Ranks with ties averaged — required, see the module docstring."""
+    return rankdata(np.asarray(x, float)).astype(float)
 
 
 def spearman(a: np.ndarray, b: np.ndarray) -> float:
@@ -31,25 +74,37 @@ def spearman(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def spearman_p(rho: float, n: int) -> float:
-    """Two-sided asymptotic p-value (normal approx to the t on ranks, n >= 10)."""
+    """Two-sided p from the t-approximation on ranks, with ``n - 2`` df.
+
+    Matches ``scipy.stats.spearmanr``. A *screen*, not the test of record --
+    see the module docstring on ties. Prefer :func:`permutation_p` for
+    anything that gets selected on or reported.
+    """
     if not np.isfinite(rho) or abs(rho) >= 1 or n < 4:
         return float("nan")
     t = rho * math.sqrt((n - 2) / (1 - rho * rho))
-    z = abs(t) / math.sqrt(2.0)
-    return float(min(max(2.0 * (1.0 - 0.5 * (1.0 + math.erf(z))), 0.0), 1.0))
+    return float(min(max(2.0 * _t_dist.sf(abs(t), n - 2), 0.0), 1.0))
 
 
 def permutation_p(a: np.ndarray, b: np.ndarray, n_perm: int = 2000,
-                  rng: np.random.Generator | None = None) -> float:
-    """Two-sided permutation p: shuffle ``a`` against fixed ``b``."""
-    rng = rng or _RNG
+                  rng: np.random.Generator | None = None,
+                  seed: int = DEFAULT_SEED) -> float:
+    """Two-sided permutation p: shuffle ``a`` against fixed ``b``.
+
+    Uses the ``(1 + k) / (1 + n_perm)`` estimator, so the floor is
+    ``1 / (1 + n_perm)`` rather than zero. A reported ``p = 0.0000`` is not a
+    possible estimate from a finite number of draws, and it breaks BH and any
+    log-scale plot downstream.
+    """
+    rng = _rng(rng, seed)
     a = np.asarray(a, float)
     b = np.asarray(b, float)
     obs = spearman(a, b)
     if not np.isfinite(obs):
         return float("nan")
     null = np.array([spearman(rng.permutation(a), b) for _ in range(n_perm)])
-    return float((np.abs(null) >= abs(obs)).mean())
+    k = int((np.abs(null) >= abs(obs)).sum())
+    return float((1 + k) / (1 + n_perm))
 
 
 def partial_spearman(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> float:
@@ -87,10 +142,17 @@ def benjamini_hochberg(pvals: np.ndarray, q: float = 0.10) -> np.ndarray:
 
 
 def bh_critical(pvals: np.ndarray, q: float = 0.10) -> np.ndarray:
-    """Per-hypothesis BH threshold q*rank/m, aligned to input order."""
+    """Per-hypothesis BH threshold q*rank/m, aligned to input order.
+
+    Ties take the *largest* rank in the tie group, which is what BH's step-up
+    actually grants them: if the last member of a tie passes, all of them do.
+    ``argsort(argsort(p))`` broke ties arbitrarily, so two hypotheses with an
+    identical p could be shown different thresholds — and permutation p-values
+    tie constantly, being multiples of ``1 / (1 + n_perm)``.
+    """
     p = np.asarray(pvals, float)
     m = len(p)
-    ranks = np.argsort(np.argsort(p)) + 1
+    ranks = rankdata(p, method="max")
     return q * ranks / m
 
 
@@ -99,6 +161,7 @@ def block_permutation_sign_p(
     blocks: dict[str, list[str]] | None = None,
     n_perm: int = 5000,
     rng: np.random.Generator | None = None,
+    seed: int = DEFAULT_SEED,
 ) -> dict:
     """Pooled sign-agreement test with a block-permutation null.
 
@@ -110,7 +173,7 @@ def block_permutation_sign_p(
     null. The naive per-cell shuffle overstates significance ~10x
     (research_log.md §3).
     """
-    rng = rng or _RNG
+    rng = _rng(rng, seed)
 
     def pooled(cs: list[tuple[str, np.ndarray, np.ndarray]]) -> float:
         hits = tot = 0
@@ -141,6 +204,7 @@ def block_permutation_sign_p(
         "sign_agreement": obs,
         "null_mean": float(np.nanmean(null)),
         "null_sd": float(np.nanstd(null)),
-        "p": float((null >= obs).mean()),
+        # (1 + k) / (1 + n_perm): see permutation_p
+        "p": float((1 + int((null >= obs).sum())) / (1 + n_perm)),
         "n": int(sum(len(s) for _, s, _ in cells)),
     }

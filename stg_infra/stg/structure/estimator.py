@@ -9,12 +9,21 @@ can be reported as a finding and confirmed out of sample.
 Promotes ``analysis/exploratory_2026_08/structure_discovery.py`` §1–2.
 
     estimate_adjacency(surprise_panel) -> edge table
-        trigger target side n n_targets rho p_asymptotic bh_rank bh_crit
-        survives p_permutation same_release
+        trigger target side n n_targets rho p_asymptotic p_permutation
+        bh_rank bh_crit survives same_release
+
+Selection runs on ``p_permutation`` by default, not ``p_asymptotic``. The
+asymptotic p is a t-approximation on ranks that are ~98% tied (``response`` is
+a difference of integer cents), so its distributional assumption is not met;
+the permutation p is exact by construction with the same statistic. Selecting
+on the asymptotic p reported **8** survivors where the permutation p supports
+**3** — see ``stg/structure/stats.py`` and the ``select_on`` argument. Both
+p-values are always reported so the gap stays visible.
 """
 
 from __future__ import annotations
 
+import zlib
 from typing import Optional
 
 import numpy as np
@@ -39,9 +48,31 @@ def estimate_adjacency(
     min_n: int = 10,
     q: float = 0.10,
     n_perm: int = 2000,
+    select_on: str = "permutation",
+    seed: int = 0,
     markets: Optional[pl.DataFrame] = None,
     trades: Optional[pl.LazyFrame] = None,
 ) -> pl.DataFrame:
+    """Estimate the cross-market influence adjacency.
+
+    ``select_on`` picks which p-value BH controls:
+
+    ``"permutation"`` (default)
+        Exact, tie-robust, and computed for **every** pair rather than only the
+        survivors — BH needs the whole vector, so the old "permute the
+        survivors and near-misses" shortcut could not support selection.
+    ``"asymptotic"``
+        The t-approximation. Reproduces the pre-fix behaviour; keep it only for
+        comparing against the published table.
+
+    Each pair's permutation null is drawn from its own generator, seeded from
+    ``seed`` and the pair's identity, so a p-value does not depend on how many
+    pairs were evaluated before it. The pair is folded into the seed with
+    ``crc32``, not ``hash()`` -- Python randomises string hashing per process,
+    so ``hash()`` would have made every p-value differ between runs.
+    """
+    if select_on not in ("permutation", "asymptotic"):
+        raise ValueError(f"unknown select_on {select_on!r}")
     mk = markets if markets is not None else load_markets(is_only=True)
     tr = trades if trades is not None else scan_trades(is_only=True)
     triggers = usable_triggers(surprise_panel, min_n)
@@ -91,25 +122,28 @@ def estimate_adjacency(
 
     if not rows:
         return pl.DataFrame()
-    g = pl.DataFrame(rows).sort("p_asymptotic")
-    pvals = g["p_asymptotic"].to_numpy()
-    survives = benjamini_hochberg(pvals, q)
-    g = g.with_columns(
-        pl.Series("bh_rank", np.arange(1, g.height + 1)),
-        pl.Series("bh_crit", bh_critical(pvals, q)),
-        pl.Series("survives", survives),
-    )
+    g = pl.DataFrame(rows)
 
-    # permutation check — only where it matters (survivors + near-misses)
+    # Permutation p for *every* pair: BH controls whichever p it is given, so
+    # a partial vector cannot be selected on. Per-pair seeding keeps each value
+    # independent of grid order and of how many pairs preceded it.
     perm = []
     for r in g.iter_rows(named=True):
         key = (r["trigger"], r["target"], r["side"])
-        if r["survives"] or r["p_asymptotic"] < 0.05:
-            S, R = pair_arrays[key]
-            perm.append(permutation_p(S, R, n_perm))
-        else:
-            perm.append(float("nan"))
-    return g.with_columns(pl.Series("p_permutation", perm))
+        S, R = pair_arrays[key]
+        rng = np.random.default_rng([seed, *(zlib.crc32(k.encode()) for k in key)])
+        perm.append(permutation_p(S, R, n_perm, rng=rng))
+    g = g.with_columns(pl.Series("p_permutation", perm))
+
+    sel = "p_permutation" if select_on == "permutation" else "p_asymptotic"
+    g = g.sort(sel, "trigger", "target", "side")
+    pvals = g[sel].to_numpy()
+    return g.with_columns(
+        pl.Series("bh_rank", np.arange(1, g.height + 1)),
+        pl.Series("bh_crit", bh_critical(pvals, q)),
+        pl.Series("survives", benjamini_hochberg(pvals, q)),
+        pl.lit(select_on).alias("selected_on"),
+    )
 
 
 def adjacency_matrix(edges: pl.DataFrame, nodes: list[str],
