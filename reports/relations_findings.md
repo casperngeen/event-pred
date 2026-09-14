@@ -537,6 +537,52 @@ point estimate of what perfect foresight earns, not a significance claim.
 
 ---
 
+## Addendum 2 — the market is efficient with respect to the recovered structure
+
+`settlement_forecast.py`. The settlement *oracle* is +52c/contract, so unlike the
+price-change paths this one is not cost-constrained: the cost hurdle is a 2.5
+percentage-point edge over the market's probability. The question is therefore
+purely whether the channel signal forecasts a target's settlement better than the
+target's own price. Specification is in the script docstring; the entry price is
+the first print **strictly after** the trigger resolves, never `p0`.
+
+| test | result |
+|---|---|
+| (a) market's own forecast | Brier **0.0147** vs 0.2486 base rate |
+| (b) add `delta*d` | worsens Brier and log loss at **every** delta 0.01-0.10 |
+| (c) walk-forward delta, fit on prior years only | picks **delta = 0.000 every year** |
+| (d) net P&L | −0.759c, clustered CI [−1.16, −0.37], P(<=0) = 1.000 |
+| (e) direction permuted within trigger series | null −0.760 ± 0.214 vs observed −0.759, **p = 0.498** |
+
+Restricted to the 160 legs priced 20-80c, where the market is genuinely
+uncertain (about half of all legs trade under 10c), the **gross** edge before any
+cost is **−0.138c**, clustered CI [−8.04, +6.84], P(<=0) = 0.508. Zero.
+
+### Why this is the right conclusion rather than a disappointment
+
+It reconciles with channel pooling rather than contradicting it. The channel
+signal genuinely predicts the target's **price move** (63.2% aligned,
+p = 0.0004 clustered) — but that move *is* the market updating correctly. The
+signal predicts that the market will revise in the right direction, not that the
+market is wrong. Predicting someone else's correct update is only profitable if
+you can trade ahead of it, and §13 established the revision completes at the
+first executable print.
+
+So the thesis can state something stronger and cleaner than "costs ate the edge":
+
+1. **Cross-market propagation is real** — channel pooling, 53 clustered target
+   events, zero fitted parameters, falsification cell firing correctly.
+2. **It cannot be captured as a price change** — perfect foresight over direction
+   and strike nets +0.09c (drift) / +0.37c (jump).
+3. **And it is already in the price** — the first executable quote is a settlement
+   forecast the signal cannot improve at any delta, with a walk-forward optimiser
+   independently setting its weight to zero.
+
+That is an efficiency result about event-prediction markets, demonstrated three
+independent ways, not a failure to find a signal.
+
+---
+
 ## What follows
 
 - **Item 4 is ready to be promoted** out of exploration into a script + report
