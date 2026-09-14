@@ -35,23 +35,54 @@ CONTEXT = ("abs_z", "dtc", "p0c", "same_rel")
 
 
 def neighbour_signal(panel: pl.DataFrame, st: FoldStructure,
-                     survivors_only: bool = False) -> np.ndarray:
+                     survivors_only: bool = False,
+                     include_simultaneous: bool = False) -> np.ndarray:
     """Aggregate edge-weighted surprise from *other* triggers already resolved
     into the same target event.
 
     Strictly causal: only rows with an earlier ``t0`` on the same
     ``target_event`` contribute, so this is information a decision-maker holds
     at the moment the current trigger resolves.
+
+    Ties on ``t0`` are the whole difficulty here and they are not rare: **29.2%
+    of panel rows share a ``t0`` with a sibling on the same target event**,
+    because CPI, CPICORE, CPIYOY, CPICOREYOY, U3 and PAYROLLS all close at the
+    same instant as their co-release. The previous implementation cumulated over
+    row order, so a tied row saw whichever siblings happened to sort before it
+    -- matching neither a strict nor an inclusive past (993 of 5,315 rows
+    disagreed with both), and changing if the panel were reordered.
+
+    ``include_simultaneous=False`` (the default) means a tie group contributes
+    nothing to its own members, which is what the "earlier ``t0``" contract
+    says. ``True`` gives every member the whole group except itself -- arguably
+    also fair, since simultaneous prints are observable at that instant, but it
+    feeds same-release information into the feature and so runs into the
+    identification problem in ``TODO.md`` §Identification. Either way the answer
+    no longer depends on row order.
     """
     sig = st.signal(panel["pair"].to_list(), panel["z_surprise"].to_numpy(),
                     survivors_only)
     df = panel.select("target_event", "t0").with_columns(
         pl.Series("sig", sig), pl.Series("idx", np.arange(panel.height)))
     out = np.zeros(panel.height)
-    for (_ev,), g in df.sort("t0").group_by("target_event", maintain_order=True):
-        s = g["sig"].to_numpy()
-        prior = np.concatenate([[0.0], np.cumsum(s)[:-1]])
-        out[g["idx"].to_numpy()] = prior
+    for (_ev,), g in df.group_by("target_event"):
+        g = g.sort("t0")
+        idx = g["idx"].to_numpy()
+        sg = g["sig"].to_numpy()
+        t0 = g["t0"].to_numpy()
+        csum = np.cumsum(sg)
+        total = csum[-1]
+        # first_of[j] = index of the first row sharing row j's t0; strictly
+        # earlier mass is the cumulative sum up to there.
+        _, first_of = np.unique(t0, return_inverse=True)
+        starts = np.searchsorted(t0, np.unique(t0))
+        before = np.where(starts[first_of] > 0, csum[starts[first_of] - 1], 0.0)
+        if include_simultaneous:
+            ends = np.searchsorted(t0, np.unique(t0), side="right")
+            group_total = csum[ends[first_of] - 1] - before
+            out[idx] = before + (group_total - sg)
+        else:
+            out[idx] = before
     return out
 
 

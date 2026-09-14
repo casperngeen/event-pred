@@ -20,6 +20,8 @@ from stg.direction.learners import BaseRate, SignRule, design, ladder, neighbour
 from stg.direction.structure import fit_structure
 from stg.splits import PURGE_DAYS
 
+from conftest import requires_archive
+
 UTC = dt.timezone.utc
 
 
@@ -192,9 +194,11 @@ def _trades(rows) -> pl.DataFrame:
 def test_effective_spread_reads_the_book_from_taker_direction():
     from stg.direction.tradability import effective_spread
     # yes-taker at 52 is the ask, no-taker at 50 is the bid -> 2c spread
+    # min_pairs=1: these are 4 hand-built prints, not a series to quote a cost
+    # from. The production default (30) is exercised by the guard test below.
     sp = effective_spread(_trades([("A", 0, 52, "yes"), ("A", 10, 50, "no"),
                                    ("A", 20, 52, "yes"), ("A", 30, 50, "no")]),
-                          by="series")
+                          by="series", min_pairs=1)
     assert sp["spread_median"][0] == 2.0
     assert sp["n_pairs"][0] == 3
 
@@ -202,9 +206,35 @@ def test_effective_spread_reads_the_book_from_taker_direction():
 def test_effective_spread_ignores_same_side_and_stale_pairs():
     from stg.direction.tradability import effective_spread
     same_side = _trades([("A", 0, 52, "yes"), ("A", 10, 55, "yes")])
-    assert effective_spread(same_side, by="series").is_empty()
+    assert effective_spread(same_side, by="series", min_pairs=1).is_empty()
     stale = _trades([("A", 0, 52, "yes"), ("A", 9999, 50, "no")])
-    assert effective_spread(stale, max_gap_s=60, by="series").is_empty()
+    assert effective_spread(stale, max_gap_s=60, by="series",
+                            min_pairs=1).is_empty()
+
+
+def test_effective_spread_keeps_negative_observations():
+    """Dropping the negative tail truncated one side of the drift noise and
+    biased the mean up 18% (1.59c vs 1.35c measured on CPI/FED/U3)."""
+    from stg.direction.tradability import effective_spread
+    # the 3rd pair is negative: mid drifted past the spread between prints
+    tr = _trades([("A", 0, 52, "yes"), ("A", 10, 50, "no"),
+                  ("A", 20, 52, "yes"), ("A", 30, 56, "no")])
+    kept = effective_spread(tr, by="series", min_pairs=1, max_frac_negative=1.0)
+    dropped = effective_spread(tr, by="series", min_pairs=1,
+                               max_frac_negative=1.0, drop_negative=True)
+    assert kept["frac_negative"][0] > 0
+    assert kept["spread_mean"][0] < dropped["spread_mean"][0]
+    assert dropped["frac_negative"][0] == 0.0
+
+
+def test_effective_spread_withholds_thin_and_contaminated_groups():
+    """CPICORE had 4 pairs and 26% negatives; its median came out at 0.0c."""
+    from stg.direction.tradability import effective_spread
+    tr = _trades([("A", 0, 52, "yes"), ("A", 10, 50, "no"),
+                  ("A", 20, 52, "yes"), ("A", 30, 56, "no")])
+    assert effective_spread(tr, by="series").is_empty(), "too few pairs to quote"
+    assert effective_spread(tr, by="series", min_pairs=1).is_empty(), \
+        "33% negative is a broken pairing, not a cheap market"
 
 
 def test_effective_spread_collapses_sweep_fills_at_one_timestamp():
@@ -216,7 +246,7 @@ def test_effective_spread_collapses_sweep_fills_at_one_timestamp():
         dict(ticker="A", created_time=t + dt.timedelta(seconds=5), yes_price=52.0,
              taker_side="yes", series="X"),
     ])
-    sp = effective_spread(swept, by="series")
+    sp = effective_spread(swept, by="series", min_pairs=1)
     assert sp["n_pairs"][0] == 1        # the 45c sweep leg is not a quote
     assert sp["spread_median"][0] == 2.0
 
@@ -288,3 +318,73 @@ def test_representative_tickers_breaks_ties_deterministically():
     picks = {representative_tickers("CPI", markets=mk, trades=trades)["ticker"][0]
              for _ in range(5)}
     assert picks == {"E1-A"}                  # lexicographic tiebreak, every time
+
+
+# --- neighbour_signal: simultaneous triggers ------------------------------
+def _nbr_reference(panel, sig, inclusive: bool):
+    import numpy as np
+    t0 = panel["t0"].to_numpy()
+    ev = panel["target_event"].to_numpy()
+    out = np.zeros(panel.height)
+    for i in range(panel.height):
+        same = ev == ev[i]
+        if inclusive:
+            out[i] = sig[same & (t0 <= t0[i])].sum() - sig[i]
+        else:
+            out[i] = sig[same & (t0 < t0[i])].sum()
+    return out
+
+
+@requires_archive
+def test_neighbour_signal_matches_a_stated_semantics(pair_panel):
+    """It used to match neither a strict nor an inclusive past.
+
+    Cumulating over row order gave a tied row whichever siblings happened to
+    sort before it — 993 of 5,315 rows disagreed with both definitions. 29.2%
+    of rows share a t0 with a sibling, because the CPI family and PAYROLLS/U3
+    all close at the same instant as their co-release.
+    """
+    import numpy as np
+    from stg.direction.learners import neighbour_signal
+    from stg.direction.structure import fit_structure
+    st = fit_structure(pair_panel)
+    sig = st.signal(pair_panel["pair"].to_list(),
+                    pair_panel["z_surprise"].to_numpy())
+
+    strict = neighbour_signal(pair_panel, st)
+    assert np.allclose(strict, _nbr_reference(pair_panel, sig, inclusive=False))
+
+    incl = neighbour_signal(pair_panel, st, include_simultaneous=True)
+    assert np.allclose(incl, _nbr_reference(pair_panel, sig, inclusive=True))
+    assert not np.allclose(strict, incl), "the panel must contain t0 ties"
+
+
+@requires_archive
+def test_neighbour_signal_is_order_invariant(pair_panel):
+    import numpy as np
+    from stg.direction.learners import neighbour_signal
+    from stg.direction.structure import fit_structure
+    st = fit_structure(pair_panel)
+    key = ("trigger_event", "target_event", "pair")
+
+    def as_map(panel):
+        v = neighbour_signal(panel, st)
+        return dict(zip(zip(*(panel[c].to_list() for c in key)), v))
+
+    base = as_map(pair_panel)
+    shuffled = as_map(pair_panel.sample(fraction=1.0, shuffle=True, seed=11))
+    assert all(base[k] == pytest.approx(shuffled[k]) for k in base)
+
+
+def test_rolling_windows_are_measured_in_days_not_rows():
+    """A gap in the date index stretched a 7-row window across weeks."""
+    import datetime as dt
+    gapped = pl.DataFrame({
+        "date": [dt.date(2024, 1, 1), dt.date(2024, 1, 2),
+                 dt.date(2024, 3, 1), dt.date(2024, 3, 2)],
+        "v": [1.0, 1.0, 1.0, 1.0]})
+    by_rows = gapped.with_columns(pl.col("v").rolling_sum(3).alias("s"))
+    by_days = gapped.with_columns(pl.col("v").rolling_sum_by("date", "3d").alias("s"))
+    # the row window reaches back over the two-month gap; the date window does not
+    assert by_rows["s"].to_list()[-1] == 3.0
+    assert by_days["s"].to_list()[-1] == 2.0

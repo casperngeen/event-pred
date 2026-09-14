@@ -43,12 +43,23 @@ import polars as pl
 FEE_RATE = 0.07
 DEFAULT_MAX_GAP_S = 60
 
+# Minimum adjacent opposite-direction pairs before a group's spread is an
+# estimate rather than an anecdote. CPICORE had 4 at the 60s window.
+MIN_SPREAD_PAIRS = 30
+
+# Above this share of negative observations the bid/ask pairing has broken down
+# (mid drift dominates), and the group's median is not a spread. CPICORE: 0.26.
+MAX_FRAC_NEGATIVE = 0.15
+
 
 def effective_spread(
     trades: pl.DataFrame,
     *,
     max_gap_s: int = DEFAULT_MAX_GAP_S,
     by: str = "ticker",
+    min_pairs: int = MIN_SPREAD_PAIRS,
+    max_frac_negative: float = MAX_FRAC_NEGATIVE,
+    drop_negative: bool = False,
 ) -> pl.DataFrame:
     """Effective spread in cents from labelled taker direction.
 
@@ -59,11 +70,34 @@ def effective_spread(
     fill sits at the best quote.
 
     ``trades`` needs ``ticker, created_time, yes_price, taker_side`` and a
-    grouping column if ``by`` is not ``ticker``. Returns median/mean spread and
-    the pair count per group.
+    grouping column if ``by`` is not ``ticker``. Returns median/mean spread,
+    the pair count, and the negative-observation share per group.
 
     Validity check (``research_summary.md`` §4.2.1): widening ``max_gap_s`` 60x
     must not move the estimate. If it does, mid-price drift is contaminating it.
+
+    Negative observations
+    ---------------------
+    The signed difference is an *estimator* of the spread, not the spread: mid
+    drift between the two prints makes individual observations negative (4.8% of
+    pairs on CPI/FED/U3, against 82.7% positive and 12.4% zero). They are kept.
+    Discarding them — which this function used to do unconditionally — truncates
+    one side of the noise and biases the mean **up by 0.24c, 18%** (1.59 vs
+    1.35). The median is unaffected at this tie density, which is why the ledger
+    charges ``spread_median`` and why the published cost figures are unchanged
+    by this fix. ``frac_negative`` is reported so the drift contamination is
+    visible rather than silently removed; ``drop_negative=True`` restores the
+    old behaviour for comparison only.
+
+    ``min_pairs`` drops groups too thin to estimate from. Without it CPICORE
+    contributed a median built on **4** observations, tabulated beside CPIYOY's
+    1,685 as though they were comparable.
+
+    ``max_frac_negative`` drops groups where the pairing has broken down. A
+    genuine spread with modest drift yields few negatives; CPICORE yields 26%,
+    and its median with negatives kept is 0.0c — not a cheap market, a
+    meaningless estimate. Quoting it would understate the cost of trading the
+    one series it applies to, so it is withheld rather than reported.
     """
     need = {"ticker", "created_time", "yes_price", "taker_side", by}
     missing = need - set(trades.columns)
@@ -88,11 +122,18 @@ def effective_spread(
         spread=pl.when(pl.col("taker_side") == "yes")
         .then(pl.col("yes_price") - pl.col("prev_price"))
         .otherwise(pl.col("prev_price") - pl.col("yes_price"))
-    ).filter(pl.col("spread") >= 0)
+    )
+    if drop_negative:
+        t = t.filter(pl.col("spread") >= 0)
+    if t.is_empty():
+        return pl.DataFrame()
     return (t.group_by(by)
             .agg(pl.col("spread").median().alias("spread_median"),
                  pl.col("spread").mean().alias("spread_mean"),
-                 pl.len().alias("n_pairs"))
+                 pl.len().alias("n_pairs"),
+                 (pl.col("spread") < 0).mean().alias("frac_negative"))
+            .filter((pl.col("n_pairs") >= min_pairs)
+                    & (pl.col("frac_negative") <= max_frac_negative))
             .sort(by))
 
 

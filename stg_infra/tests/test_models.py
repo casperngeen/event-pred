@@ -49,8 +49,16 @@ def node_panel_df():
 
 @requires_archive
 def test_tensor_shapes_and_mask(pt):
+    """N is 22, not the 19 this asserted before.
+
+    The three asset-price targets (INXU, INXD, NASDAQ100U) joined the target
+    universe in ``3513010``, but the on-disk node panel predated that commit,
+    so this test was passing against a stale artifact. Rebuilding the panel
+    surfaced it. ``F`` is unchanged: ``n_fresh_legs`` is a diagnostic column,
+    not a member of ``nodes.kalshi.FEATURE_ORDER``.
+    """
     assert pt.X.shape == (pt.T, pt.N, pt.F)
-    assert pt.N == 19 and pt.F == 11
+    assert pt.N == 22 and pt.F == 11
     assert pt.mask.shape == (pt.T, pt.N)
     assert 0.2 < pt.mask.mean() < 0.9
     assert (pt.dates < np.datetime64(OOS_START.date())).all()

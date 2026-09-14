@@ -57,7 +57,17 @@ class FoldStructure:
 
 
 def fit_structure(train: pl.DataFrame, *, min_n: int = 10, q: float = 0.10) -> FoldStructure:
-    """Estimate per-pair signed rank association on ``train`` rows only."""
+    """Estimate per-pair signed rank association on ``train`` rows only.
+
+    The ``bh`` gate here uses the **asymptotic** p from
+    :func:`stg.structure.stats.spearman_p`, unlike Stage 1, which now selects on
+    a permutation p. That is deliberate: this is a per-fold *coverage screen*
+    deciding which rows a rung is scored on, not a reported inference, and
+    permuting 140 pairs x 6 folds to set it would cost more than the decision is
+    worth. The p is exact-t now rather than normal, so the gate is stricter than
+    it was and the ``bh`` subset is correspondingly smaller — read the pooled
+    result on ``p05`` and ``all`` alongside it, as the ladder already reports.
+    """
     rho: dict[str, float] = {}
     pmap: dict[str, float] = {}
     n: dict[str, int] = {}
