@@ -29,7 +29,7 @@ from stg.panel import (
     target_universe, trigger_universe,
 )
 from stg.panel._io import load_markets, scan_trades
-from stg.panel.surprise import usable_triggers
+from stg.panel.surprise import gate_panel, gate_report, usable_triggers
 from stg.splits import OOS_START, assert_no_oos
 
 OUT = Path("artifacts/panels")
@@ -52,10 +52,18 @@ def main() -> None:
 
     print(f"min_events={args.min_events}: triggers N={len(trigs)}, "
           f"targets N={len(tgts)}")
-    surprise = build_surprise_panel(trigs, markets=mk, trades=tr)
+    # Built ungated first so the MANIFEST can report what the quality gates
+    # cost, rather than leaving the drop invisible in a row count.
+    raw = build_surprise_panel(trigs, markets=mk, trades=tr, gated=False)
+    gates = gate_report(raw)
+    surprise = gate_panel(raw)
     assert_no_oos(surprise, time_col="close_time")
     surprise.write_parquet(OUT / "surprise_panel.parquet")
     triggers = usable_triggers(surprise, 10)
+    assert usable_triggers(raw, 10) == triggers, (
+        "the quality gates dropped a trigger series, which changes the graph "
+        "rather than cleaning it — inspect gate_report() before proceeding"
+    )
 
     node = build_node_panel(tgts, cadence=args.cadence, min_events=args.min_events,
                             markets=mk)
@@ -78,6 +86,25 @@ def main() -> None:
         f"{', '.join(triggers)} |",
         f"| node_panel_{args.cadence} | {node.height} | "
         f"{node['series'].n_unique()} series, {node['date'].n_unique()} dates |",
+        "",
+        "## surprise panel: quality gates and settlement source",
+        "",
+        "`ladder_mass` outside [0.7, 1.5], or `coverage` < 0.5, means the "
+        "snapshot is not a distribution; see `stg/panel/surprise.py`. "
+        "`true value` counts events resolved from `expiration_value` rather "
+        "than the ladder midpoint.",
+        "",
+        "| series | events | kept | dropped: mass | dropped: coverage | true value |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in gates.iter_rows(named=True):
+        lines.append(
+            f"| {r['series']} | {r['n']} | {r['n_kept']} | {r['dropped_mass']} "
+            f"| {r['dropped_coverage']} | {r['n_true_value']} |")
+    lines += [
+        f"| **total** | **{gates['n'].sum()}** | **{gates['n_kept'].sum()}** "
+        f"| {gates['dropped_mass'].sum()} | {gates['dropped_coverage'].sum()} "
+        f"| {gates['n_true_value'].sum()} |",
         "",
         "## events per series",
         "",

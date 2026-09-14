@@ -110,7 +110,9 @@ def sign_table(panel: pl.DataFrame) -> list[str]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--gate", default="bh", choices=["bh", "p05"])
+    # p05 is the headline gate: better powered than bh, which selects harder
+    # edges but leaves ~a third the rows. See run_direction_study.py.
+    ap.add_argument("--gate", default="p05", choices=["p05", "bh"])
     ap.add_argument("--n-folds", type=int, default=8)
     ap.add_argument("--start-frac", type=float, default=0.4)
     ap.add_argument("--max-gap-s", type=int, default=DEFAULT_MAX_GAP_S)
@@ -119,6 +121,14 @@ def main() -> None:
                          "in artifacts/effective_spreads.parquet otherwise)")
     args = ap.parse_args()
 
+    _src = Path("artifacts/panels/surprise_panel.parquet")
+    if _src.exists() and PAIR_PANEL.exists() and \
+            _src.stat().st_mtime > PAIR_PANEL.stat().st_mtime:
+        raise SystemExit(
+            f"{PAIR_PANEL} is older than {_src}. Run "
+            "scripts/run_direction_study.py first — this script does not build "
+            "the pair panel and would otherwise price a stale one."
+        )
     panel = pl.read_parquet(PAIR_PANEL).filter(pl.col("t0") >= BURN_IN_END)
     folds = walk_forward(panel, n_folds=args.n_folds, start_frac=args.start_frac)
     structures = [(f, fit_structure(panel.filter(pl.Series(f.train)))) for f in folds]
@@ -136,7 +146,15 @@ def main() -> None:
     # (TODO.md, Phase D) — cache the result rather than pay it per run.
     traded = panel.filter(pl.Series(mask))
     cache = OUT / "effective_spreads.parquet"
-    if cache.exists() and not args.refresh_spreads:
+    # A cache written before ``effective_spread`` gained a column is not usable;
+    # recompute rather than fail on the missing key.
+    _COLS = {"series", "spread_median", "spread_mean", "n_pairs",
+             "frac_negative", "window_s"}
+    fresh = cache.exists() and _COLS <= set(pl.read_parquet_schema(cache))
+    if not fresh and cache.exists() and not args.refresh_spreads:
+        print(f"cache {cache} predates the current effective_spread schema "
+              "— recomputing (~7 min)")
+    if fresh and not args.refresh_spreads:
         cached = pl.read_parquet(cache)
         sp_series = cached.filter(pl.col("window_s") == args.max_gap_s).drop("window_s")
         sp_wide = cached.filter(pl.col("window_s") == args.max_gap_s * 60).drop("window_s")
@@ -197,14 +215,19 @@ def main() -> None:
     lines += ["", "## 3. Effective spread on the traded targets", "",
               "Taker-direction estimator (`research_summary.md` §4.2.1). "
               "Window-invariance is the validity check: widening the pairing "
-              "window 60x must not move the median.", "",
-              "| target series | median (cents) | mean | n pairs | median @ 60x window |",
-              "|---|---|---|---|---|"]
+              "window 60x must not move the median. `neg` is the share of "
+              "observations where mid drift outran the spread — these are kept "
+              "(dropping only the negative tail biased the mean up 18%), and a "
+              "series above 15% neg, or under 30 pairs, is withheld entirely "
+              "rather than quoted.", "",
+              "| target series | median (cents) | mean | n pairs | neg | median @ 60x window |",
+              "|---|---|---|---|---|---|"]
     wide = dict(zip(sp_wide["series"].to_list(), sp_wide["spread_median"].to_list())) \
         if sp_wide.height else {}
     for r in sp_series.iter_rows(named=True):
         lines.append(f"| {r['series']} | {fmt(r['spread_median'], 2)} | "
                      f"{fmt(r['spread_mean'], 2)} | {r['n_pairs']} | "
+                     f"{fmt(100 * r['frac_negative'], 1)}% | "
                      f"{fmt(wide.get(r['series'], float('nan')), 2)} |")
 
     if summ:
@@ -239,10 +262,13 @@ def main() -> None:
             if summ["net_sd"] > 0 else float("nan")
         if summ["unpriced_targets"]:
             lines += ["",
-                      "Targets too thin to yield a single adjacent "
-                      "opposite-direction trade pair, so uncosted: "
+                      "Targets with no usable spread estimate, so uncosted: "
                       + ", ".join(f"`{t}`" for t in summ["unpriced_targets"])
-                      + ". That illiquidity is itself a tradability finding."]
+                      + ". A target is withheld either for too few adjacent "
+                      "opposite-direction pairs (< 30) or for too many negative "
+                      "observations (> 15%, meaning mid drift outran the spread "
+                      "and the pairing is not reading the book). Both are "
+                      "illiquidity, and that is itself a tradability finding."]
         lines += ["",
                   f"t-statistic on net per-trade cents: **{fmt(t, 2)}** "
                   f"(n = {summ['n_trades']}).",

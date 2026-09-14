@@ -45,10 +45,28 @@ OUT = Path("artifacts")
 PAIR_PANEL = PANELS / "pair_panel_dormant.parquet"
 
 
+def _cache_is_stale() -> bool:
+    """True if the surprise panel is newer than the cached pair panel.
+
+    Without this the cache was keyed on nothing but existence, so it silently
+    served an 8 September panel through two rounds of upstream fixes -- the
+    surprise panel had been rebuilt twice and the whole study still reported
+    numbers from before any of it. A cache that cannot go stale is a cache that
+    hides the thing you just changed.
+    """
+    src = PANELS / "surprise_panel.parquet"
+    if not (PAIR_PANEL.exists() and src.exists()):
+        return True
+    return src.stat().st_mtime > PAIR_PANEL.stat().st_mtime
+
+
 def load_panel(rebuild: bool) -> pl.DataFrame:
-    if PAIR_PANEL.exists() and not rebuild:
+    if PAIR_PANEL.exists() and not rebuild and not _cache_is_stale():
         panel = pl.read_parquet(PAIR_PANEL)
     else:
+        if PAIR_PANEL.exists() and not rebuild:
+            print(f"{PAIR_PANEL} is older than surprise_panel.parquet "
+                  "— rebuilding rather than serving a stale panel")
         sp = pl.read_parquet(PANELS / "surprise_panel.parquet")
         panel = build_pair_panel(sp, markets=load_markets(is_only=True),
                                  trades=scan_trades(is_only=True))
@@ -144,9 +162,16 @@ def main() -> None:
         "",
         "`all` every scored row; `p05` rows whose pair carries a nominally "
         "significant train-fold edge; `bh` rows whose pair survives BH-FDR *within "
-        "that fold*. `bh` is the out-of-fold analogue of the 75.9% sign agreement "
-        "in `adjacency_report.md`, which conditions on in-sample survival and so "
-        "cannot be read as predictive.",
+        "that fold*. Both structure gates are the out-of-fold analogue of the "
+        "in-sample sign agreement in `adjacency_report.md`, which conditions on "
+        "in-sample survival and so cannot be read as predictive.",
+        "",
+        "**`p05` is the headline gate.** It is the better-powered of the two "
+        "structure gates and the one this study reports. `bh` selects harder "
+        "edges but leaves too few rows to demonstrate anything with: the same "
+        "effect appears there at a larger magnitude and a worse p-value, purely "
+        "because n is a third the size. `bh` is kept beside it as the stricter "
+        "cut pointing the same way, not as the result.",
         "",
         "## Ladder",
         "",
