@@ -45,6 +45,7 @@ Submission target November 2026; analysis freeze early October.
 |---|---|
 | [graph_definition.md](graph_definition.md) | The single authoritative STG definition — node, edge, snapshot, label. Settled 2026-09-02. |
 | [data_prep_plan.md](data_prep_plan.md) | Data pipeline plan, Phases A–D, source-by-source. Phases B/C/D still partly open. |
+| [settlement_distribution_plan.md](settlement_distribution_plan.md) | **Design doc, not findings (2026-09-14)** — the successor direction: retire surprise as the primitive and predict the *settlement statistic* instead. A predictive distribution `p̂ = Φ(−z)`, `z = (K − μ̂)/σ̂`; why the σ edge pays in the wings where fees are half and longshot bias points the same way; the ladder-coverage defect that must be fixed before any σ claim is meaningful; and a gating first experiment that needs no pdf reconstruction at all. |
 | [relations_study_plan.md](relations_study_plan.md) | **Design doc, not findings (2026-09-14)** — better surprise measures (PIT/quantile surprise, surprisal), richer edge metrics (order-flow and distributional responses, uncertainty and attention channels, state-conditional ρ), and structure beyond the pair (release-vector triggers, the PAYROLLS−U3 double trigger, CPI-family collapse, channel pooling as a block model). Ends with a suggested order and where it cuts across `TODO.md`. |
 
 ---
@@ -71,6 +72,7 @@ Regenerate by running the script from the repo root:
 | `analysis/exploratory_2026_08/README.md` | Index of the exploratory scripts in that directory. |
 | `analysis/agcrn_diagnostics_2026_09/` | `postmortem.py` + captured output; its writeup is `agcrn_postmortem.md` here. |
 | `analysis/data_quality_2026_09/` | `coverage_audit.py` + captured output; its writeup is research_log.md §12. |
+| `analysis/settlement_dist_2026_09/` | Working directory for `settlement_distribution_plan.md`. Empty so far — design only. |
 | `analysis/horizon_2026_09/` | Horizon/cost scripts + captured output; its writeup is research_log.md §13. Has its own README with run order. |
 
 ---
