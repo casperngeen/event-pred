@@ -27,6 +27,7 @@ Submission target November 2026; analysis freeze early October.
 | [TODO.md](TODO.md) | Consolidated task list and open decisions. The current state of play. |
 | [research_summary.md](research_summary.md) | The standing plan — research question, four components, phases. The master document. |
 | [update_2026_08.md](update_2026_08.md) | Supervisor-facing: seven proposed refinements to the CA report design, with motivation and supporting measurement. |
+| [progress_2026_09.md](progress_2026_09.md) | **Supervisor-facing progress report, CA submission (2026-08-12) → 2026-09-14.** What changed about each of the thesis's claims, what was retracted and why, the open decisions, and a risk register for the final report. Start here for the current state; `update_2026_08.md` covers only the first four weeks of that period. |
 
 ## Findings and measurement
 
