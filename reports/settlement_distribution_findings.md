@@ -79,8 +79,9 @@ contract after a fee charged once and half the measured spread.
 `wing_overround.py`, `wing_robustness.py`:
 
 1. **Ladder overround.** Buckets are mutually exclusive and exhaustive, so
-   prices must sum to 100c. They sum to a median of **124c**, and 77% of
-   ladders exceed 105c — selling every leg of a 124c ladder returns 24c by
+   prices must sum to 100c. At day granularity they sum to a median of **124c**,
+   and 77% of ladders exceed 105c — **but see the correction below; that
+   measurement does not survive a synchronicity control** — selling every leg of a 124c ladder returns 24c by
    construction. This was the obvious explanation and it is wrong. On
    mass-normalised prices the edge is **unchanged** (−5.4pp at 3–10c, −8.9pp at
    10–20c), and restricted to coherent ladders only (mass 0.95–1.10, 78 events)
@@ -101,6 +102,17 @@ Spread sensitivity: at 2×/3×/4× the measured effective spread the trade still
 nets +4.25 / +3.55 / +2.85c, all CIs excluding zero.
 
 ---
+
+> **Correction (2026-09-15).** The 124c overround quoted in §2 is withdrawn.
+> `analysis/arbitrage_2026_09/coherence.py` re-measures ladder mass by how far
+> apart the legs actually traded: median **111c** at day granularity, **70c**
+> within 60 minutes, **74c** within 5 minutes. Loose windows are stale (legs
+> priced hours apart in a moving market), tight windows are incomplete (few legs
+> trade in five minutes, and a partial partition is biased down). Trade prints
+> cannot measure overround; quotes can. The wing result itself is unaffected —
+> it survived mass-normalisation and the coherent-ladder subset independently —
+> but the standalone overround finding should not be cited. Full detail:
+> `arbitrage_findings.md` §3.
 
 ## 3. What this actually is — and it is a `σ` result
 
