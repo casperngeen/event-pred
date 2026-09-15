@@ -17,6 +17,7 @@ The writeup is `reports/leadlag_findings.md`.
     venv/bin/python analysis/leadlag_2026_09/build_panel.py      # ~4 min, writes the panel
     venv/bin/python analysis/leadlag_2026_09/price_structure.py  # market baseline by price
     venv/bin/python analysis/leadlag_2026_09/signal_model.py     # does the signal add anything?
+    venv/bin/python analysis/leadlag_2026_09/relations.py        # per-channel / per-pair, learned vs imposed
     venv/bin/python analysis/leadlag_2026_09/economics.py        # ~6 min (400 permutations)
 
 `build_panel.py` must run first; the rest read its parquet and are independent
@@ -27,6 +28,7 @@ of each other.
 | `build_panel.py` | One row per (trigger event, target leg). | 10,714 legs, 262 trigger events, 401 target events, 135 pairs. |
 | `price_structure.py` | How does the market itself behave by entry price? | Brier 0.0912 vs 0.2499 base. Calibrated except 5-10c (−3.24pp) and 90-95c (+4.34pp). |
 | `signal_model.py` | Does the aligned lead-lag signal predict settlement? | Yes: +3.80pp top-vs-bottom tercile, block-permutation p = 0.0005. Concentrated in 10-75c, absent above 75c. But no Brier/log-loss improvement. |
+| `relations.py` | Which specific relations carry it, and does learning beat imposing? | Learning loses monotonically: imposed (0 params) +0.86pp, per-channel (15) +0.47pp, per-pair (135) −0.07pp. 0/88 pairs survive BH; 3/14 channels do. |
 | `economics.py` | What does holding to close earn? | Gross +2.36c vs 0.00c for a permuted signal; friction 1.55c; net +0.81c with a clustered CI straddling zero. Decaying by year. |
 
 Captured output is in `out/`.

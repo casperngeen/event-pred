@@ -18,6 +18,7 @@ across the whole ladder rather than one representative leg:
 | **Net, it does not clear costs with confidence.** | Friction 1.55c → net **+0.81c**, clustered CI [−1.29, +3.08], P(≤0) = 0.24. |
 | **It does not improve the market's probability forecast.** | Neither a walk-forward `delta` tilt nor a logistic with the market price as an offset beats the market on Brier or log loss, in any price bucket. |
 | **And it is decaying.** | 2023 **+6.46c**, 2024 **+1.55c**, 2025 **−0.35c**. |
+| **Learning the relations is worse than imposing them.** | Imposed sign (0 params) +0.86pp; per-channel (15) +0.47pp; **per-pair (135) −0.07pp**. 0 of 88 pairs survive BH-FDR; 3 of 14 channels do. |
 
 The one-sentence version: **the lead-lag relation is real and it survives the
 hardest null this project has, but what it buys is roughly the size of the
@@ -206,6 +207,83 @@ tied up. The cheap legs lose and tie up almost nothing, so they barely dent the
 cent total and dominate the percentage. Which number is "the" answer depends on
 whether the binding constraint is positions or capital — and for a fully
 collateralised venue it is capital.
+
+---
+
+## 4b. Which relations carry it — and does learning them help?
+
+`relations.py`. Everything above imposes the sign from economics and pools 135
+ordered pairs. Two questions that leaves open: is the pooled effect carried by
+relations that make sense, and would *learning* the structure beat imposing it?
+
+Statistic per cell is the **aligned residual**, `mean(sign(signal)·(win − p))`
+in pp — zero parameters, reads directly as "when the relation says the YES leg
+is underpriced, how underpriced was it". Same block-permutation null, BH-FDR at
+q = 0.10.
+
+### Learning loses to imposing, monotonically in parameter count
+
+Walk-forward, sign estimated on prior years only:
+
+| variant | params | aligned (pp) | 95% CI | P(≤0) |
+|---|---|---|---|---|
+| **imposed** (HAWKISH) | **0** | **+0.86** | [−0.67, +2.52] | 0.15 |
+| `learn_chan` (per channel) | 15 | +0.47 | [−0.82, +1.92] | 0.25 |
+| `learn_pair` (per pair) | 135 | **−0.07** | [−1.38, +1.33] | 0.55 |
+| `flip` (control) | 0 | −0.86 | [−2.52, +0.67] | 0.85 |
+
+Every parameter spent makes it worse, and 135 of them take it to zero. The
+control behaves exactly as it must (an exact mirror), so the sign is doing real
+work. This is `relations_study_plan` §3.4's question answered on a settlement
+target: **the block model wins, and per-pair estimation is strictly harmful at
+this sample size.** Median cell has 9 target events; there is nothing to fit.
+
+### Per pair: nothing survives
+
+**0 of 88** testable pairs survive BH-FDR. The largest raw effects
+(`U3→ADP` +19.8pp, `U3→JOBLESSCLAIMS` +18.3pp, `GDP→CPICOREYOY` +16.5pp) sit on
+6–9 target events each and are exactly what a 88-cell search produces by
+chance.
+
+### Per channel: three survive, and they make sense
+
+| channel | legs | tgt events | aligned (pp) | 95% CI | perm p | BH |
+|---|---|---|---|---|---|---|
+| **labour→labour** | 489 | 23 | **+6.79** | [−1.72, +16.63] | 0.00 | ✓ |
+| growth→inflation | 391 | 68 | +5.15 | [+0.39, +9.88] | 0.09 | |
+| **inflation→inflation** | 693 | 89 | +0.82 | [−3.82, +5.42] | 0.00 | ✓ |
+| **labour→policy** | 657 | 30 | +0.64 | [−0.34, +1.47] | 0.02 | ✓ |
+| labour→inflation | 2641 | 239 | +0.25 | [−1.25, +1.74] | 0.37 | |
+| **inflation→policy** | 1031 | 33 | **−0.09** | [−0.76, +0.68] | 0.68 | |
+
+The three survivors are economically coherent, and in the most defensible way:
+
+* **labour→labour** is `JOBLESSCLAIMS→{PAYROLLS, ADP, U3}`, `U3→ADP`,
+  `PAYROLLS→ADP`. Weekly jobless claims leading monthly payrolls is the
+  textbook high-frequency-leads-low-frequency relation, and ADP is a private
+  estimate of the official payrolls number.
+* **inflation→inflation** is almost entirely **PCECORE ↔ CPI-family**. This is
+  the strongest *a priori* relation in the whole grid — core PCE and CPI
+  measure overlapping baskets, and PCE is partly constructed from CPI source
+  data. It is close to mechanical.
+* **labour→policy** is `{U3, PAYROLLS, JOBLESSCLAIMS}→FED`. The dual mandate.
+
+**And the famous one is flat.** `inflation→policy` — CPI→FED, the single most
+watched macro channel there is — comes out at −0.09pp, p = 0.68. That is not a
+failure of the method; it is the method working. The coherent reading is
+attention: the channel everyone trades is priced efficiently, and what is left
+is in the less-watched corners (PCE↔CPI construction overlap, claims→payrolls).
+That is a hypothesis this study suggests, not one it tests.
+
+### The caveat that applies to all three
+
+**Every BH survivor has a clustered bootstrap CI that includes zero.** The two
+tests disagree because they ask different things: the permutation holds the
+panel fixed and asks whether the trigger→target *pairing* is informative, while
+the bootstrap asks whether the result would survive a different draw of target
+events — and with 23–89 target events and near-perfect within-event dependence,
+that is a wide question. Read the channels as **where the pooled effect lives**,
+not as three independently established relations.
 
 ---
 
