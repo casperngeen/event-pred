@@ -228,6 +228,65 @@ def main() -> None:
     with pl.Config(tbl_rows=20, float_precision=2, tbl_width_chars=220):
         print(pl.DataFrame(rows))
 
+    # ------------------------------------------------------------------
+    print("\n=== how do you capture the trades that never filled? ===")
+    print("Two routes, and the counterfactual +14.83c is available on neither.")
+    print("That number is measured AT p0 -- a price that stops existing the")
+    print("moment the news is out. It measures how far the market moved away")
+    print("from you, not money sitting on a table.\n")
+
+    print("--- route 1: be faster. Take at p0 before the first post-news print.")
+    print("    The upper bound on a latency play: you always get the stale price.")
+    entry_p0 = np.where(sd > 0, L, 100.0 - L)
+    gross_p0 = payoff - entry_p0
+    net_p0 = gross_p0 - (fee_cents(entry_p0) + spread_cents(entry_p0) / 2.0)
+    gross_pe = payoff - entry_t
+    rows = []
+    for nm, gr, nt, en in (("take at p0 (infinitely fast)", gross_p0, net_p0, entry_p0),
+                           ("take at p_entry (realistic)", gross_pe, net_t, entry_t)):
+        obs, lo, hi, pneg = cboot(nt, ev)
+        rows.append(dict(arm=nm, n=len(nt), mean_entry=float(en.mean()),
+                         gross=float(gr.mean()), net=obs,
+                         ci_lo=lo, ci_hi=hi, p_le0=pneg))
+    with pl.Config(float_precision=2, tbl_width_chars=220):
+        print(pl.DataFrame(rows))
+    print("    The gap between the two rows is what the 6.2-minute repricing")
+    print("    window (research_log §13) is actually worth per contract.")
+
+    print("\n--- route 2: pay up. Rest a more aggressive limit.")
+    print("    offset k moves the limit k cents toward the market, so the order")
+    print("    fills more often and at a worse price. k = 0 is the maker arm;")
+    print("    large k converges to the taker.\n")
+    W = 86400
+    rows = []
+    for k in (0, 1, 2, 3, 5, 8):
+        lim_k = np.where(sd > 0, L + k, L - k)
+        lim_k = np.clip(lim_k, 1.0, 99.0)
+        filled = np.zeros(len(L), dtype=bool)
+        for i in range(len(L)):
+            arr = tape.get(tk[i])
+            if arr is None:
+                continue
+            s_, px_ = arr
+            j = int(np.searchsorted(s_, t_res[i], side="right"))
+            e_ = int(np.searchsorted(s_, t_res[i] + W, side="right"))
+            if j >= e_:
+                continue
+            wp = px_[j:e_]
+            filled[i] = bool((wp <= lim_k[i]).any() if sd[i] > 0
+                             else (wp >= lim_k[i]).any())
+        if filled.sum() < 30:
+            continue
+        ent = np.where(sd > 0, lim_k, 100.0 - lim_k)
+        net_k = payoff[filled] - ent[filled] - fee_cents(ent[filled])
+        obs, lo, hi, pneg = cboot(net_k, ev[filled])
+        rows.append(dict(offset_c=k, fill_rate=float(filled.mean()),
+                         n=int(filled.sum()), net_no_fee=obs,
+                         ci_lo=lo, ci_hi=hi, p_le0=pneg))
+    with pl.Config(tbl_rows=10, float_precision=2, tbl_width_chars=220):
+        print(pl.DataFrame(rows))
+    print("    (zero maker fee assumed throughout, i.e. the optimistic case)")
+
     pos.with_columns([pl.Series(f"filled_{k.replace(' ', '_')}", v)
                       for k, v in results.items()]).write_parquet(
         OUT / "maker_fill.parquet")

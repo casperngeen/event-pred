@@ -341,6 +341,56 @@ information, and drops the 1,968 rows with no pre-resolution price.)
 
 ---
 
+## 4d. Confirmation filtering — the one thing that helped
+
+`move_filter.py`. §4c's counterfactual (+14.83c on never-filled positions) is
+unattainable at `p0`, but decomposing it shows **+7.81c of that edge is still
+there at `p_entry`**, which is transactable. The repricing takes 7.02c, not all
+of it.
+
+And what distinguishes those positions is observable at the decision point: the
+market **had already moved in the signal's direction**.
+
+| set | mean move | median | share >1c |
+|---|---|---|---|
+| all positions | +0.18c | **0.0c** | 0.26 |
+| filled by close | −0.92c | 0.0c | 0.17 |
+| **never filled** | **+7.02c** | **+4.0c** | **0.81** |
+
+The median leg does not move at all and a thin tail gaps several cents — which
+is why §4c's aggressive-limit ladder barely raised the fill rate (0.46 → 0.57
+for 8c of slack). There is no smooth walk through intermediate prices to catch.
+But you do not need to catch it mid-move; you can buy after it.
+
+**Requiring confirmation before trading:**
+
+| min move in signal's direction | n | net | 95% CI | P(≤0) |
+|---|---|---|---|---|
+| none (the §4 rule) | 4582 | +0.40c | [−1.88, +2.81] | 0.38 |
+| ≥ 0c | 3033 | +0.90c | [−1.35, +3.24] | 0.23 |
+| ≥ 1c | 1747 | +1.60c | [−1.33, +4.59] | 0.14 |
+| **≥ 2c** | 1187 | **+2.30c** | [−1.50, +6.17] | **0.12** |
+| ≥ 3c | 888 | +2.18c | [−2.28, +6.74] | 0.17 |
+
+**Three controls say it is the conjunction, not either half:**
+
+| control | net | P(≤0) |
+|---|---|---|
+| momentum only, signal ignored (\|move\| ≥ 3c) | **−0.27c** | 0.56 |
+| market moved ≥3c but signal disagrees | **−0.19c** | 0.55 |
+| filter on \|signal\| magnitude instead (top 50%) | **−0.27c** | 0.59 |
+
+So it is not momentum, not large surprises, and not the signal alone — it is
+the signal *and* the market's confirmation together. Economically that reads as
+the signal identifying direction while the move confirms the information was
+actually material to this target.
+
+**It is still not significant.** Best cell is P(≤0) = 0.12 with a CI spanning
+zero, the threshold was chosen in-sample, and five were tried. This is a
+direction that deserves a walk-forward specification, not a result.
+
+---
+
 ## 5. This partly retracts Addendum 2
 
 `relations_findings.md` Addendum 2 concluded:
