@@ -258,6 +258,59 @@ what flattens the decay.
 
 ---
 
+## 7b. Ablation and benchmarks
+
+`ablation.py`. Every variant on the same panel, same costs, same entry
+convention, same event-clustered bootstrap.
+
+| variant | n | events | net | 95% CI | P(≤0) |
+|---|---|---|---|---|---|
+| **FULL SPEC** (signal + confirm + floor) | 889 | 214 | **+5.41c** | [+0.59, +10.21] | **0.01** |
+| − drop FLOOR | 1096 | 234 | +3.60c | [−0.47, +7.78] | 0.04 |
+| − drop CONFIRM | 2869 | 287 | +2.06c | [−0.88, +5.04] | 0.09 |
+| − drop BOTH (signal only) | 4330 | 296 | +0.53c | [−1.88, +2.99] | 0.34 |
+| signal removed: **momentum** side | 2931 | 352 | +0.67c | [−1.79, +3.12] | 0.30 |
+| signal removed: **random** side | 1479 | 321 | +0.39c | [−2.30, +3.08] | 0.38 |
+| passive: always buy YES | 5670 | 373 | **−2.38c** | [−5.57, +0.73] | 0.93 |
+| passive: always sell YES | 5099 | 375 | +0.83c | [−2.90, +4.33] | 0.33 |
+| confirm on **\|move\|** not direction | 1432 | 254 | +2.83c | [−1.21, +6.99] | 0.08 |
+| **CEILING**: perfect foresight | 7921 | 380 | **+16.50c** | [+15.01, +18.04] | 0.00 |
+
+Every component earns its place, and the ladder is monotone: signal alone
++0.53 → +floor +2.06 → +confirm +3.60 → both +5.41. The strategy captures
+**33% of the perfect-foresight ceiling**.
+
+Removing the signal but keeping the whole apparatus collapses it to +0.39c
+(random) or +0.67c (momentum). Requiring the move to be in the *signal's
+direction* rather than merely large is worth +2.6c (5.41 vs 2.83), so the
+confirmation is not an activity or liquidity proxy.
+
+### The honest headline is +3.76c, not +5.41c
+
+Permuting the signal **through the entire specification** — z shuffled among
+trigger events within trigger series, signal rebuilt, terciles refit, both
+filters reapplied:
+
+| | |
+|---|---|
+| observed | **+5.41c** |
+| permuted null | **+1.65c ± 1.39** (200 draws) |
+| draws ≥ observed | **0 of 200** → p = 0.0050 by (r+1)/(m+1) |
+| position of observed | **2.7 sd** above the null mean |
+| null max | +5.4116c, against an observed +5.4122c |
+
+**The null mean is the number that matters.** The two filters applied to a
+signal containing no information still earn **+1.65c** — the apparatus is not
+neutral. So the signal's marginal contribution is **+3.76c**, not +5.41c, and
+any claim about "the strategy" should quote the ablation, not the raw total.
+
+Two cautions. The p-value floor is 0.005 at 200 draws, so `p = 0.0050` means
+"nothing exceeded it", not "overwhelming". And the null's maximum came within
+0.0006c of the observed — the result sits exactly at the edge of its own null,
+which is what 2.7 sd looks like.
+
+---
+
 ## 8. Not modelled
 
 - **Market impact and depth.** Fills are assumed at the print price for
