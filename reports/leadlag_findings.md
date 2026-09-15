@@ -18,6 +18,7 @@ across the whole ladder rather than one representative leg:
 | **Net, it does not clear costs with confidence.** | Friction 1.55c → net **+0.81c**, clustered CI [−1.29, +3.08], P(≤0) = 0.24. |
 | **It does not improve the market's probability forecast.** | Neither a walk-forward `delta` tilt nor a logistic with the market price as an offset beats the market on Brier or log loss, in any price bucket. |
 | **And it is decaying.** | 2023 **+6.46c**, 2024 **+1.55c**, 2025 **−0.35c**. |
+| **Confirmation filtering is the one thing that helps.** | Requiring the market to have already moved the signal's way lifts net to **+3.03c walk-forward** (P(≤0) = 0.054), positive in all three years, and the filter's marginal value is stable (+6.4 / +2.5 / +2.7c) even as the base signal decays to negative. |
 | **Maker execution does not rescue it.** | Adverse selection costs 1.7–3.1c against a 0.5–1c spread saving; best maker arm P(≤0) = 0.19 even at zero fee and no queue. Refutes `research_summary.md` §6.4. |
 | **Learning the relations is worse than imposing them.** | Imposed sign (0 params) +0.86pp; per-channel (15) +0.47pp; **per-pair (135) −0.07pp**. 0 of 88 pairs survive BH-FDR; 3 of 14 channels do. |
 
@@ -388,6 +389,56 @@ actually material to this target.
 **It is still not significant.** Best cell is P(≤0) = 0.12 with a CI spanning
 zero, the threshold was chosen in-sample, and five were tried. This is a
 direction that deserves a walk-forward specification, not a result.
+
+---
+
+## 4e. Stability of the confirmation trade
+
+`confirmation_stability.py`. Entry at the **second** post-news print throughout,
+so the confirming print is never also the fill — the median gap between first
+and second print is 58.7 minutes and the median price difference is 0.0c, so the
+confirmation is genuinely observable and actionable.
+
+**Positive in every year, and decaying:**
+
+| year | n | events | net (k=2c) | 95% CI | P(≤0) |
+|---|---|---|---|---|---|
+| 2023 | 85 | 40 | **+11.35c** | [+1.57, +19.63] | 0.01 |
+| 2024 | 404 | 97 | **+4.12c** | [−3.11, +11.35] | 0.13 |
+| 2025 | 607 | 105 | **+2.04c** | [−3.08, +7.13] | 0.21 |
+
+**The walk-forward version holds.** Choosing the threshold on prior years only
+(k=1 for 2024, k=2 for 2025) gives **+3.03c, CI [−0.69, +6.88], P(≤0) = 0.054**
+over 1,190 positions. Nothing is fitted on the year being scored.
+
+**Chronological halves**, which give larger clusters than calendar years:
+first half +4.00c (P(≤0) = 0.09), second half +2.88c (P(≤0) = 0.15).
+
+**The filter's own contribution is stable even as the base signal decays:**
+
+| year | net unfiltered | net filtered | gain from the filter |
+|---|---|---|---|
+| 2023 | +4.96c | +11.35c | **+6.38c** |
+| 2024 | +1.66c | +4.12c | **+2.46c** |
+| 2025 | **−0.61c** | **+2.04c** | **+2.66c** |
+
+This is the most important row in the study. By 2025 the unfiltered rule *loses
+money*, and the confirmation filter still adds ~2.7c — the same amount it added
+in 2023. The base signal is decaying; the filter is not.
+
+### What stops this being a finding
+
+1. **Three years, and 2023 is 40 events.** A year-clustered bootstrap on three
+   clusters is degenerate — its "CI" is just the range of the three means, and
+   the P(≤0) = 0.000 it reports must not be cited. The event-clustered figures
+   are the honest ones.
+2. **The decay is real**: 11.35 → 4.12 → 2.04. Extrapolated, 2026 is thin.
+3. **In-sample only.** The specification was built by someone who has read every
+   other result in this repo, and the walk-forward controls the threshold but
+   not the analyst.
+4. **Spread assumption.** Costs use `research_log.md` §11.2's effective spread,
+   measured on liquid legs. These are mid-priced legs that just traded, so the
+   assumption is probably reasonable here — but it is an assumption.
 
 ---
 
