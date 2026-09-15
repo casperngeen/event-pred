@@ -28,6 +28,19 @@ in-sample structural result in the project) and **item 1's calibration finding**
 
 ## Item 1 — the ladder is not calibrated
 
+> **RETRACTED 2026-09-15.** The headline below does not survive a
+> reconstruction-free re-test. `analysis/quantile_2026_09/pit_direct.py`
+> interpolates the PIT directly off the traded ladder — no `recover_pdf`, no
+> open tails — on the same events and the same snapshot day, and every series
+> mean collapses to ~0.5 (CPI 0.529 vs 0.722 here, CPICORE 0.493 vs 0.716, FED
+> 0.489 vs 0.906). No series except FED rejects uniformity. The "macro ladders
+> are biased low" finding was `recover_pdf` placing open-tail mass at
+> `spacing/2`, which drags the recovered mean below the ladder's own median —
+> exactly what the "Superseded" section below suspected, and `settlement_trade.py`
+> was right. What survives: the **coverage defect** (real, and now measured in
+> outcome terms — 19.9% of prints land outside the traded strike range) and
+> **FED's under-dispersion**. Full detail: `quantile_findings.md` §1.
+
 Under a calibrated market the realised value's position in the market's own
 implied distribution, `u = F_implied(resolved)`, is uniform. It is not.
 

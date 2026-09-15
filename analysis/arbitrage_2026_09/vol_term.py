@@ -69,6 +69,33 @@ def cluster_boot(vals, groups, seed=0):
             float(np.percentile(boot, 97.5)), float((boot <= 0).mean()))
 
 
+def cluster_boot_diff(v_a, v_b, g_a, g_b, seed=0):
+    """Clustered bootstrap of mean(a) - mean(b), resampling whole events.
+
+    Replaces an earlier concat([a, -b]) shortcut, whose bootstrap statistic is
+    (sum_a - sum_b)/(n_a + n_b) and therefore does NOT estimate the reported
+    difference once the two groups have unequal sizes. Here both sides share one
+    event universe and an event enters the resample carrying whatever rows it
+    has on each side.
+    """
+    uniq = np.unique(np.concatenate([g_a, g_b]))
+    k = len(uniq)
+    ia = np.searchsorted(uniq, g_a)
+    ib = np.searchsorted(uniq, g_b)
+    sa = np.bincount(ia, weights=v_a, minlength=k)
+    ca = np.bincount(ia, minlength=k).astype(float)
+    sb = np.bincount(ib, weights=v_b, minlength=k)
+    cb = np.bincount(ib, minlength=k).astype(float)
+    rng = np.random.default_rng(seed)
+    pick = rng.integers(0, k, size=(N_BOOT, k))
+    ma = sa[pick].sum(1) / np.maximum(ca[pick].sum(1), 1e-9)
+    mb = sb[pick].sum(1) / np.maximum(cb[pick].sum(1), 1e-9)
+    boot = ma - mb
+    obs = float(v_a.mean() - v_b.mean())
+    return (obs, float(np.percentile(boot, 2.5)),
+            float(np.percentile(boot, 97.5)), float((boot <= 0).mean()))
+
+
 def main() -> None:
     n = pl.read_parquet(PANELS / "node_panel_event.parquet")
     n = n.filter(pl.col("series").is_in(MACRO)
@@ -234,15 +261,14 @@ def main() -> None:
             b = s.filter(~pl.col("strad"))
             if a.height < 25 or b.height < 25:
                 continue
-            v = np.concatenate([a["d_log"].to_numpy(), -b["d_log"].to_numpy()])
-            g = np.concatenate([a["event_ticker"].to_numpy(), b["event_ticker"].to_numpy()])
-            _, lo_, hi_, _ = cluster_boot(v, g)
+            d_, lo_, hi_, _ = cluster_boot_diff(
+                a["d_log"].to_numpy(), b["d_log"].to_numpy(),
+                a["event_ticker"].to_numpy(), b["event_ticker"].to_numpy())
             rows.append(dict(horizon=h, elapsed=f"{el[0]}-{el[1]}d",
                              n_strad=a.height, n_not=b.height,
                              dlog_strad=float(a["d_log"].mean()),
                              dlog_not=float(b["d_log"].mean()),
-                             diff=float(a["d_log"].mean() - b["d_log"].mean()),
-                             ci_lo=2 * lo_, ci_hi=2 * hi_))
+                             diff=d_, ci_lo=lo_, ci_hi=hi_))
     with pl.Config(tbl_rows=20, float_precision=4, tbl_width_chars=220):
         print(pl.DataFrame(rows))
     print("\ndiff < 0 would mean a foreign resolution shrinks uncertainty BEYOND")
