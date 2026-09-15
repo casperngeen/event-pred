@@ -18,6 +18,7 @@ across the whole ladder rather than one representative leg:
 | **Net, it does not clear costs with confidence.** | Friction 1.55c → net **+0.81c**, clustered CI [−1.29, +3.08], P(≤0) = 0.24. |
 | **It does not improve the market's probability forecast.** | Neither a walk-forward `delta` tilt nor a logistic with the market price as an offset beats the market on Brier or log loss, in any price bucket. |
 | **And it is decaying.** | 2023 **+6.46c**, 2024 **+1.55c**, 2025 **−0.35c**. |
+| **Maker execution does not rescue it.** | Adverse selection costs 1.7–3.1c against a 0.5–1c spread saving; best maker arm P(≤0) = 0.19 even at zero fee and no queue. Refutes `research_summary.md` §6.4. |
 | **Learning the relations is worse than imposing them.** | Imposed sign (0 params) +0.86pp; per-channel (15) +0.47pp; **per-pair (135) −0.07pp**. 0 of 88 pairs survive BH-FDR; 3 of 14 channels do. |
 
 The one-sentence version: **the lead-lag relation is real and it survives the
@@ -284,6 +285,59 @@ the bootstrap asks whether the result would survive a different draw of target
 events — and with 23–89 target events and near-perfect within-event dependence,
 that is a wide question. Read the channels as **where the pooled effect lives**,
 not as three independently established relations.
+
+---
+
+## 4c. Maker execution does not rescue it
+
+`maker_fill.py`. `economics.py` assumed a taker throughout, and that assumption
+costs **1.55c of a 2.36c gross edge**. `research_summary.md` §6.4 flags this as
+*"the single most important execution assumption in Phase 4"* and argues for
+resting orders, since the signal predicts settlement rather than immediacy. It
+had never been tested.
+
+Simulation: the trigger resolves; you rest a limit at `p0`, the target's last
+pre-resolution price, on the side the signal indicates. A resting buy fills when
+someone sells at or below the limit, a resting sell when someone buys at or
+above it — both observable on the trade tape, so fills are measured.
+
+**Adverse selection is severe, and it is worse than the spread it saves:**
+
+| window | fill rate | gross if filled | gross if unfilled | selection |
+|---|---|---|---|---|
+| 1 hour | 0.15 | −0.55c | +2.57c | **−3.12c** |
+| 1 day | 0.46 | +1.19c | +2.87c | **−1.68c** |
+| to close | 0.86 | +0.05c | **+14.83c** | **−14.77c** |
+
+The geometry is unavoidable: if the signal is right the price gaps away and you
+are not filled; if it is wrong the price comes back and you are. The last row is
+the cleanest statement — positions that never filled would have made +14.83c
+gross, positions that filled made +0.05c.
+
+**No maker arm beats the taker:**
+
+| arm | n | fill rate | net | 95% CI | P(≤0) |
+|---|---|---|---|---|---|
+| taker @ `p_entry` | 4582 | 1.00 | +0.40c | [−1.88, +2.81] | 0.38 |
+| maker 1 hour, taker fee | 683 | 0.15 | −1.46c | [−6.64, +3.03] | 0.72 |
+| maker 1 day, taker fee | 2090 | 0.46 | +0.33c | [−2.39, +2.93] | 0.40 |
+| **maker 1 day, no fee** | 2090 | 0.46 | **+1.19c** | [−1.53, +3.80] | **0.19** |
+| maker to close, no fee | 3946 | 0.86 | +0.05c | [−2.25, +2.34] | 0.49 |
+| rest to close then cross, no fee | 4582 | — | +0.93c | [−1.25, +3.17] | 0.21 |
+
+The best arm anywhere is P(≤0) = 0.19 — still not significant, and that assumes
+**a zero maker fee and no queue**. A fill is recorded whenever any trade crossed
+the limit, which ignores queue position, so these fill rates are upper bounds
+and every maker arm is optimistic. It loses anyway.
+
+**§6.4's maker hypothesis is refuted.** Resting orders save roughly 0.5–1c of
+spread and give back 1.7–3.1c to selection. That closes the last open route to
+profitability on this signal, and it closes it the way §6.4 asked — modelled
+explicitly rather than assumed either way.
+
+(The taker baseline reads +0.40c here against +0.81c in §4 because this study
+buckets on `p0` rather than `p_entry`, so both arms decide on identical
+information, and drops the 1,968 rows with no pre-resolution price.)
 
 ---
 
