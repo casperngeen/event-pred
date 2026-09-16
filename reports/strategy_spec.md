@@ -328,6 +328,74 @@ which is what 2.7 sd looks like.
 
 ---
 
+## 8b. Look-ahead audit
+
+`leakage_audit.py`. Every quantity checked against the instant it is used.
+
+**Hard wall: clean.** Zero rows with `close_time` or `t_res` at or after
+`OOS_START = 2026-01-01`. Latest `close_time` in the panel is 2025-12-19.
+
+| quantity | known at | verdict |
+|---|---|---|
+| `resolved_value(A)` | `t_res` | OK |
+| `implied_mean/std(A)` | pre-`t_res` ladder | OK |
+| `HAWKISH` signs | a priori | OK |
+| `p0` | ≤ `t_res` | OK |
+| price bucket of `p0` | `t_res`, boundaries fixed a priori | OK |
+| tercile cutpoints | years < Y, refit annually | OK |
+| `p_entry` (confirmation) | `t_entry` | OK |
+| `p2` (the fill) | `t_entry2`, median 58.7 min later | OK |
+| `win` | outcome only, never an input | OK |
+| winsorisation limit | **full sample** p99 of \|z\| | **leak** |
+| bucket eligibility (≥60 rows) | **full sample** counts | **leak** |
+| leg must print after `t_res` | **future** | **survivorship** |
+| leg must print twice (for `p2`) | **future** | **survivorship** |
+| confirm 2c / floor 20c | full sample | search, not look-ahead |
+| spread model 1–2c | full sample | minor |
+
+### The two removable leaks are immaterial
+
+Re-run with expanding-window winsorisation (p99 of \|z\| over prior years only)
+and expanding bucket eligibility:
+
+| variant | n | events | net | 95% CI | P(≤0) |
+|---|---|---|---|---|---|
+| as specified | 889 | 214 | +5.41c | [+0.59, +10.21] | 0.01 |
+| **both leaks removed** | **889** | **214** | **+5.41c** | **[+0.59, +10.21]** | **0.01** |
+
+Identical, and for a reason: winsorisation clips only the top 1% of \|z\|, and
+the position rule is **rank-based** (terciles), so clipping cannot move a value
+across a tercile boundary. The bucket gate was never binding — every bucket had
+≥60 prior-year rows anyway.
+
+### The survivorship leak is the real one
+
+Entry requires the target leg to have printed after `t_res`. At `t_res` a trader
+does not know which legs will trade.
+
+| | |
+|---|---|
+| legs **listed** on matched target events | 3,685 |
+| legs that printed and entered the panel | **2,462 (66.8%)** |
+| per-event coverage | p10 0.33, median 0.82, p90 1.00 |
+| of panel legs, share with a 2nd print (for `p2`) | 93.4% |
+| events where a YES-settling leg is present | **97.6%** |
+
+So a third of listed legs are absent, and they are the illiquid ones — this is
+`research_log.md` §12's convenience-sample problem in another form. It cannot be
+removed without quote data, and `data/kalshi_orderbooks.jsonl` is sports-only
+from late 2025.
+
+**What bounds the damage:** the winning leg is visible in 97.6% of events, and
+the band most exposed to illiquid legs (entry 90–100c, where you are shorting a
+cheap YES or buying an expensive one) is **not** carrying the result. That band
+has a hit rate of 1.000 over 284 positions — which looked alarming until checked:
+it spans **115 distinct target events** with a median of 2 legs each, and
+**removing it entirely improves the strategy** to +6.26c, CI [−0.88, +13.07],
+P(≤0) = 0.042. It dilutes rather than drives.
+
+---
+
 ## 9. The frozen OOS test
 
 To be run **once**, on the 2026 block, with no further tuning:
