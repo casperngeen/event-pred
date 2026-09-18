@@ -113,6 +113,7 @@ def main() -> None:
 
     b = d[i].with_columns([
         pl.Series("side", side[i]),
+        pl.Series("yes_price_at_fill", np.round(p2[i], 1)),
         pl.Series("entry_price", np.round(entry[i], 1)),
         pl.Series("entry_s", t2[i]),
         pl.Series("p_first", pe[i]),
@@ -140,9 +141,13 @@ def main() -> None:
     b = b.with_columns(
         (pl.col("target") + " settles " + pl.col("pred_side")).alias("prediction"))
 
+    # yes_price_at_fill is the YES quote we transacted against; entry_price is
+    # what we actually paid, which equals it for a BUY YES and (100 - it) for a
+    # SELL YES, because selling YES on a fully collateralised venue IS buying NO.
     cols = ["trigger", "trigger_event", "t_res", "z_w", "direction", "signal_v",
             "target", "target_event", "target_ticker", "strike", "action",
-            "prediction", "p0", "p_first", "move_c", "entry_date", "entry_price",
+            "prediction", "p0", "p_first", "move_c", "entry_date",
+            "yes_price_at_fill", "entry_price",
             "close_time", "hold_days", "settled_yes", "we_won",
             "gross_c", "cost_c", "net_c"]
     b = (b.select(cols)
