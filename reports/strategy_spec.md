@@ -3,6 +3,16 @@
 *Written 2026-09-15. The complete signal→execution chain as actually implemented
 in `analysis/leadlag_2026_09/`, with every parameter and its provenance.*
 
+> **Headline correction (2026-09-18).** The +5.41c quoted throughout this
+> document rests on an **arbitrary tie-break**. 47% of trades on the target
+> tickers share a timestamp with another trade (one order sweeping levels), and
+> `sort("ticker", "created_time")` is not a total order, so "the last trade
+> price" depends on how the trades were filtered upstream. Under two
+> deterministic rules the strategy earns **+4.71c** (last fill at the tied
+> instant) and **+4.66c** (VWAP of the instant), both with CIs still excluding
+> zero. The two principled rules agree; the arbitrary one landed on the
+> favourable side. **Read the headline as ~+4.7c.** Detail: §8c.
+
 **Status: an in-sample specification, not a demonstrated edge.** It is written
 down in full so that it can be **frozen** and tested once on the untouched 2026
 block. §7 states exactly what that test is. Nothing here has touched OOS data
@@ -396,6 +406,45 @@ P(≤0) = 0.042. It dilutes rather than drives.
 
 ---
 
+## 8c. Simultaneous trades and the tie-break
+
+`tie_handling.py`. Every "last trade before X" in this project — `p0`,
+`p_entry`, and the daily close in `KalshiOHLCV.build_daily` that feeds every
+implied moment — resolves ties by **input order**, because sorting on
+`(ticker, created_time)` is not a total order and polars' sort is stable.
+
+| | |
+|---|---|
+| trade rows on target tickers | 480,230 |
+| exact duplicate records dropped | 1,225 (repo-wide: 29,334 `trade_id`s appear twice with every column identical) |
+| `(ticker, timestamp)` groups with >1 fill | 71,383 |
+| …of those, carrying **different prices** | **28,270** |
+| share of trades inside a tied group | **47.3%** |
+| price spread within such a group | median **1c**, p90 4c, max 96c |
+
+A single order sweeping several price levels emits several trade records at one
+instant. `build_panel.py` filters trades per series while the analysis scripts
+filter all target tickers at once, so the two disagree about `p_entry` on **662
+of 8,746 rows (7.6%)**. A 1c ambiguity is material when the confirmation
+threshold is 2c.
+
+| rule | n | events | net | 95% CI | P(≤0) |
+|---|---|---|---|---|---|
+| committed panel (ties by input order) | 889 | 214 | +5.41c | [+0.59, +10.21] | 0.014 |
+| **deduped, last fill at the instant** | 857 | 208 | **+4.71c** | [+0.37, +9.12] | 0.022 |
+| **deduped, VWAP of the instant** | 817 | 208 | **+4.66c** | [+0.03, +9.39] | 0.024 |
+
+The two principled rules agree to 0.05c. The result survives — both CIs still
+exclude zero — but the honest point estimate is **~+4.7c**, not +5.41c.
+
+**This is not confined to the strategy.** `KalshiOHLCV.build_daily` takes the
+last trade of a day the same way, so `implied_mean`, `implied_std`, `surprise`,
+the PIT and every downstream result in the repo inherit the same ambiguity. It
+belongs on the `research_log.md` §14 list of corrections, and the fix is to
+collapse simultaneous fills to a size-weighted print at ingest.
+
+---
+
 ## 9. The frozen OOS test
 
 To be run **once**, on the 2026 block, with no further tuning:
@@ -408,10 +457,13 @@ To be run **once**, on the 2026 block, with no further tuning:
 5. Enter at the second post-resolution print; costs per §5.2; hold to settlement.
 6. Report: n, target events, gross, net, bootstrap CI clustered on
    `target_event`, and P(≤0). **One number, reported whatever it says.**
+7. Build the tape with simultaneous fills collapsed to a size-weighted print
+   and exact duplicates removed (§8c), so the OOS number does not inherit the
+   arbitrary tie-break.
 
 Pre-registered expectation, stated before the test: given the decay measured in
 §7 and in every other effect in this project, the point estimate should be
-**lower than +5.32c**. A result in the +2 to +4c range with a CI including zero
+**lower than ~+4.7c**. A result in the +2 to +4c range with a CI including zero
 would be consistent with the in-sample finding; a negative result falsifies it.
 
 ---
