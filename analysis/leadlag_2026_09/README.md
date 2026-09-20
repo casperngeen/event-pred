@@ -32,8 +32,20 @@ of each other.
 | `relations.py` | Which specific relations carry it, and does learning beat imposing? | Learning loses monotonically: imposed (0 params) +0.86pp, per-channel (15) +0.47pp, per-pair (135) −0.07pp. 0/88 pairs survive BH; 3/14 channels do. |
 | `maker_fill.py` | Does resting a limit order beat crossing? | **No.** Adverse selection −1.7 to −14.8c against a 0.5-1c spread saving; no maker arm beats the taker even at zero fee. |
 | `economics.py` | What does holding to close earn? | Gross +2.36c vs 0.00c for a permuted signal; friction 1.55c; net +0.81c with a clustered CI straddling zero. Decaying by year. |
+| `move_filter.py` | Does requiring the market to have already moved your way help? | **Yes — this is where the confirmation filter comes from.** Net rises 0.40c (no filter) to 2.30c at `move >= 2c`. Controls: momentum alone −0.27c, move-but-signal-disagrees −0.19c. |
+| `confirmation_stability.py` | Does the confirmation filter decay? | No — positive in all three years. |
+| `ablation.py` | What is the signal worth over the apparatus? | +3.76c marginal, not the +5.41c headline. Dropping signal, confirm and floor leaves +0.53c. |
+| `leakage_audit.py` | Any look-ahead in the chain? | Two candidates found, both immaterial; spec unchanged. |
+| `exit_rules.py` | Does an early exit beat holding to settlement? | No; spec unchanged. |
+| `sizing.py` | Does price-dependent sizing help? | No; spec unchanged. |
+| `blotter.py` | The full trade list. | `out/trade_blotter.csv`, with `yes_price_at_fill` so SELL YES rows are unambiguous. |
+| `tie_handling.py` | Is "last trade price" a rule when several prints share an instant? | **No.** The committed tie-break sat at the 98th percentile of 60 random ones; headline falls to ~+4.7c. VWAP and max/min are order-invariant, `.last()` is not. |
+| `spec_v2.py` | The two audit fixes applied together. | VWAP-collapsed tape + median-of-3 confirmation: **+4.10c, CI [−1.34, +9.56]**, block-permutation p = 0.005. |
+| `liquidity.py` | Is the edge larger where fewer people are watching? | Thin legs reprice 30x slower and show a monotone profit gradient — but see `liquidity_spread_diag.py`. Within-event contrast +5.60c, P = 0.070. |
+| `liquidity_gates.py` | How much liquidity selection is already baked in? | No volume filter in the pipeline; four implicit gates. **G0, the archive, misses 44% of thin traded legs against 7% of liquid.** Relaxing our own gate mildly improves the result. |
+| `liquidity_spread_diag.py` | Why did the thin−liquid spread swing 0.94–7.43c? | It did not. No CI had been put on the difference (~±9c), and changing `k` churns a third of the portfolio (Jaccard 0.61). Population held fixed: **~+3c, P(≤0) ≈ 0.3**. |
 
-Captured output is in `out/`.
+Captured output is in `out/`. Writeups: `reports/leadlag_findings.md`, `reports/strategy_spec.md`, and `reports/liquidity_findings.md` for the three `liquidity*.py` scripts.
 
 ## Design notes
 
