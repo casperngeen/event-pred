@@ -5,6 +5,10 @@ These scripts are the **research record** for the August 2026 measurement work
 accounting). They are kept verbatim and are **not maintained** — several import
 from a scratchpad directory that no longer exists.
 
+Because they cannot be rerun, their captured output is committed under
+`frozen_runs/` — the only record of this work. Every other study in
+`analysis/` keeps captures in an untracked `out/`; see `analysis/README.md`.
+
 The validated logic has been promoted into the package and is what new work
 should build on:
 

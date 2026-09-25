@@ -15,4 +15,5 @@ figures the pipeline used before).
 
 Run order: `horizon_sweep.py` first (it builds the panel), then any of the rest.
 
-`*_output.txt` files are captured runs, not inputs.
+Captured runs go to `out/`, which is untracked and is not an input to
+anything — rerun a script to regenerate its output. See `analysis/README.md`.
