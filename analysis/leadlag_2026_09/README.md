@@ -21,8 +21,10 @@ The writeup is `reports/leadlag_findings.md`.
     venv/bin/python analysis/leadlag_2026_09/economics.py        # ~6 min (400 permutations)
     venv/bin/python analysis/leadlag_2026_09/maker_fill.py       # maker vs taker execution
 
-`build_panel.py` must run first; the rest read its parquet and are independent
-of each other.
+`build_panel.py` must run first; the rest read its `out/leadlag_legs.parquet`
+and are independent of each other, with one exception —
+`confirmation_stability.py` reads `out/maker_fill.parquet`, so `maker_fill.py`
+has to run before it. Neither parquet is committed.
 
 | script | question | answer |
 |---|---|---|
