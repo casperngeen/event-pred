@@ -38,14 +38,17 @@ of each other.
 | `leakage_audit.py` | Any look-ahead in the chain? | Two candidates found, both immaterial; spec unchanged. |
 | `exit_rules.py` | Does an early exit beat holding to settlement? | No; spec unchanged. |
 | `sizing.py` | Does price-dependent sizing help? | No; spec unchanged. |
-| `blotter.py` | The full trade list. | `out/trade_blotter.csv`, with `yes_price_at_fill` so SELL YES rows are unambiguous. |
+| `blotter.py` | The full trade list. | Writes `out/trade_blotter.csv` (untracked), with `yes_price_at_fill` so SELL YES rows are unambiguous. |
 | `tie_handling.py` | Is "last trade price" a rule when several prints share an instant? | **No.** The committed tie-break sat at the 98th percentile of 60 random ones; headline falls to ~+4.7c. VWAP and max/min are order-invariant, `.last()` is not. |
 | `spec_v2.py` | The two audit fixes applied together. | VWAP-collapsed tape + median-of-3 confirmation: **+4.10c, CI [−1.34, +9.56]**, block-permutation p = 0.005. |
 | `liquidity.py` | Is the edge larger where fewer people are watching? | Thin legs reprice 30x slower and show a monotone profit gradient — but see `liquidity_spread_diag.py`. Within-event contrast +5.60c, P = 0.070. |
 | `liquidity_gates.py` | How much liquidity selection is already baked in? | No volume filter in the pipeline; four implicit gates. **G0, the archive, misses 44% of thin traded legs against 7% of liquid.** Relaxing our own gate mildly improves the result. |
 | `liquidity_spread_diag.py` | Why did the thin−liquid spread swing 0.94–7.43c? | It did not. No CI had been put on the difference (~±9c), and changing `k` churns a third of the portfolio (Jaccard 0.61). Population held fixed: **~+3c, P(≤0) ≈ 0.3**. |
 
-Captured output is in `out/`. Writeups: `reports/leadlag_findings.md`, `reports/strategy_spec.md`, and `reports/liquidity_findings.md` for the three `liquidity*.py` scripts.
+Each script writes its captured run to `out/`, which is untracked — run
+`build_panel.py` first, then whichever script you need. Writeups:
+`reports/leadlag_findings.md`, `reports/strategy_spec.md`, and
+`reports/liquidity_findings.md` for the three `liquidity*.py` scripts.
 
 ## Design notes
 

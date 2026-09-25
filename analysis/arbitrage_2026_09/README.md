@@ -13,7 +13,8 @@ estimate.
     venv/bin/python analysis/arbitrage_2026_09/dispersion.py     # headline vs components
 
 `identity_arb.py` reads the parquet `identity_cpi.py` writes; the rest are
-independent. Captured output is in `out/`.
+independent. Each writes its captured run and its parquet to `out/`, which is
+untracked — rerun to regenerate.
 
 | script | question | answer |
 |---|---|---|

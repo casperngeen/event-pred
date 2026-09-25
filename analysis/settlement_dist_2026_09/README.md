@@ -26,7 +26,8 @@ order.
 | `wing_overround.py` | Is the bucket edge just the ladders summing to 124c instead of 100c? | No — survives mass-normalisation and the coherent-ladder subset. |
 | `wing_robustness.py` | Missing winner, event concentration, regime, single series. | Survives all four. Decaying by year, though. |
 
-Captured output is in `out/`.
+Each script writes its captured run and its parquet to `out/`, which is
+untracked — rerun in the order above to regenerate.
 
 ## Notes carried in from the relations study
 

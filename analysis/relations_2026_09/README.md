@@ -12,7 +12,9 @@ except that everything needs a panel carrying the PIT columns.
     venv/bin/python analysis/relations_2026_09/family_collapse.py        # item 3
     venv/bin/python analysis/relations_2026_09/channel_pooling.py        # item 4
 
-Captured output is in `out/`. The writeup is `reports/relations_findings.md`.
+Each script writes its captured run to `out/`, which is untracked — rerun the
+script to regenerate it. The writeup is `reports/relations_findings.md`, which
+carries each script's summary tables inline.
 
 | script | item | question |
 |---|---|---|

@@ -236,7 +236,48 @@ though note the bias is a level effect over a specific macro regime, so it is
 much weaker as a trading claim than as a measurement one, and a pre-registered
 OOS test would be the only honest way to make it.
 
-`analysis/relations_2026_09/out/pit_calibration.txt`.
+**Supporting output** — per-series bias, the §5B t-test against the PIT sign
+test. Reproduce with `venv/bin/python analysis/relations_2026_09/pit_calibration.py`
+(which also prints the per-series PIT histograms and the mean-placement check).
+
+Gated panel:
+
+| series | n | mean_z | t_z | frac_above | p_sign | sign_bh | t_bh |
+|---|---|---|---|---|---|---|---|
+| CPI | 41 | 0.517 | 2.83 | 0.78 | 0.0 | true | true |
+| PCECORE | 15 | 0.798 | 3.418 | 0.933 | 0.001 | true | true |
+| CPICOREYOY | 20 | 0.561 | 2.724 | 0.85 | 0.003 | true | true |
+| CPICORE | 31 | 0.387 | 1.945 | 0.774 | 0.003 | true | false |
+| FED | 12 | 0.864 | 4.894 | 0.917 | 0.006 | true | true |
+| U3 | 38 | 0.436 | 1.991 | 0.711 | 0.014 | true | false |
+| CPIYOY | 21 | 0.332 | 1.52 | 0.762 | 0.027 | true | false |
+| CPIGAS | 12 | -0.502 | -2.004 | 0.167 | 0.039 | true | false |
+| WTI | 198 | -0.074 | -1.714 | 0.424 | 0.039 | true | false |
+| JOBLESSCLAIMS | 14 | -0.223 | -0.777 | 0.286 | 0.18 | false | false |
+| GDP | 13 | -0.066 | -0.195 | 0.615 | 0.581 | false | false |
+| CPIUSEDCAR | 14 | 0.093 | 0.4 | 0.571 | 0.791 | false | false |
+| WTIW | 22 | 0.06 | 0.4 | 0.545 | 0.832 | false | false |
+| PAYROLLS | 32 | 0.31 | 1.682 | 0.531 | 0.86 | false | false |
+
+Ungated panel — the one the calibration claim rests on, since the distribution
+gates drive the PIT toward uniformity by construction:
+
+| series | n | mean_z | t_z | frac_above | p_sign | sign_bh | t_bh |
+|---|---|---|---|---|---|---|---|
+| CPI | 50 | 0.484 | 3.053 | 0.8 | 0.0 | true | true |
+| CPICORE | 41 | 0.438 | 2.811 | 0.829 | 0.0 | true | true |
+| FED | 31 | 1.005 | 9.808 | 0.839 | 0.0 | true | true |
+| CPIYOY | 37 | 0.252 | 1.759 | 0.784 | 0.001 | true | false |
+| CPICOREYOY | 34 | 0.469 | 2.992 | 0.794 | 0.001 | true | true |
+| PCECORE | 15 | 0.798 | 3.418 | 0.933 | 0.001 | true | true |
+| U3 | 47 | 0.361 | 1.81 | 0.681 | 0.019 | true | false |
+| CPIGAS | 15 | -0.282 | -1.191 | 0.267 | 0.118 | false | false |
+| JOBLESSCLAIMS | 15 | -0.224 | -0.838 | 0.333 | 0.302 | false | false |
+| WTIW | 50 | 0.103 | 0.868 | 0.58 | 0.322 | false | false |
+| WTI | 386 | 0.003 | 0.065 | 0.477 | 0.387 | false | false |
+| GDP | 16 | -0.043 | -0.137 | 0.625 | 0.454 | false | false |
+| PAYROLLS | 32 | 0.31 | 1.682 | 0.531 | 0.86 | false | false |
+| CPIUSEDCAR | 16 | 0.025 | 0.118 | 0.5 | 1.0 | false | false |
 
 ---
 
@@ -303,7 +344,41 @@ selection is sensitive to a scaling choice that has never been justified; the
 pooled channel test is not. That is an argument for pooling on grounds
 independent of power.
 
-`analysis/relations_2026_09/out/stage1_variants.txt`.
+**Supporting output** — Stage 1 re-run under four surprise measures
+(519 rows each). Reproduce with
+`venv/bin/python analysis/relations_2026_09/stage1_variants.py` (~40 min).
+
+Which measures select each published edge:
+
+| pair | measures that select it | n_measures |
+|---|---|---|
+| CPI->FED/any | s_pit, surprise, z_surprise | 3 |
+| PAYROLLS->FEDDECISION/hike | surprise | 1 |
+| PAYROLLS->FED/any | surprise | 1 |
+| CPICOREYOY->FEDDECISION/cut | surprise | 1 |
+
+`rho` on the four published edges, by measure. Note that only `CPI->FED/any`
+survives under more than one measure, and that `survives` flips while `rho`
+barely moves — the selection is threshold-sensitive, not signal-sensitive:
+
+| trigger | target | side | measure | n | rho | p_perm | survives |
+|---|---|---|---|---|---|---|---|
+| CPI | FED | any | s_pit | 36 | 0.5802 | 0.0005 | true |
+| CPI | FED | any | surprise | 36 | 0.6171 | 0.0005 | true |
+| CPI | FED | any | surprise_median | 36 | 0.5671 | 0.001 | false |
+| CPI | FED | any | z_surprise | 36 | 0.5698 | 0.0005 | true |
+| CPICOREYOY | FEDDECISION | cut | s_pit | 17 | -0.4975 | 0.0475 | false |
+| CPICOREYOY | FEDDECISION | cut | surprise | 17 | -0.6833 | 0.0025 | true |
+| CPICOREYOY | FEDDECISION | cut | surprise_median | 17 | -0.67 | 0.002 | false |
+| CPICOREYOY | FEDDECISION | cut | z_surprise | 17 | -0.6845 | 0.0035 | false |
+| PAYROLLS | FED | any | s_pit | 30 | 0.5439 | 0.0025 | false |
+| PAYROLLS | FED | any | surprise | 30 | 0.5829 | 0.001 | true |
+| PAYROLLS | FED | any | surprise_median | 30 | 0.5005 | 0.0075 | false |
+| PAYROLLS | FED | any | z_surprise | 30 | 0.5537 | 0.0015 | false |
+| PAYROLLS | FEDDECISION | hike | s_pit | 26 | 0.4829 | 0.011 | false |
+| PAYROLLS | FEDDECISION | hike | surprise | 26 | 0.5957 | 0.0005 | true |
+| PAYROLLS | FEDDECISION | hike | surprise_median | 26 | 0.4494 | 0.018 | false |
+| PAYROLLS | FEDDECISION | hike | z_surprise | 26 | 0.4845 | 0.01 | false |
 
 ---
 
@@ -365,7 +440,42 @@ direction label — are safe. The decision that followed from the strong form �
 abandoning a magnitude target outright, including AGCRN's — was made on a bad
 estimator and would be worth one re-test on `|s_pit|`.
 
-`analysis/relations_2026_09/out/magnitude_xval.txt`.
+**Supporting output** — mean |r| across CPI-family sibling pairs by measure,
+the summary this section's conclusion rests on. Reproduce with
+`venv/bin/python analysis/relations_2026_09/magnitude_xval.py` (which also prints
+the CPI vs CPIYOY headline cell and every sibling pair individually).
+
+Ungated panel:
+
+| measure | pairs | mean_n | mean_pearson | mean_spearman |
+|---|---|---|---|---|
+| z_surprise (signed) | 5 | 33.0 | 0.714 | 0.676 |
+| surprise (signed) | 5 | 33.0 | 0.691 | 0.661 |
+| s_pit (signed) | 5 | 33.0 | 0.648 | 0.623 |
+| |s_pit| | 5 | 33.0 | 0.472 | 0.464 |
+| surprisal | 5 | 33.0 | 0.407 | 0.431 |
+| implied_entropy | 5 | 33.0 | 0.418 | 0.43 |
+| |surprise| | 5 | 33.0 | 0.479 | 0.368 |
+| implied_std | 5 | 33.0 | 0.362 | 0.356 |
+| |z_surprise| | 5 | 33.0 | 0.518 | 0.346 |
+
+Gated panel:
+
+| measure | pairs | mean_n | mean_pearson | mean_spearman |
+|---|---|---|---|---|
+| surprise (signed) | 5 | 14.4 | 0.796 | 0.783 |
+| z_surprise (signed) | 5 | 14.4 | 0.809 | 0.775 |
+| s_pit (signed) | 5 | 14.4 | 0.662 | 0.585 |
+| |surprise| | 5 | 14.4 | 0.55 | 0.528 |
+| implied_entropy | 5 | 14.4 | 0.518 | 0.515 |
+| |z_surprise| | 5 | 14.4 | 0.601 | 0.509 |
+| |s_pit| | 5 | 14.4 | 0.55 | 0.506 |
+| implied_std | 5 | 14.4 | 0.516 | 0.409 |
+| surprisal | 5 | 14.4 | 0.343 | 0.372 |
+
+The signed measures lead the absolute ones in both panels, which is the
+"direction cross-validates better than size" result; `|s_pit|` at 0.464-0.506
+Spearman is the re-test the paragraph above calls for.
 
 ---
 
@@ -441,7 +551,27 @@ the non-joint one 2022-02-04. So "U3 read alongside payrolls" and "U3 after
 The result is worth having, but it is not yet evidence for the release-vector
 specification specifically.
 
-`analysis/relations_2026_09/out/family_collapse.txt`.
+**Supporting output** — reproduce with
+`venv/bin/python analysis/relations_2026_09/family_collapse.py` (which also prints
+the simultaneity counts, the CPI-family matched-release correlations, the
+untested subcomponents and the collapsed factors per target).
+
+The labour release, PAYROLLS against U3 — the pair the collapse would act on:
+
+| measure | a | b | n | r | p | sign_agree |
+|---|---|---|---|---|---|---|
+| z | PAYROLLS | U3 | 24 | -0.18 | 0.401 | 0.5 |
+| s_pit | PAYROLLS | U3 | 24 | -0.135 | 0.531 | 0.542 |
+
+And the confound: the joint-release subset is very nearly a date subset, which
+is what the paragraph above reports:
+
+| series | joint | n | first | last |
+|---|---|---|---|---|
+| U3 (partnered with PAYROLLS) | false | 14 | 2022-02-04 | 2025-11-07 |
+| U3 (partnered with PAYROLLS) | true | 24 | 2023-04-07 | 2025-12-16 |
+| PAYROLLS (partnered with U3) | false | 8 | 2023-05-05 | 2024-12-06 |
+| PAYROLLS (partnered with U3) | true | 24 | 2023-04-07 | 2025-12-16 |
 
 ---
 
@@ -490,7 +620,28 @@ Three things to note:
    scheduled information event. A pooling scheme that scored everything positive
    would be suspect; this one does not.
 
-`analysis/relations_2026_09/out/channel_pooling.txt`.
+**Supporting output** — the per-channel block test, 39 cells over 995 rows,
+under both measures. Reproduce with
+`venv/bin/python analysis/relations_2026_09/channel_pooling.py` (which also prints
+the per-pair contributions within `inflation->policy`).
+
+| channel | pairs | rows | sign_agree | cl_null | cl_sd | p_clustered | measure |
+|---|---|---|---|---|---|---|---|
+| energy->policy | 6 | 397 | 0.4647 | 0.5011 | 0.0394 | 0.8328 | surprise |
+| growth->policy | 3 | 25 | 0.4167 | 0.499 | 0.1453 | 0.803 | surprise |
+| inflation->policy | 21 | 369 | 0.6268 | 0.4997 | 0.046 | 0.0038 | surprise |
+| labour->policy | 9 | 204 | 0.6613 | 0.5009 | 0.0424 | 0.0004 | surprise |
+| ALL data->policy | 33 | 598 | 0.6319 | 0.5002 | 0.0343 | 0.0004 | surprise |
+| ALL channels | 39 | 995 | 0.5631 | 0.5002 | 0.0251 | 0.006 | surprise |
+| energy->policy | 6 | 397 | 0.4561 | 0.5008 | 0.0394 | 0.8742 | s_pit |
+| growth->policy | 3 | 25 | 0.5833 | 0.5013 | 0.1442 | 0.3913 | s_pit |
+| inflation->policy | 21 | 369 | 0.6293 | 0.5002 | 0.0485 | 0.0044 | s_pit |
+| labour->policy | 9 | 204 | 0.629 | 0.5012 | 0.0419 | 0.001 | s_pit |
+| ALL data->policy | 33 | 598 | 0.6276 | 0.4996 | 0.0334 | 0.0002 | s_pit |
+| ALL channels | 39 | 995 | 0.5569 | 0.5 | 0.0242 | 0.0092 | s_pit |
+
+The measure-independence this section relies on is the two `ALL data->policy`
+rows: 0.6319 at p = 0.0004 on `surprise`, 0.6276 at p = 0.0002 on `s_pit`.
 
 ---
 
