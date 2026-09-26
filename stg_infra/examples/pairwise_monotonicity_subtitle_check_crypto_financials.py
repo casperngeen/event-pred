@@ -39,7 +39,10 @@ except ImportError:
 pl.Config.set_fmt_str_lengths(200)
 pl.Config.set_tbl_width_chars(220)
 
-TARGET_MONTHS = ["2025-10", "2025-11"]
+try:
+    from data_windows import LADDER_MONTHS as TARGET_MONTHS
+except ImportError:
+    from .data_windows import LADDER_MONTHS as TARGET_MONTHS
 CATEGORIES_TO_CHECK = ["crypto", "financials"]
 
 

@@ -86,6 +86,11 @@ try:
 except ImportError:
     from .pairwise_monotonicity_pnl_backtest import classify_ticker
 
+try:
+    from data_windows import MIN_LEG_TRADES
+except ImportError:
+    from .data_windows import MIN_LEG_TRADES
+
 RESULTS_PATH = "mece_sum_to_one_results.parquet"
 LEG_PRICES_PATH = "mece_sum_to_one_leg_prices.parquet"
 
@@ -117,15 +122,25 @@ def load_inputs() -> tuple[pl.DataFrame, pl.DataFrame]:
 
 def build_opportunities(results: pl.DataFrame) -> pl.DataFrame:
     """One row per full-basket (event_ticker, date) snapshot whose |deviation|
-    exceeds VIOLATION_THRESHOLD -- the MECE analogue of build_opportunities()
-    filtering to only flagged same_side_*_violation rows in the ladder script."""
-    opp = (
-        results.filter(pl.col("abs_deviation") > VIOLATION_THRESHOLD)
-        .with_columns([
-            pl.when(pl.col("deviation") > 0).then(pl.lit("sell_all_legs")).otherwise(pl.lit("buy_all_legs")).alias("side"),
-            pl.col("event_ticker").map_elements(classify_ticker, return_dtype=pl.Utf8).alias("category"),
-        ])
-    )
+    exceeds VIOLATION_THRESHOLD AND whose every leg traded at least
+    MIN_LEG_TRADES times that day -- the MECE analogue of build_opportunities()
+    filtering to only flagged same_side_*_violation rows in the ladder script.
+
+    The liquidity half of this filter didn't exist until
+    mece_liquidity_check.py found 15/20 of the largest full-basket deviations
+    had a leg with under 20 trades that day (several with just 1-3 trades
+    total) -- a basket "summing to $2.01" on that little activity isn't a
+    mispricing, it's the absence of a real market. Without this, PnL here
+    would be dominated by thin-liquidity noise, not the real signal."""
+    deviation_only = results.filter(pl.col("abs_deviation") > VIOLATION_THRESHOLD)
+    opp = deviation_only.filter(pl.col("min_leg_trades") >= MIN_LEG_TRADES)
+    print(f"{deviation_only.height} snapshots exceed the ${VIOLATION_THRESHOLD:.2f} deviation bar; "
+          f"{opp.height} ({opp.height / deviation_only.height:.1%}) of those also have every leg "
+          f"trading >= {MIN_LEG_TRADES} times that day. PnL below is computed on the liquid subset only.")
+    opp = opp.with_columns([
+        pl.when(pl.col("deviation") > 0).then(pl.lit("sell_all_legs")).otherwise(pl.lit("buy_all_legs")).alias("side"),
+        pl.col("event_ticker").map_elements(classify_ticker, return_dtype=pl.Utf8).alias("category"),
+    ])
     return opp
 
 
@@ -251,3 +266,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    

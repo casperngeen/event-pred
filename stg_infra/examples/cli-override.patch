@@ -1,0 +1,72 @@
+diff --git a/stg_infra/examples/pairwise_monotonicity_taker_side_check_v2.py b/stg_infra/examples/pairwise_monotonicity_taker_side_check_v2.py
+--- a/stg_infra/examples/pairwise_monotonicity_taker_side_check_v2.py
++++ b/stg_infra/examples/pairwise_monotonicity_taker_side_check_v2.py
+@@ -46,6 +46,7 @@ which is what produced an Oct-only run even though pairs are built from
+ both Oct and Nov markets.
+ """
+ 
++import argparse
+ import glob
+ import re
+ 
+@@ -63,6 +64,38 @@ try:
+ except ImportError:
+     from .data_windows import LADDER_MONTHS as TARGET_MONTHS
+ 
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument(
++        "--months",
++        type=str,
++        default=None,
++        help=(
++            "Override data_windows.LADDER_MONTHS for a quick smoke test "
++            "before committing to the full 20-month run. Accepts either a "
++            "comma-separated list of 'YYYY-MM' months (e.g. '2025-09,2025-10'), "
++            "or a plain integer N to use just the last N months of the full "
++            "ladder window (e.g. '3'). Omit to use the full window. Smoke-test "
++            "runs write to a separate _smoketest output file, never the real "
++            "results parquet."
++        ),
++    )
++    return parser.parse_args()
++
++
++def resolve_target_months(full_months: list[str], override: str | None) -> list[str]:
++    if override is None:
++        return full_months
++    if override.isdigit():
++        n = int(override)
++        months = full_months[-n:]
++        print(f"--months {n}: smoke-testing against the last {n} months only: {months}")
++        return months
++    months = [m.strip() for m in override.split(",")]
++    print(f"--months override: {months}")
++    return months
++
+ UPPER_PHRASES = ("or above", "or higher", "or greater", "or more", "and above")
+ LOWER_PHRASES = ("or below", "or lower", "or less", "less than")
+ 
+@@ -268,6 +301,10 @@ def check_pair_fast(precomputed: dict, leg_a: str, leg_b: str) -> dict:
+ 
+ 
+ def main():
++    global TARGET_MONTHS
++    args = parse_args()
++    TARGET_MONTHS = resolve_target_months(TARGET_MONTHS, args.months)
++
+     print("Building corrected pair list from yes_sub_title (bracket/upper_tail/lower_tail)...")
+     markets = load_markets()
+     pairs = build_valid_pairs(markets)
+@@ -340,6 +377,9 @@ def main():
+     print(f"same-side ('no') violation rate:  {rate('same_side_no_violation')}")
+ 
+     out_path = "pairwise_monotonicity_taker_side_results_corrected.parquet"
++    if args.months:
++        out_path = "pairwise_monotonicity_taker_side_results_corrected_smoketest.parquet"
++        print(f"\n--months override was used -- writing to {out_path}, NOT the real results file")
+     results.write_parquet(out_path)
+     print(f"\nfull corrected results written to {out_path} "
+           f"(original pairwise_monotonicity_taker_side_results.parquet left untouched for comparison)")
+           

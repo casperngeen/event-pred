@@ -46,6 +46,7 @@ which is what produced an Oct-only run even though pairs are built from
 both Oct and Nov markets.
 """
 
+import argparse
 import glob
 import re
 
@@ -58,7 +59,42 @@ except ImportError:
     from . import pairwise_monotonicity_taker_side_check as check_mod
     from .pairwise_monotonicity_pnl_backtest import classify_ticker
 
-TARGET_MONTHS = ["2025-10", "2025-11"]
+try:
+    from data_windows import LADDER_MONTHS as TARGET_MONTHS
+except ImportError:
+    from .data_windows import LADDER_MONTHS as TARGET_MONTHS
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--months",
+        type=str,
+        default=None,
+        help=(
+            "Override data_windows.LADDER_MONTHS for a quick smoke test "
+            "before committing to the full 20-month run. Accepts either a "
+            "comma-separated list of 'YYYY-MM' months (e.g. '2025-09,2025-10'), "
+            "or a plain integer N to use just the last N months of the full "
+            "ladder window (e.g. '3'). Omit to use the full window. Smoke-test "
+            "runs write to a separate _smoketest output file, never the real "
+            "results parquet."
+        ),
+    )
+    return parser.parse_args()
+
+
+def resolve_target_months(full_months: list[str], override: str | None) -> list[str]:
+    if override is None:
+        return full_months
+    if override.isdigit():
+        n = int(override)
+        months = full_months[-n:]
+        print(f"--months {n}: smoke-testing against the last {n} months only: {months}")
+        return months
+    months = [m.strip() for m in override.split(",")]
+    print(f"--months override: {months}")
+    return months
 
 UPPER_PHRASES = ("or above", "or higher", "or greater", "or more", "and above")
 LOWER_PHRASES = ("or below", "or lower", "or less", "less than")
@@ -78,13 +114,19 @@ def _trades_month_globs(month: str):
     return f"data/trades/trades_kalshi_{parity}/trades_{month}.parquet"
 
 
-def load_trades() -> pl.DataFrame:
-    """Combines every month in TARGET_MONTHS -- pairs are built from BOTH
-    Oct and Nov markets, so checking them against only one month's trades
-    (as the last run did, Oct-only) silently drops every violation that
-    only shows up in Nov's trading, and understates n for pairs where one
-    leg only traded in Nov. Same even/odd parity file convention as
-    load_markets(), just under data/trades/ instead of data/markets/."""
+def load_trades_lazy() -> pl.LazyFrame:
+    """Combines every month in TARGET_MONTHS -- pairs are built from ALL
+    ladder months, so checking them against only some of the trades
+    would silently drop violations. Same even/odd parity file convention
+    as load_markets(), just under data/trades/ instead of data/markets/.
+
+    Returns a LazyFrame, not a collected one: at 20 ladder months instead
+    of the original 2, the raw trade-level table (a row per executed
+    trade across the whole exchange, not per market) can get enormous.
+    precompute_ticker_stats() only ever needs small aggregated results
+    (one row per ticker), so there's no reason to ever materialize the
+    full raw table -- that was the actual memory risk here, not the pair
+    count."""
     paths = []
     for m in TARGET_MONTHS:
         tp = _trades_month_globs(m)
@@ -97,7 +139,7 @@ def load_trades() -> pl.DataFrame:
             f"No trades files found for {TARGET_MONTHS} -- check the data/trades/trades_kalshi_{{even,odd}}/ "
             f"trades_{{month}}.parquet convention matches your actual layout."
         )
-    return pl.concat([pl.scan_parquet(p).collect() for p in paths])
+    return pl.concat([pl.scan_parquet(p) for p in paths])
 
 
 def load_markets() -> pl.DataFrame:
@@ -120,11 +162,28 @@ def load_markets() -> pl.DataFrame:
 
 
 def classify_subtitle(sub_title):
+    """Compound multi-clause conditions (KXCITIESWEATHER: "Austin: 36 or
+    below and Philadelphia: 50 or above") always use a "Location: value"
+    colon structure -- no legitimate single-variable ladder ticker seen
+    anywhere in this project (hurricane category, earthquake magnitude,
+    lake level, crypto price thresholds) contains a colon, INCLUDING ones
+    with an accidentally duplicated phrase (crypto's "$4,200 or above or
+    above" -- confirmed via classify_subtitle_diff_check.py to be a
+    Kalshi text-generation quirk on ONE real condition, not two).
+
+    An earlier version of this function counted phrase OCCURRENCES
+    instead (more than one hit -> compound) -- that correctly excluded
+    KXCITIESWEATHER but ALSO wrongly excluded 50 legitimate crypto
+    tickers whose sub_title happens to repeat the same phrase twice in a
+    row with no second condition at all. Colon presence, not phrase
+    count, is what actually distinguishes a genuine second clause."""
     if sub_title is None:
         return "unrecognized"
     s = sub_title.lower()
     if " to " in s:
         return "bracket"
+    if ":" in s:
+        return "unrecognized"
     if any(p in s for p in UPPER_PHRASES):
         return "upper_tail"
     if any(p in s for p in LOWER_PHRASES):
@@ -173,19 +232,28 @@ def build_valid_pairs(markets: pl.DataFrame) -> list[tuple[str, str]]:
     return pairs
 
 
-def precompute_ticker_stats(trades: pl.DataFrame) -> dict:
+def precompute_ticker_stats(trades_lazy: pl.LazyFrame) -> dict:
     """Single-pass equivalent of check_mod.side_stats() / last_trade_price()
-    computed for every ticker in trades up front, instead of re-filtering
-    the full trades table on demand per pair (check_pair() does 4 filters
-    per pair -- side_stats() x2, last_trade_price() x2 -- which is
-    O(pairs x trades) and the other likely source of "taking forever" once
-    the pair count spans every category instead of just one)."""
+    computed for every ticker up front, instead of re-filtering the full
+    trades table on demand per pair (check_pair() does 4 filters per pair
+    -- side_stats() x2, last_trade_price() x2 -- which is O(pairs x trades)
+    and the other likely source of "taking forever" once the pair count
+    spans every category instead of just one).
+
+    Both aggregations stay lazy until collect() -- side_agg and last_trade
+    are each one row per ticker (or per ticker x side), so the collected
+    results stay small regardless of how many raw trade rows the 20-month
+    ladder window contains. last_trade uses sort_by() INSIDE the agg
+    rather than a separate .sort() beforehand, so polars only has to order
+    values within each ticker's group instead of doing one full-table sort
+    across every ticker's trades at once."""
     ticker_col, side_col = check_mod.TICKER_COL, check_mod.SIDE_COL
     price_col, ts_col = check_mod.PRICE_COL, check_mod.TIMESTAMP_COL
 
     side_agg = (
-        trades.group_by([ticker_col, side_col])
+        trades_lazy.group_by([ticker_col, side_col])
         .agg(pl.col(price_col).mean().alias("avg_price"), pl.len().alias("n"))
+        .collect()
     )
     stats: dict = {}
     for row in side_agg.iter_rows(named=True):
@@ -196,9 +264,9 @@ def precompute_ticker_stats(trades: pl.DataFrame) -> dict:
             stats[t][side] = {"avg_price": row["avg_price"], "n": row["n"]}
 
     last_trade = (
-        trades.sort(ts_col)
-        .group_by(ticker_col, maintain_order=True)
-        .agg(pl.col(price_col).last().alias("last_price"))
+        trades_lazy.group_by(ticker_col)
+        .agg(pl.col(price_col).sort_by(ts_col).last().alias("last_price"))
+        .collect()
     )
     last_price = dict(zip(last_trade[ticker_col].to_list(), last_trade["last_price"].to_list()))
 
@@ -250,6 +318,10 @@ def check_pair_fast(precomputed: dict, leg_a: str, leg_b: str) -> dict:
 
 
 def main():
+    global TARGET_MONTHS
+    args = parse_args()
+    TARGET_MONTHS = resolve_target_months(TARGET_MONTHS, args.months)
+
     print("Building corrected pair list from yes_sub_title (bracket/upper_tail/lower_tail)...")
     markets = load_markets()
     pairs = build_valid_pairs(markets)
@@ -267,15 +339,21 @@ def main():
     print(pair_categories.group_by("category").agg(pl.len().alias("n_pairs")).sort("n_pairs", descending=True))
     print()
 
-    print(f"Loading trades for {TARGET_MONTHS}...")
-    trades = load_trades()
+    print(f"Loading trades for {TARGET_MONTHS} (lazily -- not materializing the full raw table)...")
+    trades_lazy = load_trades_lazy()
 
     print("Precomputing per-ticker stats once (instead of check_pair() filtering the full trades "
           "table twice per pair -- O(pairs x trades) was the other likely slow stage here)...")
-    precomputed = precompute_ticker_stats(trades)
+    precomputed = precompute_ticker_stats(trades_lazy)
+    print(f"  stats computed for {len(precomputed['last_price'])} distinct tickers")
 
-    print("Checking all pairs via O(1) lookups against the precomputed stats...")
-    rows = [check_pair_fast(precomputed, a, b) for a, b in pairs]
+    print(f"Checking all {len(pairs)} pairs via O(1) lookups against the precomputed stats...")
+    rows = []
+    progress_every = max(1, len(pairs) // 20)  # ~20 progress lines regardless of scale
+    for i, (a, b) in enumerate(pairs):
+        rows.append(check_pair_fast(precomputed, a, b))
+        if (i + 1) % progress_every == 0 or (i + 1) == len(pairs):
+            print(f"  {i + 1}/{len(pairs)} pairs checked")
 
     # Explicit schema instead of letting pl.DataFrame(rows) infer one from a
     # sample of the 283k dicts. check_pair_fast() legitimately mixes None
@@ -316,6 +394,9 @@ def main():
     print(f"same-side ('no') violation rate:  {rate('same_side_no_violation')}")
 
     out_path = "pairwise_monotonicity_taker_side_results_corrected.parquet"
+    if args.months:
+        out_path = "pairwise_monotonicity_taker_side_results_corrected_smoketest.parquet"
+        print(f"\n--months override was used -- writing to {out_path}, NOT the real results file")
     results.write_parquet(out_path)
     print(f"\nfull corrected results written to {out_path} "
           f"(original pairwise_monotonicity_taker_side_results.parquet left untouched for comparison)")
@@ -323,3 +404,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    

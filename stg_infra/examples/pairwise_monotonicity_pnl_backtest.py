@@ -89,7 +89,10 @@ import polars as pl
 # since weather/economics/exotics correctly produce zero valid pairs now.
 RESULTS_PATH = "pairwise_monotonicity_taker_side_results_corrected.parquet"
 
-TARGET_MONTHS = ["2025-10", "2025-11"]  # same window the corrected results were built from
+try:
+    from data_windows import LADDER_MONTHS as TARGET_MONTHS
+except ImportError:
+    from .data_windows import LADDER_MONTHS as TARGET_MONTHS
 
 
 def _trades_month_globs(month: str) -> str:

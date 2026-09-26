@@ -30,7 +30,10 @@ os.environ.setdefault("POLARS_MAX_THREADS", "4")
 
 import polars as pl
 
-TARGET_MONTHS = ["2025-10", "2025-11"]  # Dec 2025 has no data file yet -- add once it does
+try:
+    from data_windows import LADDER_MONTHS as TARGET_MONTHS
+except ImportError:
+    from .data_windows import LADDER_MONTHS as TARGET_MONTHS
 MIN_OUTCOMES = 20
 
 LADDER_KEYWORDS_PATTERN = r"\b(above|below|or higher|or lower|over|under|at least|at most|exceed)\b"

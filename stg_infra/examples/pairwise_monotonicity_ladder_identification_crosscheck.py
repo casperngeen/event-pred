@@ -95,7 +95,10 @@ RESULTS_PATH = "pairwise_monotonicity_taker_side_results.parquet"
 
 # Must match whatever months pairwise_monotonicity_taker_side_results.parquet
 # was built from, otherwise you're comparing pairs from different windows.
-TARGET_MONTHS = ["2025-10", "2025-11"]
+try:
+    from data_windows import LADDER_MONTHS as TARGET_MONTHS
+except ImportError:
+    from .data_windows import LADDER_MONTHS as TARGET_MONTHS
 
 # Same threshold your v3 script uses to gate which events count as ladder
 # candidates at all. Real -- not a placeholder -- but see the note in

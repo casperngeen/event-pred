@@ -45,7 +45,10 @@ os.environ.setdefault("POLARS_MAX_THREADS", "4")
 
 import polars as pl
 
-TARGET_MONTHS = ["2025-10", "2025-11"]
+try:
+    from data_windows import MECE_MONTHS as TARGET_MONTHS
+except ImportError:
+    from .data_windows import MECE_MONTHS as TARGET_MONTHS
 MIN_LEGS = 3
 MAX_LEGS = 60
 MIN_INSTANCES_TO_JUDGE = 3

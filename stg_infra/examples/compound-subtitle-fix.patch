@@ -1,0 +1,35 @@
+diff --git a/stg_infra/examples/pairwise_monotonicity_taker_side_check_v2.py b/stg_infra/examples/pairwise_monotonicity_taker_side_check_v2.py
+--- a/stg_infra/examples/pairwise_monotonicity_taker_side_check_v2.py
++++ b/stg_infra/examples/pairwise_monotonicity_taker_side_check_v2.py
+@@ -162,14 +162,29 @@
+ 
+ 
+ def classify_subtitle(sub_title):
++    """Counts phrase OCCURRENCES, not just presence -- a compound sub_title
++    like KXCITIESWEATHER's "Chicago: 44 or above and New York: 71 or below"
++    contains a genuine "or above" match, but it's two independent city
++    conditions joined by "and", not one ordered variable. extract_number()
++    only grabs the FIRST number in the string, so naively classifying this
++    as a simple upper_tail would pair two tickers based on whichever city
++    happens to appear first in each one -- economically meaningless, same
++    failure class as the original bracket/tail issue, just sneakier since
++    the phrase match is real. More than one threshold-phrase occurrence
++    (of either direction, or both) means a compound condition -- route to
++    unrecognized, same treatment already given to combo-props."""
+     if sub_title is None:
+         return "unrecognized"
+     s = sub_title.lower()
+     if " to " in s:
+         return "bracket"
+-    if any(p in s for p in UPPER_PHRASES):
++    upper_hits = sum(s.count(p) for p in UPPER_PHRASES)
++    lower_hits = sum(s.count(p) for p in LOWER_PHRASES)
++    if upper_hits + lower_hits > 1:
++        return "unrecognized"
++    if upper_hits == 1:
+         return "upper_tail"
+-    if any(p in s for p in LOWER_PHRASES):
++    if lower_hits == 1:
+         return "lower_tail"
+     return "unrecognized"
+     

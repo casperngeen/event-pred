@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Hashable, List
+from typing import Any, Dict, Hashable, List, Optional
 
 import numpy as np
 import polars as pl
@@ -198,4 +198,121 @@ class KalshiSemanticTopicEdges:
                         nid_j, nid_i, w,
                         metadata={"edge_type": "semantic_topic", "similarity": sim},
                     ))
+        return edges
+
+
+class KalshiMeceHyperedges:
+    """Star-expansion edges connecting each validated MECE leg to its basket hub.
+
+    Requires ``KalshiTickerNodes`` (or similar leg-level node strategy) AND
+    ``KalshiMeceBasketNodes`` to have both run via ``.with_nodes()`` first.
+    Mirrors ``KalshiTickerToEventEdges`` exactly, but only connects legs
+    that are part of a VALIDATED MECE basket (per ``leg_prices_df``), not
+    every market sharing a raw ``event_ticker`` -- the whole point of this
+    project's classification work was that raw category/event grouping
+    isn't a reliable proxy for genuine MECE structure (see e.g. weather:
+    most events are brackets, but hurricane-category/earthquake-magnitude
+    events under the same category label are ladders instead).
+
+    Parameters
+    ----------
+    leg_prices_df : pl.DataFrame
+        Same validated leg-membership table passed to ``KalshiMeceBasketNodes``
+        -- must have columns ``"event_ticker"``, ``"ticker"``.
+    """
+
+    def __init__(self, leg_prices_df: pl.DataFrame, node_col: str = "ticker", weight: float = 1.0) -> None:
+        self.node_col = node_col
+        self.weight = weight
+        self._leg_basket: Dict[str, str] = {}
+        for row in leg_prices_df.select(["event_ticker", "ticker"]).unique().iter_rows(named=True):
+            self._leg_basket[str(row["ticker"])] = str(row["event_ticker"])
+
+    def build_edges(self, snapshot: GraphSnapshot, data: pl.DataFrame, **kwargs: Any) -> List[EdgeState]:
+        edges: List[EdgeState] = []
+        node_id_set = set(snapshot.node_ids)
+        for nid in snapshot.node_ids:
+            node = snapshot.get_node(nid)
+            if node is None or node.metadata.get("node_type") == "mece_basket":
+                continue
+            evt = self._leg_basket.get(str(nid))
+            if evt is None:
+                continue
+            hub_id: Hashable = f"MECE:{evt}"
+            if hub_id not in node_id_set:
+                continue
+            edges.append(EdgeState(nid, hub_id, self.weight, metadata={"edge_type": "mece_leg_to_basket"}))
+            edges.append(EdgeState(hub_id, nid, self.weight, metadata={"edge_type": "mece_basket_to_leg"}))
+        return edges
+
+
+class KalshiLadderChainEdges:
+    """Directed edges for validated ladder (monotonicity) pairs.
+
+    Unlike the MECE hyperedge above (a symmetric N-ary group membership,
+    correctly represented as bidirectional spokes to a shared hub), a
+    ladder pair encodes a genuine ORDER relationship -- leg_a's threshold
+    implies leg_b's (per however ``build_valid_pairs()`` sorted them), so
+    edge direction itself carries information the model should learn from,
+    not something to symmetrize away. Edges here are ONE-DIRECTIONAL,
+    leg_a -> leg_b, matching the exact direction convention already used to
+    compute violation rates in ``pairwise_monotonicity_taker_side_check_v2.py``
+    -- keeping this consistent means the model sees the same "should be
+    ordered this way" semantics the rest of the project already validated
+    against, not a re-derived or reversed one.
+
+    Indexed by leg_a at construction so ``build_edges`` only has to look up
+    the (typically small) set of ACTIVE nodes in a given snapshot against
+    this index, rather than rescanning the full pairs table -- necessary
+    given the ladder side alone can have millions of validated pairs
+    (2.47M at full 20-month scale), which would make a per-snapshot linear
+    scan the dominant cost of building the whole graph otherwise.
+
+    Parameters
+    ----------
+    pairs_df : pl.DataFrame
+        ``pairwise_monotonicity_taker_side_results_corrected.parquet`` (or
+        equivalent) -- must have ``"leg_a"``, ``"leg_b"`` columns.
+    feature_cols : list of str, optional
+        Additional columns from ``pairs_df`` (e.g. historical violation
+        rate/gap) to attach as edge features, so the model has direct
+        access to past observed behaviour on this pair, not just topology.
+        Rows with a null value in any requested feature column fall back to
+        no edge features rather than being dropped entirely.
+    """
+
+    def __init__(
+        self,
+        pairs_df: pl.DataFrame,
+        node_col: str = "ticker",
+        weight: float = 1.0,
+        feature_cols: Optional[List[str]] = None,
+    ) -> None:
+        self.node_col = node_col
+        self.weight = weight
+        self.feature_cols = [c for c in (feature_cols or []) if c in pairs_df.columns]
+        select_cols = ["leg_a", "leg_b"] + self.feature_cols
+        self._by_leg_a: Dict[str, List[tuple]] = {}
+        for row in pairs_df.select(select_cols).iter_rows(named=True):
+            a = str(row["leg_a"])
+            feat_vals = tuple(row.get(c) for c in self.feature_cols) if self.feature_cols else None
+            self._by_leg_a.setdefault(a, []).append((str(row["leg_b"]), feat_vals))
+
+    def build_edges(self, snapshot: GraphSnapshot, data: pl.DataFrame, **kwargs: Any) -> List[EdgeState]:
+        node_id_set = set(str(n) for n in snapshot.node_ids)
+        edges: List[EdgeState] = []
+        for a in snapshot.node_ids:
+            partners = self._by_leg_a.get(str(a))
+            if not partners:
+                continue
+            for b, feat_vals in partners:
+                if b not in node_id_set:
+                    continue
+                feats = None
+                if feat_vals is not None and all(v is not None for v in feat_vals):
+                    feats = np.array(feat_vals, dtype=np.float64)
+                edges.append(EdgeState(
+                    a, b, self.weight, features=feats,
+                    metadata={"edge_type": "ladder_monotonic"},
+                ))
         return edges

@@ -67,7 +67,10 @@ import polars as pl
 # --------------------------------------------------------------------------
 # Config
 # --------------------------------------------------------------------------
-TARGET_MONTHS = ["2025-10", "2025-11"]  # confirmed actual data range: no Dec 2025
+try:
+    from data_windows import MECE_MONTHS as TARGET_MONTHS, MIN_LEG_TRADES
+except ImportError:
+    from .data_windows import MECE_MONTHS as TARGET_MONTHS, MIN_LEG_TRADES
 MIN_LEGS = 3    # excludes binary tiers, matches the >=3 definition of "N-way"
 # v3 -- was 60 ("generous cap, avoids monster clusters dominating runtime"), but that comment was
 # never actually checked against the data. mece_family_audit.py's oversized-event check found 2,989
@@ -341,6 +344,7 @@ daily_last_trade = (
     .agg([
         pl.col("yes_price").last().alias("close"),
         pl.col("created_time").last().alias("trade_time"),
+        pl.len().alias("n_trades"),
     ])
 )
 
@@ -450,6 +454,7 @@ per_event_day = (
         pl.col("close").sum().alias("sum_cents"),
         pl.col("trade_time").min().alias("min_trade_time"),
         pl.col("trade_time").max().alias("max_trade_time"),
+        pl.col("n_trades").min().alias("min_leg_trades"),
     ])
     .join(candidates.select(["event_ticker", "n_legs_total"]), on="event_ticker", how="inner")
 )
@@ -466,6 +471,13 @@ full_all = (
 print(f"{full_all.height} fully-covered (event, day) snapshots found across all candidates "
       f"(out of {per_event_day.height} (event, day) rows with >=1 trade).\n")
 
+n_liquid = full_all.filter(pl.col("min_leg_trades") >= MIN_LEG_TRADES).height
+print(f"Of those, {n_liquid} ({n_liquid / full_all.height:.1%}) have every leg trading at least "
+      f"{MIN_LEG_TRADES} times that day (the same liquidity bar the ladder mechanism uses via "
+      f"MIN_N_PER_SIDE) -- the rest have at least one thinly-traded leg where the 'last price' "
+      f"may not reflect a real, tradeable market. Both breakdowns are printed below so the split "
+      f"stays visible rather than picking one silently.\n")
+
 if full_all.height == 0:
     print("No fully-covered snapshot exists anywhere in the candidate pool -- the single "
           "example above was the only one found, and even it came from just 2 total "
@@ -474,26 +486,37 @@ if full_all.height == 0:
 else:
     VIOLATION_THRESHOLD = 0.05  # 5 cents -- an arbitrary but explicit bar for "meaningfully mispriced"
     bins = [(0, 0.25), (0.25, 1), (1, 4), (4, 12), (12, 24), (24, 1e9)]
-    print(f"Deviation from $1.00, binned by time-gap span within each full-basket snapshot "
-          f"(>${VIOLATION_THRESHOLD:.2f} abs deviation counted as 'meaningfully mispriced'):\n")
-    for lo, hi in bins:
-        sub = full_all.filter((pl.col("time_gap_hours") >= lo) & (pl.col("time_gap_hours") < hi))
-        n = sub.height
-        hi_label = "inf" if hi >= 1e9 else f"{hi:>5.2f}h"
-        if n > 0:
-            n_meaningful = sub.filter(pl.col("abs_deviation") > VIOLATION_THRESHOLD).height
-            print(f"  {lo:>5.2f}h - {hi_label}: n={n:4d}  mean|dev|=${sub['abs_deviation'].mean():.3f}  "
-                  f"median|dev|=${sub['abs_deviation'].median():.3f}  "
-                  f"{n_meaningful}/{n} ({n_meaningful/n:.1%}) exceed ${VIOLATION_THRESHOLD:.2f}")
-        else:
-            print(f"  {lo:>5.2f}h - {hi_label}: 0 snapshots")
+
+    def print_binned_table(df: pl.DataFrame) -> None:
+        for lo, hi in bins:
+            sub = df.filter((pl.col("time_gap_hours") >= lo) & (pl.col("time_gap_hours") < hi))
+            n = sub.height
+            hi_label = "inf" if hi >= 1e9 else f"{hi:>5.2f}h"
+            if n > 0:
+                n_meaningful = sub.filter(pl.col("abs_deviation") > VIOLATION_THRESHOLD).height
+                print(f"  {lo:>5.2f}h - {hi_label}: n={n:4d}  mean|dev|=${sub['abs_deviation'].mean():.3f}  "
+                      f"median|dev|=${sub['abs_deviation'].median():.3f}  "
+                      f"{n_meaningful}/{n} ({n_meaningful/n:.1%}) exceed ${VIOLATION_THRESHOLD:.2f}")
+            else:
+                print(f"  {lo:>5.2f}h - {hi_label}: 0 snapshots")
+
+    print(f"Deviation from $1.00, binned by time-gap span (>${VIOLATION_THRESHOLD:.2f} abs deviation "
+          f"counted as 'meaningfully mispriced') -- ALL snapshots, thin-liquidity included:\n")
+    print_binned_table(full_all)
+
+    liquid_all = full_all.filter(pl.col("min_leg_trades") >= MIN_LEG_TRADES)
+    print(f"\nSame table, restricted to snapshots where every leg traded >= {MIN_LEG_TRADES} times "
+          f"that day (n={liquid_all.height}) -- this is the number that should actually inform any "
+          f"PnL or 'beats baseline' claim:\n")
+    print_binned_table(liquid_all)
 
     print("\nTop 10 largest-magnitude full-basket snapshots (any time-gap):")
     top10 = full_all.sort("abs_deviation", descending=True).head(10)
     for row in top10.iter_rows(named=True):
+        liquid_flag = "LIQUID" if row["min_leg_trades"] >= MIN_LEG_TRADES else "thin"
         print(f"    {row['event_ticker']:30s} {str(row['date']):12s} "
               f"sum=${1.0 + row['deviation']:.2f}  dev=${row['deviation']:+.2f}  "
-              f"time_gap={row['time_gap_hours']:.2f}h")
+              f"time_gap={row['time_gap_hours']:.2f}h  min_leg_trades={row['min_leg_trades']:4d} [{liquid_flag}]")
 
     # Leg-level detail for the top 5 -- don't just trust the aggregate number
     # for the biggest examples; look at what's actually inside the basket.
@@ -540,13 +563,13 @@ if full_all.height > 0:
         daily_last_trade
         .join(candidate_legs_df.select(["ticker", "event_ticker"]), on="ticker", how="inner")
         .join(full_keys, on=["event_ticker", "date"], how="inner")
-        .select(["event_ticker", "date", "ticker", "close", "trade_time"])
+        .select(["event_ticker", "date", "ticker", "close", "trade_time", "n_trades"])
     )
     leg_prices.write_parquet(LEG_PRICES_OUT_PATH)
     print(f"Wrote {leg_prices.height} leg-level price row(s) for those snapshots to {LEG_PRICES_OUT_PATH}")
 else:
     pl.DataFrame(schema={"event_ticker": pl.Utf8, "date": pl.Date, "ticker": pl.Utf8,
-                          "close": pl.Float64, "trade_time": pl.Datetime}).write_parquet(LEG_PRICES_OUT_PATH)
+                          "close": pl.Float64, "trade_time": pl.Datetime, "n_trades": pl.Int64}).write_parquet(LEG_PRICES_OUT_PATH)
     print(f"Wrote empty leg-price file to {LEG_PRICES_OUT_PATH} (no full-basket snapshots to detail).")
 
 print("\nDone.")

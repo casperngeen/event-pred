@@ -52,7 +52,10 @@ import polars as pl
 pl.Config.set_fmt_str_lengths(200)
 pl.Config.set_tbl_width_chars(220)
 
-TARGET_MONTHS = ["2025-10", "2025-11"]
+try:
+    from data_windows import MECE_MONTHS as TARGET_MONTHS
+except ImportError:
+    from .data_windows import MECE_MONTHS as TARGET_MONTHS
 MIN_LEGS = 3
 MAX_LEGS = 100  # v2 -- was 60; raised after this script found 2,989 events (almost entirely KXDOGE)
                 # above 60 legs that would otherwise pass every other single-winner test. Kept in

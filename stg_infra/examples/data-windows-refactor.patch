@@ -1,0 +1,266 @@
+diff --git a/stg_infra/examples/data_windows.py b/stg_infra/examples/data_windows.py
+new file mode 100644
+index 0000000..19b5a97
+--- /dev/null
++++ b/stg_infra/examples/data_windows.py
+@@ -0,0 +1,99 @@
++"""
++data_windows.py
++
++Single source of truth for which months of Kalshi data each category's
++data is trustworthy for, and where the train/val/test split boundaries
++sit on the shared master calendar.
++
++Background: category_history_audit.py found that financials and crypto
++each went through a step-change in how many markets Kalshi issues per
++month (financials ~14x in 2024-04, crypto ~17x in 2024-12) -- before
++those points, under 2% of each category's total historical volume
++exists, in a structurally thinner, different liquidity regime.
++weather_spike_check.py found weather's Dec 2024/Jan 2025 spike is a
++KXCITIESWEATHER product-rollout burst (one series doubling twice
++month-over-month while every other series stays flat), not steady-state
++trading -- excluding just January still keeps 6.4x the original 2-month
++sample at a representative density.
++
++Every script that scans raw markets/trades data should import its
++window from here instead of hardcoding TARGET_MONTHS, so a future
++change to any of these boundaries only has to happen in one place.
++"""
++
++FINANCIALS_START = "2024-04"
++CRYPTO_START = "2024-12"
++WEATHER_START = "2025-02"  # excludes the KXCITIESWEATHER rollout burst (2024-12, 2025-01)
++END_MONTH = "2025-11"      # confirmed elsewhere: no December 2025 file exists yet
++
++
++def month_range(start: str, end: str) -> list[str]:
++    """Inclusive [start, end] list of 'YYYY-MM' strings."""
++    y, m = (int(x) for x in start.split("-"))
++    ey, em = (int(x) for x in end.split("-"))
++    out = []
++    while (y, m) <= (ey, em):
++        out.append(f"{y:04d}-{m:02d}")
++        m += 1
++        if m == 13:
++            m = 1
++            y += 1
++    return out
++
++
++# Ladder mechanism only ever uses crypto + financials (weather is
++# structurally excluded -- see
++# pairwise_monotonicity_ladder_identification_crosscheck.py and the
++# sub_title bracket/threshold finding). Scripts that process both
++# categories together in one pass scan from the EARLIER of the two
++# starts and let classify_ticker()'s per-row filtering handle the rest
++# -- scanning from crypto's later start would silently drop financials
++# months that classify_ticker() would otherwise have picked up.
++LADDER_START = min(FINANCIALS_START, CRYPTO_START)
++LADDER_MONTHS = month_range(LADDER_START, END_MONTH)
++
++# MECE mechanism is category-agnostic in principle, but the validated
++# findings are overwhelmingly weather (93% of opportunities), with no
++# confirmed full-basket structure in crypto/financials yet. Start from
++# weather's window; widen to LADDER_START only if a future audit finds
++# genuine MECE structure elsewhere.
++MECE_START = WEATHER_START
++MECE_MONTHS = month_range(MECE_START, END_MONTH)
++
++# Full master window -- for anything that needs one shared calendar
++# across every category (e.g. the joint STGAT adjacency/feature tensor,
++# which needs one T index even though node population grows over time
++# as each category's window opens -- weather nodes simply don't exist
++# before 2025-02, crypto nodes don't exist before 2024-12, etc).
++MASTER_START = min(FINANCIALS_START, CRYPTO_START, WEATHER_START)
++MASTER_MONTHS = month_range(MASTER_START, END_MONTH)
++
++
++# --- Train/val/test split, defined ONCE on the master calendar ---
++#
++# Applies to every mechanism and every category, even though each
++# category's own data window opens at a different point within it.
++# This piece MUST be shared, not chosen independently per mechanism: a
++# per-mechanism split risks the shared temporal backbone learning about
++# a calendar period through one mechanism's training data while another
++# mechanism is simultaneously treating that same period as held-out
++# test -- a leak that wouldn't show up in either mechanism's own
++# results individually.
++#
++# 15 months train / 2 months val / 3 months test, chronological order
++# (no shuffling -- these are time series). Adjust only here.
++TRAIN_END = "2025-06"  # last month included in train
++VAL_END = "2025-08"    # last month included in val
++# test = everything after VAL_END through END_MONTH
++
++
++def split_for(month: str) -> str:
++    """Returns 'train', 'val', or 'test' for a given 'YYYY-MM' month, on
++    the shared master calendar. Every script should call this rather
++    than defining its own split logic, so a boundary change only has to
++    happen in this one file."""
++    if month <= TRAIN_END:
++        return "train"
++    if month <= VAL_END:
++        return "val"
++    return "test"
+diff --git a/stg_infra/examples/mece_family_audit.py b/stg_infra/examples/mece_family_audit.py
+index 188cf3e..9af2aff 100644
+--- a/stg_infra/examples/mece_family_audit.py
++++ b/stg_infra/examples/mece_family_audit.py
+@@ -52,7 +52,10 @@ import polars as pl
+ pl.Config.set_fmt_str_lengths(200)
+ pl.Config.set_tbl_width_chars(220)
+ 
+-TARGET_MONTHS = ["2025-10", "2025-11"]
++try:
++    from data_windows import MECE_MONTHS as TARGET_MONTHS
++except ImportError:
++    from .data_windows import MECE_MONTHS as TARGET_MONTHS
+ MIN_LEGS = 3
+ MAX_LEGS = 100  # v2 -- was 60; raised after this script found 2,989 events (almost entirely KXDOGE)
+                 # above 60 legs that would otherwise pass every other single-winner test. Kept in
+diff --git a/stg_infra/examples/mece_family_key_diagnostic.py b/stg_infra/examples/mece_family_key_diagnostic.py
+index a2365f5..049adc6 100644
+--- a/stg_infra/examples/mece_family_key_diagnostic.py
++++ b/stg_infra/examples/mece_family_key_diagnostic.py
+@@ -45,7 +45,10 @@ os.environ.setdefault("POLARS_MAX_THREADS", "4")
+ 
+ import polars as pl
+ 
+-TARGET_MONTHS = ["2025-10", "2025-11"]
++try:
++    from data_windows import MECE_MONTHS as TARGET_MONTHS
++except ImportError:
++    from .data_windows import MECE_MONTHS as TARGET_MONTHS
+ MIN_LEGS = 3
+ MAX_LEGS = 60
+ MIN_INSTANCES_TO_JUDGE = 3
+diff --git a/stg_infra/examples/mece_sum_to_one_check.py b/stg_infra/examples/mece_sum_to_one_check.py
+index 9d27cb8..5084908 100644
+--- a/stg_infra/examples/mece_sum_to_one_check.py
++++ b/stg_infra/examples/mece_sum_to_one_check.py
+@@ -67,7 +67,10 @@ import polars as pl
+ # --------------------------------------------------------------------------
+ # Config
+ # --------------------------------------------------------------------------
+-TARGET_MONTHS = ["2025-10", "2025-11"]  # confirmed actual data range: no Dec 2025
++try:
++    from data_windows import MECE_MONTHS as TARGET_MONTHS
++except ImportError:
++    from .data_windows import MECE_MONTHS as TARGET_MONTHS
+ MIN_LEGS = 3    # excludes binary tiers, matches the >=3 definition of "N-way"
+ # v3 -- was 60 ("generous cap, avoids monster clusters dominating runtime"), but that comment was
+ # never actually checked against the data. mece_family_audit.py's oversized-event check found 2,989
+diff --git a/stg_infra/examples/pairwise_monotonicity_check.py b/stg_infra/examples/pairwise_monotonicity_check.py
+index c208717..5cf479f 100644
+--- a/stg_infra/examples/pairwise_monotonicity_check.py
++++ b/stg_infra/examples/pairwise_monotonicity_check.py
+@@ -30,7 +30,10 @@ os.environ.setdefault("POLARS_MAX_THREADS", "4")
+ 
+ import polars as pl
+ 
+-TARGET_MONTHS = ["2025-10", "2025-11"]  # Dec 2025 has no data file yet -- add once it does
++try:
++    from data_windows import LADDER_MONTHS as TARGET_MONTHS
++except ImportError:
++    from .data_windows import LADDER_MONTHS as TARGET_MONTHS
+ MIN_OUTCOMES = 20
+ 
+ LADDER_KEYWORDS_PATTERN = r"\b(above|below|or higher|or lower|over|under|at least|at most|exceed)\b"
+diff --git a/stg_infra/examples/pairwise_monotonicity_ladder_identification_crosscheck.py b/stg_infra/examples/pairwise_monotonicity_ladder_identification_crosscheck.py
+index 2028572..4827c9e 100644
+--- a/stg_infra/examples/pairwise_monotonicity_ladder_identification_crosscheck.py
++++ b/stg_infra/examples/pairwise_monotonicity_ladder_identification_crosscheck.py
+@@ -95,7 +95,10 @@ RESULTS_PATH = "pairwise_monotonicity_taker_side_results.parquet"
+ 
+ # Must match whatever months pairwise_monotonicity_taker_side_results.parquet
+ # was built from, otherwise you're comparing pairs from different windows.
+-TARGET_MONTHS = ["2025-10", "2025-11"]
++try:
++    from data_windows import LADDER_MONTHS as TARGET_MONTHS
++except ImportError:
++    from .data_windows import LADDER_MONTHS as TARGET_MONTHS
+ 
+ # Same threshold your v3 script uses to gate which events count as ladder
+ # candidates at all. Real -- not a placeholder -- but see the note in
+diff --git a/stg_infra/examples/pairwise_monotonicity_pair_type_composition_by_category.py b/stg_infra/examples/pairwise_monotonicity_pair_type_composition_by_category.py
+index 496a64b..548259e 100644
+--- a/stg_infra/examples/pairwise_monotonicity_pair_type_composition_by_category.py
++++ b/stg_infra/examples/pairwise_monotonicity_pair_type_composition_by_category.py
+@@ -52,7 +52,10 @@ except ImportError:
+     from .pairwise_monotonicity_pnl_backtest import classify_ticker
+ 
+ RESULTS_PATH = "pairwise_monotonicity_taker_side_results_corrected.parquet"
+-TARGET_MONTHS = ["2025-10", "2025-11"]  # keep in sync with the results file's window
++try:
++    from data_windows import MASTER_MONTHS as TARGET_MONTHS  # every category, not just ladder-eligible ones
++except ImportError:
++    from .data_windows import MASTER_MONTHS as TARGET_MONTHS
+ 
+ # Broadened to match pairwise_monotonicity_taker_side_check_corrected.py's phrase list (elections
+ # revealed "less than X" / "X and above" wording that this file's original list didn't cover) --
+diff --git a/stg_infra/examples/pairwise_monotonicity_pnl_backtest.py b/stg_infra/examples/pairwise_monotonicity_pnl_backtest.py
+index 672b2c3..ea16723 100644
+--- a/stg_infra/examples/pairwise_monotonicity_pnl_backtest.py
++++ b/stg_infra/examples/pairwise_monotonicity_pnl_backtest.py
+@@ -89,7 +89,10 @@ import polars as pl
+ # since weather/economics/exotics correctly produce zero valid pairs now.
+ RESULTS_PATH = "pairwise_monotonicity_taker_side_results_corrected.parquet"
+ 
+-TARGET_MONTHS = ["2025-10", "2025-11"]  # same window the corrected results were built from
++try:
++    from data_windows import LADDER_MONTHS as TARGET_MONTHS
++except ImportError:
++    from .data_windows import LADDER_MONTHS as TARGET_MONTHS
+ 
+ 
+ def _trades_month_globs(month: str) -> str:
+diff --git a/stg_infra/examples/pairwise_monotonicity_subtitle_check.py b/stg_infra/examples/pairwise_monotonicity_subtitle_check.py
+index 3c3083b..b5b5efd 100644
+--- a/stg_infra/examples/pairwise_monotonicity_subtitle_check.py
++++ b/stg_infra/examples/pairwise_monotonicity_subtitle_check.py
+@@ -48,7 +48,10 @@ except ImportError:
+     from .pairwise_monotonicity_pnl_backtest import classify_ticker
+ 
+ RESULTS_PATH = "pairwise_monotonicity_taker_side_results.parquet"
+-TARGET_MONTHS = ["2025-10", "2025-11"]  # keep in sync with the results file's window
++try:
++    from data_windows import MECE_MONTHS as TARGET_MONTHS  # this script is weather-specific
++except ImportError:
++    from .data_windows import MECE_MONTHS as TARGET_MONTHS
+ 
+ 
+ def _month_globs(month: str):
+diff --git a/stg_infra/examples/pairwise_monotonicity_subtitle_check_crypto_financials.py b/stg_infra/examples/pairwise_monotonicity_subtitle_check_crypto_financials.py
+index 98d07a0..6ff60cb 100644
+--- a/stg_infra/examples/pairwise_monotonicity_subtitle_check_crypto_financials.py
++++ b/stg_infra/examples/pairwise_monotonicity_subtitle_check_crypto_financials.py
+@@ -39,7 +39,10 @@ except ImportError:
+ pl.Config.set_fmt_str_lengths(200)
+ pl.Config.set_tbl_width_chars(220)
+ 
+-TARGET_MONTHS = ["2025-10", "2025-11"]
++try:
++    from data_windows import LADDER_MONTHS as TARGET_MONTHS
++except ImportError:
++    from .data_windows import LADDER_MONTHS as TARGET_MONTHS
+ CATEGORIES_TO_CHECK = ["crypto", "financials"]
+ 
+ 
+diff --git a/stg_infra/examples/pairwise_monotonicity_taker_side_check_v2.py b/stg_infra/examples/pairwise_monotonicity_taker_side_check_v2.py
+index 57b1c3e..cfd2136 100644
+--- a/stg_infra/examples/pairwise_monotonicity_taker_side_check_v2.py
++++ b/stg_infra/examples/pairwise_monotonicity_taker_side_check_v2.py
+@@ -58,7 +58,10 @@ except ImportError:
+     from . import pairwise_monotonicity_taker_side_check as check_mod
+     from .pairwise_monotonicity_pnl_backtest import classify_ticker
+ 
+-TARGET_MONTHS = ["2025-10", "2025-11"]
++try:
++    from data_windows import LADDER_MONTHS as TARGET_MONTHS
++except ImportError:
++    from .data_windows import LADDER_MONTHS as TARGET_MONTHS
+ 
+ UPPER_PHRASES = ("or above", "or higher", "or greater", "or more", "and above")
+ LOWER_PHRASES = ("or below", "or lower", "or less", "less than")
+ 

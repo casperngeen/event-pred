@@ -52,7 +52,10 @@ except ImportError:
     from .pairwise_monotonicity_pnl_backtest import classify_ticker
 
 RESULTS_PATH = "pairwise_monotonicity_taker_side_results_corrected.parquet"
-TARGET_MONTHS = ["2025-10", "2025-11"]  # keep in sync with the results file's window
+try:
+    from data_windows import MASTER_MONTHS as TARGET_MONTHS  # every category, not just ladder-eligible ones
+except ImportError:
+    from .data_windows import MASTER_MONTHS as TARGET_MONTHS
 
 # Broadened to match pairwise_monotonicity_taker_side_check_corrected.py's phrase list (elections
 # revealed "less than X" / "X and above" wording that this file's original list didn't cover) --
