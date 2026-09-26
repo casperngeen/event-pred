@@ -14,6 +14,7 @@ with `venv/bin/python`, never imported.
 | `quantile_2026_09` | 3 | `reports/quantile_findings.md` |
 | `arbitrage_2026_09` | 5 | `reports/arbitrage_findings.md` |
 | `settlement_dist_2026_09` | 4 | `reports/settlement_distribution_findings.md` |
+| `propagation_2026_09` | 4 | `reports/propagation_findings.md` |
 | `leadlag_2026_09` | 18 | `reports/leadlag_findings.md`, `reports/strategy_spec.md`, `reports/liquidity_findings.md` |
 
 ## Output convention
