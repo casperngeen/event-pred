@@ -4,7 +4,8 @@
 walk-forward with 8 folds purged on label end, 3 seeds). Scripts in
 `analysis/event_time_2026_09/`: `metrics.py`, `ablation.py`, `returns.py`
 (outputs in `out/metrics.txt`, `out/ablation.txt`, `out/returns.txt`), and
-`scoped.py` (`out/scoped.txt`, `out/scoped_t2.txt`, added 2026-09-27).
+`scoped.py` (`out/scoped.txt`, `out/scoped_t2.txt`) and `inversion.py`
+(`out/inversion.txt`), added 2026-09-27.
 Synthetic sign check: `analysis/recovery_2026_09/recovery.py`, tag `signs`.*
 
 Four questions:
@@ -16,6 +17,8 @@ Four questions:
    on the cells they can explain, does it learn them then?
 6. Which of the usual explanations for an STG failing on this kind of signal
    apply here (§6: a response to external review comments)?
+7. Why does the scoped AGCRN rank *below* chance when its edge signs are right:
+   a pipeline bug, or learning (§7)?
 
 ## Summary
 
@@ -75,6 +78,19 @@ Four questions:
    encoding) was checked and is not a bug. The binding constraint remains the
    one `recovery_test.md` measured: too few events per edge, and a surprise
    diluted among the other inputs.
+7. **The below-chance AGCRN is not a bug. It comes from the target's own-state
+   inputs.**
+   - An untrained pass-through (the sign rule computed inside the model
+     pipeline) reproduces the rule on every test cell. A trained one fits a
+     positive scale in every fold and seed. So windows, labels and sign
+     conventions are aligned.
+   - Removing the history barely helps (AUC 0.32 → 0.40).
+   - Removing the own-state inputs lifts the frozen AGCRN from 0.23–0.32 to
+     0.50–0.63, and to 0.57–0.68 without history as well (immediate label,
+     labour → FED).
+   - The proposed fixes remove the inversion but add nothing over the rule.
+     A rule + AGCRN residual matches the one-slope linear model on the
+     immediate label. Per-edge sign-fixed magnitudes overfit.
 
 ## 1. Every metric
 
@@ -380,6 +396,67 @@ surprise encoding does *not* help AGCRN, while the zero-parameter rule on that
 same graph works. The signal is real on the labour → FED channel, but it
 amounts to about one parameter's worth. The recovery test puts the data needed
 to learn it with an STG at 10× the current calendar or more.
+
+## 7. Is the inversion a bug? (`inversion.py`)
+
+In the labour → FED scopes (§5), the frozen AGCRN's effective edges have the
+theory sign on every edge (balanced sign accuracy 1.00), yet it ranks the test
+cells below chance (AUC 0.23–0.32 on the immediate label). A review comment
+proposed three causes:
+- a label or timing offset;
+- quiet periods teaching the recurrent layer to "fade the move";
+- a sign-convention mismatch between the rule's pipeline and the model's.
+
+Each is tested inside the same pipeline as `scoped.py`: the same windows,
+masks, scalers, `fit_fold`, firing-cell loss and test cells.
+
+| variant | what it tests | imm t2 (41) | imm t2wf (35) | settle t2 (35) |
+|---|---|---|---|---|
+| zero-parameter rule | reference | 0.78 | 0.76 | 0.77; +7.3¢ |
+| pass-through, untrained | the rule computed from the model's scaled inputs | **0.78, identical on every cell** | **0.76, identical** | **0.77, identical** |
+| pass-through, trained from scale 0 | sign of the fitted scale | scale +0.05 … +0.15, **never negative** | +0.05 … +0.10 | +0.05 … +0.15 (all six cells: +0.03 … +0.15) |
+| AGCRN frozen (as §5) | the inversion | 0.32 | 0.23 | 0.56 |
+| … no history | the recurrent "fade the move" hypothesis | 0.40 | 0.25 | 0.49 |
+| … surprise-only inputs | the own-state inputs | 0.63 | 0.50 | 0.64 |
+| … neither (surprise-only, no history) | both | **0.68** | **0.57** | **0.86**; +3.9¢ (n.s.) |
+| linear, sign imposed | the one-slope reference | 0.71 | 0.74 | 0.75; +3.2¢ |
+| sign-fixed magnitudes (w ≥ 0) | fix: learn sizes, fix signs | 0.59 | 0.68 | 0.43; −2.4¢ |
+| rule + AGCRN residual | fix: the rule as the base model | 0.72 | 0.75 | 0.71; +3.2¢ |
+
+(AUC; for settle also the excess over a random side, ¢/trade.)
+
+- **No alignment or sign bug.** The untrained pass-through reproduces the rule
+  exactly on every test cell, in all six scope × label cells. So the windows,
+  test cells, evaluation labels and sign conventions agree.
+- **The training labels are aligned too.** Started from 0, the trained
+  pass-through's scale comes out positive in every fold and seed. The first
+  gradient step alone fixes that sign, and it has the same sign as the slope of
+  the training labels on the rule.
+  - Its pooled AUC is lower than the untrained one (0.58 vs 0.78), but that is
+    pooling, not inversion. Each fold fits its own bias, the early-stopped
+    scales are small, and pooling folds with different offsets reorders the
+    cells. Within a fold, a positive scale preserves the rule's ranking.
+- **The recurrent layer is not the main cause.** Removing the history leaves
+  the inversion in place (0.32 → 0.40, 0.23 → 0.25).
+- **The own-state inputs are.** With only the surprise and release flag as
+  inputs, the frozen AGCRN recovers to 0.50–0.64. Without history as well, it
+  reaches 0.57–0.86. So FED's own features (lead price, recent drift, flow)
+  carry a relation in training that reverses in the 2024–25 test folds, and it
+  outweighs the correctly-signed surprise edges. This is the same dilution
+  `recovery_test.md` found, and here it doesn't just dilute the signal but
+  inverts the prediction.
+- **Training only on event windows** is already how §5 trains (loss on firing
+  cells only), and it did not prevent the inversion.
+- **The proposed fixes remove the inversion but add nothing over the rule.**
+  - Rule + AGCRN residual matches the one-slope linear model on the immediate
+    label (within 0.011 AUC) and has the same settlement P&L in the t2 scope
+    (+3.2¢). The zero-initialised AGCRN early-stops near zero, so it adds little
+    to the base.
+  - Freeing per-edge magnitudes with signs fixed is worse than one slope in 5
+    of 6 cells. The data cannot support separate sizes per edge either.
+- **The best AGCRN configuration** here is the frozen graph with surprise-only
+  inputs and no history. It still trails the zero-parameter rule on the
+  immediate label (0.68 vs 0.78) and on settlement P&L (+3.9¢ vs +7.3¢).
 
 ## What this means
 

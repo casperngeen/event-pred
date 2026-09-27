@@ -316,56 +316,64 @@ def sign_bal(edges):
     return np.nanmean([hp, hn]), p, len(ok)
 
 
-import argparse  # noqa: E402
-
-ap = argparse.ArgumentParser()
-ap.add_argument("--scopes", nargs="*", default=["hub", "BH", "wf"],
-                choices=["hub", "BH", "wf", "t2", "t2wf"])
-SCOPES = ap.parse_args().scopes
 CHOSEN: list = []
-oof_all = pl.read_parquet("analysis/event_time_2026_09/out/oof_all.parquet")
-FULL = {"linear own + econ (BH ch.)": "linear own+econ, trained on ALL cells",
-        "linear econ signal only (BH ch.)": "linear econ (BH), trained on ALL cells",
-        "AGCRN adaptive (hybrid), no prior": "AGCRN adaptive, trained on ALL cells",
-        "AGCRN frozen econ graph (BH ch.)": "AGCRN frozen BH, trained on ALL cells"}
 
-for k in ("imm", "settle"):
-    for scope in SCOPES:
-        CHOSEN.clear()
-        w, tm, preds, edges, used = run_scope(k, scope)
-        sd_y = label_sd(k)
-        y = w["y"] / sd_y
-        rule(f"label '{k}', scope '{scope}' — {int(tm.sum())} firing test cells on "
-             f"{int(tm.any(1).sum())} instants; edges per fold {used}")
-        chans = sorted({f"{a}→{b}" for fold in CHOSEN for a, b in fold})
-        print(f"channels in scope (any fold): {', '.join(chans)}; folds with each: "
-              + ", ".join(f"{c} {sum(c in {f'{a}→{b}' for a, b in fold} for fold in CHOSEN)}/{len(CHOSEN)}"
-                          for c in chans))
-        print(f"{'model':42} {'R²':>8} {'bal acc':>7} {'AUC':>6} | {'sign bal':>8} {'p':>6} {'edges':>5}"
-              + (f" | {'gross ¢':>8} {'vs random side ¢ [95% CI]':>28} {'short':>5}" if k == "settle" else ""))
-        rows = [(m, preds[m][tm], edges.get(m, {})) for m in MODELS]
-        cell_t, cell_n = np.nonzero(tm)
-        key = pl.DataFrame({"instant": w["dates"][cell_t].astype("datetime64[us]"),
-                            "series": [nodes[i] for i in cell_n],
-                            "i": np.arange(len(cell_t))})
-        for mname, label in FULL.items():
-            d = (oof_all.filter((pl.col("label") == k) & (pl.col("model") == mname))
-                 .select(pl.col("instant").cast(pl.Datetime("us")), "series", "pred_c"))
-            j = key.join(d, on=["instant", "series"], how="left").sort("i")
-            p = j["pred_c"].to_numpy().astype(float) / sd_y[cell_n]
-            rows.append((label, p, {}))
-        for name, p, e in rows:
-            ok = np.isfinite(p)
-            r2, bal, auc = scores(y[tm][ok], p[ok])
-            r2s = "–" if name == "zero-param rule" else f"{r2:+.4f}"   # raw Σz is not a forecast
-            sb, sp, ne = sign_bal(e) if e else (np.nan, np.nan, 0)
-            line = (f"{name:42} {r2s:>8} {bal:>7.3f} {auc:>6.3f} | "
-                    f"{sb:>8.2f} {sp:>6.3f} {ne:>5}" if e else
-                    f"{name:42} {r2s:>8} {bal:>7.3f} {auc:>6.3f} | {'':>8} {'':>6} {'':>5}")
-            if k == "settle":
-                g, ex, ci, q = pnl(w["y"][tm][ok], p[ok], w["dates"][cell_t][ok])
-                line += f" | {g:>+8.2f} {ex:>+8.2f} [{ci[0]:+6.2f},{ci[1]:+6.2f}] {q:>5.2f}"
-            print(line, flush=True)
-    print("\nsign bal: balanced sign accuracy of the effective edges (mean over folds and seeds)\n"
-          "against theory, 0.5 = no sign learned; p: one-sided Fisher exact. Rows 'trained on ALL\n"
-          "cells' are the models.py predictions scored on the same scoped cells.")
+
+def main():
+    import argparse  # noqa: E402
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--scopes", nargs="*", default=["hub", "BH", "wf"],
+                    choices=["hub", "BH", "wf", "t2", "t2wf"])
+    SCOPES = ap.parse_args().scopes
+    oof_all = pl.read_parquet("analysis/event_time_2026_09/out/oof_all.parquet")
+    FULL = {"linear own + econ (BH ch.)": "linear own+econ, trained on ALL cells",
+            "linear econ signal only (BH ch.)": "linear econ (BH), trained on ALL cells",
+            "AGCRN adaptive (hybrid), no prior": "AGCRN adaptive, trained on ALL cells",
+            "AGCRN frozen econ graph (BH ch.)": "AGCRN frozen BH, trained on ALL cells"}
+
+    for k in ("imm", "settle"):
+        for scope in SCOPES:
+            CHOSEN.clear()
+            w, tm, preds, edges, used = run_scope(k, scope)
+            sd_y = label_sd(k)
+            y = w["y"] / sd_y
+            rule(f"label '{k}', scope '{scope}' — {int(tm.sum())} firing test cells on "
+                 f"{int(tm.any(1).sum())} instants; edges per fold {used}")
+            chans = sorted({f"{a}→{b}" for fold in CHOSEN for a, b in fold})
+            print(f"channels in scope (any fold): {', '.join(chans)}; folds with each: "
+                  + ", ".join(f"{c} {sum(c in {f'{a}→{b}' for a, b in fold} for fold in CHOSEN)}/{len(CHOSEN)}"
+                              for c in chans))
+            print(f"{'model':42} {'R²':>8} {'bal acc':>7} {'AUC':>6} | {'sign bal':>8} {'p':>6} {'edges':>5}"
+                  + (f" | {'gross ¢':>8} {'vs random side ¢ [95% CI]':>28} {'short':>5}" if k == "settle" else ""))
+            rows = [(m, preds[m][tm], edges.get(m, {})) for m in MODELS]
+            cell_t, cell_n = np.nonzero(tm)
+            key = pl.DataFrame({"instant": w["dates"][cell_t].astype("datetime64[us]"),
+                                "series": [nodes[i] for i in cell_n],
+                                "i": np.arange(len(cell_t))})
+            for mname, label in FULL.items():
+                d = (oof_all.filter((pl.col("label") == k) & (pl.col("model") == mname))
+                     .select(pl.col("instant").cast(pl.Datetime("us")), "series", "pred_c"))
+                j = key.join(d, on=["instant", "series"], how="left").sort("i")
+                p = j["pred_c"].to_numpy().astype(float) / sd_y[cell_n]
+                rows.append((label, p, {}))
+            for name, p, e in rows:
+                ok = np.isfinite(p)
+                r2, bal, auc = scores(y[tm][ok], p[ok])
+                r2s = "–" if name == "zero-param rule" else f"{r2:+.4f}"   # raw Σz is not a forecast
+                sb, sp, ne = sign_bal(e) if e else (np.nan, np.nan, 0)
+                line = (f"{name:42} {r2s:>8} {bal:>7.3f} {auc:>6.3f} | "
+                        f"{sb:>8.2f} {sp:>6.3f} {ne:>5}" if e else
+                        f"{name:42} {r2s:>8} {bal:>7.3f} {auc:>6.3f} | {'':>8} {'':>6} {'':>5}")
+                if k == "settle":
+                    g, ex, ci, q = pnl(w["y"][tm][ok], p[ok], w["dates"][cell_t][ok])
+                    line += f" | {g:>+8.2f} {ex:>+8.2f} [{ci[0]:+6.2f},{ci[1]:+6.2f}] {q:>5.2f}"
+                print(line, flush=True)
+        print("\nsign bal: balanced sign accuracy of the effective edges (mean over folds and seeds)\n"
+              "against theory, 0.5 = no sign learned; p: one-sided Fisher exact. Rows 'trained on ALL\n"
+              "cells' are the models.py predictions scored on the same scoped cells.")
+
+
+
+if __name__ == "__main__":
+    main()

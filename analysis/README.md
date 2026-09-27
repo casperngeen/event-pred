@@ -11,7 +11,7 @@ with `venv/bin/python`, never imported.
 | `data_quality_2026_09` | 1 | `reports/research_log.md` §12 |
 | `agcrn_diagnostics_2026_09` | 1 | `reports/agcrn_postmortem.md` |
 | `agcrn_checklist_2026_09` | 6 | `reports/agcrn_checklist.md` |
-| `event_time_2026_09` | 9 + `_panel.py` | `reports/agcrn_checklist.md` §3c–3d; `nonlinear.py` in `reports/recovery_test.md`; `ablation.py`, `metrics.py`, `returns.py`, `scoped.py` in `reports/graph_ablation.md` |
+| `event_time_2026_09` | 10 + `_panel.py` | `reports/agcrn_checklist.md` §3c–3d; `nonlinear.py` in `reports/recovery_test.md`; `ablation.py`, `metrics.py`, `returns.py`, `scoped.py`, `inversion.py` in `reports/graph_ablation.md` |
 | `recovery_2026_09` | 1 | `reports/recovery_test.md` |
 | `relations_2026_09` | 9 | `reports/relations_findings.md` |
 | `quantile_2026_09` | 3 | `reports/quantile_findings.md` |
