@@ -4,8 +4,8 @@
 walk-forward with 8 folds purged on label end, 3 seeds). Scripts in
 `analysis/event_time_2026_09/`: `metrics.py`, `ablation.py`, `returns.py`
 (outputs in `out/metrics.txt`, `out/ablation.txt`, `out/returns.txt`), and
-`scoped.py` (`out/scoped.txt`, `out/scoped_t2.txt`) and `inversion.py`
-(`out/inversion.txt`), added 2026-09-27.
+`scoped.py` (`out/scoped.txt`, `out/scoped_t2.txt`), `inversion.py`
+(`out/inversion.txt`) and `bayes.py` (`out/bayes.txt`), added 2026-09-27.
 Synthetic sign check: `analysis/recovery_2026_09/recovery.py`, tag `signs`.*
 
 Four questions:
@@ -19,6 +19,8 @@ Four questions:
    apply here (§6: a response to external review comments)?
 7. Why does the scoped AGCRN rank *below* chance when its edge signs are right:
    a pipeline bug, or learning (§7)?
+8. Does a Bayesian hierarchical model (partial pooling within channels) do
+   better (§8)?
 
 ## Summary
 
@@ -457,6 +459,44 @@ masks, scalers, `fit_fold`, firing-cell loss and test cells.
 - **The best AGCRN configuration** here is the frozen graph with surprise-only
   inputs and no history. It still trails the zero-parameter rule on the
   immediate label (0.68 vs 0.78) and on settlement P&L (+3.9¢ vs +7.3¢).
+
+## 8. Bayesian hierarchical regression on the graph (`bayes.py`)
+
+**The model:** partial pooling, as suggested in review. Every candidate edge
+gets a coefficient, and edges of the same channel share a group-level prior, so
+an edge with few events borrows strength from its channel.
+- Hard sign: β = theory sign × θ, θ ~ HalfNormal(τ_channel).
+- Soft sign: β ~ Normal(theory sign × μ_channel, τ²_channel), with each edge's
+  and each channel's sign free.
+- Fitted by a hand-written Gibbs sampler (exact conditionals; the hard-sign
+  draws use an inverse-CDF truncated normal checked against scipy). Full-sample
+  R̂ ≤ 1.02; per-fold ≤ 1.11.
+- Walk-forward as in §1.
+
+**Out of sample** (balanced accuracy / AUC):
+
+| model | imm, all cells | imm, BH-firing cells | settle, all | settle, BH-firing |
+|---|---|---|---|---|
+| zero-parameter rule | 0.498 / 0.517 | **0.608 / 0.600** | 0.486 / 0.498 | 0.552 / 0.550 |
+| linear, one slope | 0.526 / 0.514 | 0.549 / 0.596 | 0.532 / 0.537 | 0.570 / **0.604** |
+| free linear graph (ridge) | 0.515 / 0.526 | 0.562 / 0.552 | 0.519 / 0.501 | 0.549 / 0.542 |
+| Bayes, hard sign | 0.508 / 0.524 | 0.577 / **0.609** | 0.523 / 0.523 | 0.589 / 0.586 |
+| Bayes, soft sign | 0.522 / 0.502 | 0.554 / 0.593 | **0.554 / 0.546** | **0.620** / 0.597 |
+
+- **Pooling does what it is meant to do.** The hierarchical models no longer
+  flip signs the way the free linear graph does, and the hard-sign version has
+  the best R² of the fitted models on the BH-firing immediate cells (+0.025).
+- **It ties the simplest rungs; it doesn't beat them.**
+
+**What the data supports** (full sample, soft sign, P(theory sign) ≥ 0.95):
+- Immediate label: 3 of 142 edges, fewer than the ~7 a centred prior would give
+  by chance. They are PAYROLLS → FED (+0.32 [+0.13, +0.52], 30 cells),
+  CPICORE → FED (+0.30, 28 cells) and CPIUSEDCAR → PAYROLLS (7 cells).
+- At channel level, only labour → policy (+0.22 [+0.03, +0.41], P = 0.97).
+- Settlement label: nothing. No edge is contradicted.
+
+With the calendar releases added (`spillover_findings.md` §4), the
+channel-level picture strengthens to four significant channels.
 
 ## What this means
 

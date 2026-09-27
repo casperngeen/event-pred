@@ -17,6 +17,7 @@ and node state is read from the trade tape just before it. Writeup:
     venv/bin/python -W ignore analysis/event_time_2026_09/scoped.py      # ~25 min; hub / BH / walk-forward scopes
     venv/bin/python -W ignore analysis/event_time_2026_09/scoped.py --scopes t2 t2wf   # ~5 min; t ≥ 2 channels
     venv/bin/python -W ignore analysis/event_time_2026_09/inversion.py   # ~6 min; is the scoped AGCRN's inversion a bug?
+    venv/bin/python -W ignore analysis/event_time_2026_09/bayes.py       # ~3 min; hierarchical Bayes on the graph
 
 | script | what it does |
 |---|---|
@@ -31,6 +32,7 @@ and node state is read from the trade tape just before it. Writeup:
 | `returns.py` | Gross P&L before costs of each model's side, held to settlement, against always-YES/NO and the zero-parameter rule, plus the excess over a random side with the same long/short mix. |
 | `scoped.py` | Scope each model to a set of relations and train and score only on the cells they can explain (a target's label at an instant where an in-scope source released). Scopes: labour/inflation→FED hub, the BH channels, walk-forward-selected edges, and channels with theory-signed t ≥ 2 (full sample or per fold). Compares the zero-parameter rule, linear (sign imposed / free) and AGCRN (adaptive / signed / frozen), plus the all-cells models on the same cells. |
 | `inversion.py` | Diagnoses the scoped AGCRN ranking below chance with correct edge signs, inside `scoped.py`'s pipeline: the sign rule as an untrained and a trained pass-through (alignment and label-sign checks), AGCRN without history and with surprise-only inputs, and two fixes (per-edge sign-fixed magnitudes; the rule as base with an AGCRN residual). Imports `scoped.py`. |
+| `bayes.py` | Bayesian hierarchical regression over the 142 candidate edges, pooled within channels, with a hard-sign (half-normal) and a soft-sign prior. Hand-written Gibbs sampler; importable (`fit(X, y, prior, sign, gidx)` is reused by `spillover_2026_09/augmented.py`). Walk-forward against the linear rungs; full-sample channel means and per-edge support. |
 
 Results (from `out/models.txt`):
 
