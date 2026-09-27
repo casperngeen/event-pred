@@ -18,6 +18,7 @@ and node state is read from the trade tape just before it. Writeup:
     venv/bin/python -W ignore analysis/event_time_2026_09/scoped.py --scopes t2 t2wf   # ~5 min; t ≥ 2 channels
     venv/bin/python -W ignore analysis/event_time_2026_09/inversion.py   # ~6 min; is the scoped AGCRN's inversion a bug?
     venv/bin/python -W ignore analysis/event_time_2026_09/bayes.py       # ~3 min; hierarchical Bayes on the graph
+    venv/bin/python -W ignore analysis/event_time_2026_09/temporal.py    # ~6 min; calendar-time lags / decay, Bayes and AGCRN
 
 | script | what it does |
 |---|---|
@@ -33,6 +34,7 @@ and node state is read from the trade tape just before it. Writeup:
 | `scoped.py` | Scope each model to a set of relations and train and score only on the cells they can explain (a target's label at an instant where an in-scope source released). Scopes: labour/inflation→FED hub, the BH channels, walk-forward-selected edges, and channels with theory-signed t ≥ 2 (full sample or per fold). Compares the zero-parameter rule, linear (sign imposed / free) and AGCRN (adaptive / signed / frozen), plus the all-cells models on the same cells. |
 | `inversion.py` | Diagnoses the scoped AGCRN ranking below chance with correct edge signs, inside `scoped.py`'s pipeline: the sign rule as an untrained and a trained pass-through (alignment and label-sign checks), AGCRN without history and with surprise-only inputs, and two fixes (per-edge sign-fixed magnitudes; the rule as base with an AGCRN residual). Imports `scoped.py`. |
 | `bayes.py` | Bayesian hierarchical regression over the 142 candidate edges, pooled within channels, with a hard-sign (half-normal) and a soft-sign prior. Hand-written Gibbs sampler; importable (`fit(X, y, prior, sign, gidx)` is reused by `spillover_2026_09/augmented.py`). Walk-forward against the linear rungs; full-sample channel means and per-edge support. |
+| `temporal.py` | Temporal encoding in calendar time (lag windows of 24 h and 1–7 d; exponential decay, h = 1 d and 7 d), all from strictly earlier releases. (A) the Bayesian model plus pooled temporal and node-adaptive own-state blocks; (B) AGCRN with the lags as inputs, with no GRU, and with a GRU-D-style learned decay gate. Writeup: `reports/graph_ablation.md` §9. |
 
 Results (from `out/models.txt`):
 

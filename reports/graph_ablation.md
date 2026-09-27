@@ -5,7 +5,8 @@ walk-forward with 8 folds purged on label end, 3 seeds). Scripts in
 `analysis/event_time_2026_09/`: `metrics.py`, `ablation.py`, `returns.py`
 (outputs in `out/metrics.txt`, `out/ablation.txt`, `out/returns.txt`), and
 `scoped.py` (`out/scoped.txt`, `out/scoped_t2.txt`), `inversion.py`
-(`out/inversion.txt`) and `bayes.py` (`out/bayes.txt`), added 2026-09-27.
+(`out/inversion.txt`) and `bayes.py` (`out/bayes.txt`), added 2026-09-27, and
+`temporal.py` (`out/temporal.txt`).
 Synthetic sign check: `analysis/recovery_2026_09/recovery.py`, tag `signs`.*
 
 Four questions:
@@ -21,6 +22,8 @@ Four questions:
    a pipeline bug, or learning (§7)?
 8. Does a Bayesian hierarchical model (partial pooling within channels) do
    better (§8)?
+9. Does encoding time in calendar units (lag windows, decay, a learned decay
+   gate) help either the Bayesian model or AGCRN (§9)?
 
 ## Summary
 
@@ -93,6 +96,14 @@ Four questions:
    - The proposed fixes remove the inversion but add nothing over the rule.
      A rule + AGCRN residual matches the one-slope linear model on the
      immediate label. Per-edge sign-fixed magnitudes overfit.
+8. **Partial pooling (Bayes) ties the simplest rungs.** It stops the sign
+   flips, supports 3 of 142 edges and one channel (labour → policy).
+9. **There is no cross-release dependence for a temporal model to learn.**
+   Surprises from the previous 24 h, the previous week, or decayed over 1–7
+   days carry no signal (every group mean's CI includes zero). AGCRN does best
+   *without* its GRU (R² +0.001 / +0.006 on imm / settle, level with the
+   linear economic-signal rung's +0.005 / +0.008). Where the time dimension does carry signal is inside the day after a
+   release (`intraday_path_plan.md`).
 
 ## 1. Every metric
 
@@ -497,6 +508,102 @@ an edge with few events borrows strength from its channel.
 
 With the calendar releases added (`spillover_findings.md` §4), the
 channel-level picture strengthens to four significant channels.
+
+## 9. Temporal encoding in calendar time (`temporal.py`)
+
+**The problem:** the panel's steps are release instants, irregularly spaced
+(median gap 168 h). AGCRN's GRU runs over the last 6 of them, a window that
+spans a median of 54 days, and sees only their order, not the time between
+them. The Bayesian model of §8 has no temporal part at all.
+
+**Two encodings in calendar time,** both built from releases strictly before
+the instant:
+1. **Lag windows:** per series, the sum of its surprises released in the
+   previous 24 h, and in the 1–7 days before that.
+2. **Decay:** per series, Σ exp(−Δt / h)·z over its releases in the last 30
+   days, with h = 1 day and 7 days.
+
+How often these are non-zero: 13% of instants have a release in the previous
+24 h, and 50% have one in the 1–7 days before.
+
+**A. Bayesian STG.** The soft-sign model of §8, plus:
+- theory-signed channel signals of the lagged or decayed surprises (pooled
+  within each window);
+- the target's own recent surprise (one coefficient per series, pooled);
+- a node-adaptive own-state block: p_lead, d_q50_7d and flow7, one coefficient
+  per series × feature, pooled across series. This is AGCRN's node-specific
+  weights with shrinkage.
+
+Walk-forward R² / AUC on all cells / AUC on BH-firing cells:
+
+| variant | imm | settle |
+|---|---|---|
+| spatial only (§8) | −0.019 / 0.505 / 0.593 | −0.021 / 0.538 / 0.602 |
+| + lag windows | −0.034 / 0.521 / 0.626 | −0.070 / 0.487 / 0.559 |
+| + decay, h = 1 d | −0.033 / 0.512 / 0.620 | −0.040 / 0.514 / 0.567 |
+| + decay, h = 7 d | −0.039 / 0.501 / 0.586 | −0.036 / 0.523 / 0.583 |
+| + own state | −0.048 / 0.545 / 0.633 | −0.024 / **0.708 / 0.747** |
+| full: lags + own state | −0.055 / 0.545 / 0.610 | −0.080 / 0.659 / 0.717 |
+| full: decay 7 d + own state | −0.063 / 0.529 / 0.614 | −0.038 / 0.689 / 0.728 |
+
+Full-sample group means (lags, 7-day decay and own state together; R̂ ≤ 1.16):
+
+| block | imm | settle |
+|---|---|---|
+| lag 24 h, channels | +0.06 [−0.13, +0.24] | −0.11 [−0.30, +0.07] |
+| lag 1–7 d, channels | +0.05 [−0.07, +0.17] | +0.01 [−0.11, +0.13] |
+| decay 7 d, channels | −0.07 [−0.24, +0.09] | −0.03 [−0.19, +0.13] |
+| own recent surprise (any window) | all CIs include 0 | all CIs include 0 |
+| own state: p_lead | +0.04 [−0.05, +0.13] | **+0.15 [+0.07, +0.23]** |
+| own state: d_q50_7d, flow7 | CIs include 0 | CIs include 0 |
+
+- **No temporal block carries signal.** Every lag and decay mean has a CI
+  through zero, on both labels, and adding them lowers R². Where they raise the
+  BH-firing AUC on the immediate label (0.593 → 0.620–0.626), the change is
+  within the ±0.08 noise of §1.
+- **The own-state gain on settlement is the price level.** It comes from
+  p_lead alone, the effect §1 and §4 already describe (the settlement label's
+  AUC is dominated by where the price starts).
+- The per-fold samplers reached split-R̂ 1.30, so the walk-forward rows are
+  looser than §8's.
+
+**B. AGCRN,** adaptive graph and frozen BH graph (`models.py` configuration),
+with:
+- **base:** the 6-instant GRU, order only;
+- **+ calendar lags:** encodings 1 and 2 (h = 7 d) as extra node inputs;
+- **+ lags, no GRU:** the same inputs, window of 1;
+- **+ learned decay:** an elapsed-time input and a GRU-D-style gate that
+  shrinks the hidden state by σ(b_n − softplus(w_n)·Δt) before each step,
+  learned per node, plus the calendar lags.
+
+R² / AUC on all cells / AUC on BH-firing cells:
+
+| graph | temporal encoding | imm | settle |
+|---|---|---|---|
+| adaptive | base | −0.016 / 0.471 / 0.555 | −0.033 / 0.511 / 0.466 |
+| adaptive | + calendar lags | −0.007 / 0.482 / 0.591 | −0.009 / 0.531 / 0.599 |
+| adaptive | + lags, no GRU | **+0.001** / 0.481 / 0.601 | **+0.006** / 0.533 / 0.543 |
+| adaptive | + learned decay | −0.013 / 0.503 / 0.558 | −0.018 / 0.489 / 0.466 |
+| econ BH | base | −0.020 / 0.454 / 0.443 | −0.072 / 0.526 / 0.579 |
+| econ BH | + calendar lags | −0.009 / 0.473 / 0.406 | −0.036 / 0.543 / 0.592 |
+| econ BH | + lags, no GRU | −0.001 / 0.523 / 0.573 | −0.030 / 0.544 / 0.554 |
+| econ BH | + learned decay | −0.010 / 0.492 / 0.481 | −0.083 / 0.450 / 0.422 |
+
+- **Giving AGCRN calendar time helps a little, and removing the GRU helps
+  more.** The adaptive AGCRN with lags and no recurrence has the best AGCRN R²
+  in this report (+0.001 / +0.006). That only brings it level with the linear
+  economic-signal rung (+0.005 / +0.008, §1).
+- **The learned decay gate undoes the gain.** It adds parameters for a
+  dependence that isn't there.
+- This agrees with §2: the recurrence is a cost, not a benefit.
+
+**Reading:** the temporal part of the STG fails because each release is fully
+absorbed before the next one arrives, not because time was encoded badly.
+There is nothing across releases for a GRU, a decay or a lag window to pick up.
+The lag that does exist is *within* a release's first hours (labour → policy
+here; a third of the division-market response in the sports study). Modelling
+that is a different set-up: intraday bars after each release, planned in
+`intraday_path_plan.md`.
 
 ## What this means
 
