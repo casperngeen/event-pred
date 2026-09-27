@@ -2,7 +2,7 @@
 
 *2026-09-27. Branch `casper/sports-graph`, kept separate from the macro study.
 Scripts: `analysis/sports_2026_09/` (`build_mlb.py`, `diffusion.py`,
-`graphs.py`, `predict.py`; outputs in its `out/`). Design:
+`graphs.py`, `signfix.py`, `predict.py`; outputs in its `out/`). Design:
 `sports_study_plan.md`. In-sample 2025 data only; the `_OOS_DO_NOT_USE_*`
 folders were not read.*
 
@@ -130,6 +130,47 @@ AUROC against the number of slate days fitted:
   measures the similarity of city names ("New York M" / "New York Y",
   "Chicago C" / "Chicago W"), which cuts across leagues.
 
+## 2b. Fixing the negative-edge failure (`signfix.py`)
+
+The standard AGCRN gets none of the 120 rival edges' signs.
+
+**Why:** each node combines its own input (identity support) with a weighted
+average of its neighbours (the learned adjacency Ã). Ã is non-negative, but
+the conv weight on it can be negative, so "rivals push you down" is
+representable in principle. The problem is that the learned Ã also aggregates
+each node's *own* surprise (the softmax includes self). With one weight per
+support, a negative weight would flip the team's own effect too, so the model
+keeps it positive.
+
+**Two fixes tested,** both supplying the neighbourhood from metadata (the
+schedule read from game titles, fitted on the training days only, no
+self-loops):
+
+| AGCRN variant | rival sign hit | balanced sign | AUROC | rival AUROC |
+|---|---|---|---|---|
+| standard adaptive | 0.00 | 0.45 | 0.57 | 0.48 |
+| signed (E_dst E_srcᵀ), unrestricted | 0.44 | 0.60 | 0.57 | 0.49 |
+| signed, restricted to schedule edges | 0.43 | 0.60 | 0.60 | 0.52 |
+| **schedule graph as a frozen, unsigned support** | **0.89** | **0.90** | **0.83** | **0.81** |
+| true signed graph frozen in (reference) | 0.89 | 0.90 | 0.95 | 0.95 |
+
+(Full season, 166 days; at 91 days the schedule support gives 0.88 / 0.89 /
+0.77.)
+
+- **Supplying the neighbourhood as a separate, unsigned support fixes it.**
+  The identity support carries the self effect (+). The schedule support
+  carries only rivals, and its conv weights learn a negative sign from the
+  data. Sign recovery then matches having the true *signed* graph frozen in,
+  although no sign was supplied.
+- **Freeing the sign per edge does not help,** even restricted to the right
+  edges. A signed adjacency still has to learn 120 separate signs from a weak
+  per-edge signal (0.43). The working version shares one sign across a node's
+  rivals, which is a handful of parameters, not one per edge.
+- **In the library** this needs no code change: pass a non-negative adjacency
+  with a zero diagonal through the existing `adjacency="stage1"` path. The
+  general recipe matches the rest of the study: structure from metadata or
+  theory, sign and size from the data.
+
 ## 3. Trading the lag with each graph (`predict.py`)
 
 Each graph is fitted on slate days up to a cut, and trades the next month's
@@ -175,7 +216,9 @@ games.
    chance.
 4. **The practical recipe is the same as for macro:** supply the graph (from
    theory or metadata) and let the data estimate the sign and size, rather than
-   asking an STG to discover the graph from prices.
+   asking an STG to discover the graph from prices. §2b shows it working inside
+   AGCRN: given the unsigned schedule graph as a support, it learns the negative
+   rival sign that it cannot find alone (0.00 → 0.89).
 
 ## Caveats and next steps
 
