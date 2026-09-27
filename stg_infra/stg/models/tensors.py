@@ -237,3 +237,27 @@ def global_label_sd(Y: np.ndarray, label_mask: np.ndarray, kind: LabelKind) -> n
 
 def apply_label_scaler(y: np.ndarray, sd: np.ndarray) -> np.ndarray:
     return y / sd[None]
+
+
+def add_surprise_channel(pt: PanelTensors, surprise_panel: pl.DataFrame,
+                         col: str = "s_pit") -> PanelTensors:
+    """Append a surprise feature on the *triggering* node.
+
+    The cell (t, series) gets ``col`` (default the signed, unit-free PIT
+    surprise) on the first snapshot on/after the event's close date, 0
+    elsewhere. Snapshots are end-of-day closes, so a same-day release is
+    already public. A surprise that lands on an inactive cell is dropped with
+    the cell (≈10% of events). Returns a new ``PanelTensors`` with F + 1
+    features; ``MODEL_FEATURES`` order is unchanged, the channel is last.
+    """
+    ni = {n: i for i, n in enumerate(pt.nodes)}
+    S = np.zeros((pt.T, pt.N, 1), dtype=np.float32)
+    for r in surprise_panel.iter_rows(named=True):
+        if r["series"] not in ni or r[col] is None:
+            continue
+        t = int(np.searchsorted(pt.dates, np.datetime64(r["close_time"].date(), "D")))
+        if t < pt.T:
+            S[t, ni[r["series"]], 0] = float(r[col])
+    return PanelTensors(X=np.concatenate([pt.X, S], axis=-1), mask=pt.mask,
+                        dates=pt.dates, nodes=pt.nodes,
+                        implied_mean=pt.implied_mean, atm_price=pt.atm_price)

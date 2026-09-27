@@ -106,12 +106,13 @@ def main() -> None:
                   f" ±{r['r2_vs_zero_sd']:.3f}  dir {r['dir_acc']:.3f}  ({n_params} params)")
 
             if target == "belief_z" and "adaptive" in name and not args.quick:
+                # Ã row = receiving node: A[i, j] is the weight target i puts on source j
                 A = _final_adjacency(factory, win, n_folds, seeds[0])
                 for i, si in enumerate(pt.nodes):
                     for j, sj in enumerate(pt.nodes):
                         if i != j and A[i, j] > 1e-4:
-                            learned_adj_rows.append(dict(model=name, trigger=si,
-                                target=sj, a_ij=float(A[i, j])))
+                            learned_adj_rows.append(dict(model=name, trigger=sj,
+                                target=si, a_ij=float(A[i, j])))
 
     folds = pl.DataFrame(rows)
     OUT.mkdir(exist_ok=True)

@@ -32,6 +32,71 @@ def test_default_config_is_heavily_overparameterised():
     assert agcrn_param_count(11, 2, 16, n_horizons=3)["total"] < 10_000
 
 
+# --- masking / orientation / init (synthetic, no archive) ---------------
+def _synthetic(B=6, L=5, N=7, F=11, seed=0):
+    g = torch.Generator().manual_seed(seed)
+    x = torch.randn(B, L, N, F, generator=g)
+    m = torch.rand(B, L, N, generator=g) > 0.5
+    m[:, :, 0] = True                         # at least one active node
+    return x, m
+
+
+@pytest.mark.parametrize("emb", ["learned", "shared_mlp", "hybrid"])
+def test_per_step_masking_ignores_padded_cells(emb):
+    """Whatever sits in a padded cell must not reach a node that is active."""
+    x, m = _synthetic()
+    torch.manual_seed(0)
+    model = AGCRN(7, 11, hidden=8, d_emb=2, embedding=emb, masking="per_step").eval()
+    x2 = x.clone()
+    x2[~m] = torch.randn_like(x2[~m]) * 100
+    with torch.no_grad():
+        d = (model(x, m) - model(x2, m)).squeeze(-1)
+    assert d[m[:, -1]].abs().max() < 1e-5
+
+
+def test_legacy_masking_leaks_padding():
+    """Documents the bug the per_step mode fixes: under full-batch training
+    every node is active somewhere, so the legacy mask removes nothing."""
+    x, m = _synthetic()
+    torch.manual_seed(0)
+    model = AGCRN(7, 11, hidden=8, d_emb=2, embedding="shared_mlp").eval()
+    x2 = x.clone()
+    x2[~m] = torch.randn_like(x2[~m]) * 100
+    with torch.no_grad():
+        d = (model(x, m) - model(x2, m)).squeeze(-1)
+    assert d[m[:, -1]].abs().max() > 1e-3
+
+
+def test_per_step_adjacency_excludes_padded_senders_and_topk():
+    x, m = _synthetic()
+    torch.manual_seed(0)
+    model = AGCRN(7, 11, hidden=8, d_emb=2, embedding="shared_mlp",
+                  masking="per_step", topk=2)
+    act = m[:, -1]
+    A = model.learned_adjacency(x, m)          # batch mean; check per sample below
+    x_t = torch.cat([x[:, -1] * act.float()[..., None], act.float()[..., None]], -1)
+    As = model._adjacency(model._embed(x_t), act).detach()
+    assert (As * (~act)[:, None, :].float()).abs().max() == 0
+    assert torch.allclose(As.sum(-1), torch.ones(As.shape[:2]))
+    assert A.shape == (7, 7)
+
+
+def test_stage1_prior_is_oriented_trigger_to_target():
+    """[i, j] = i -> j, so the TARGET j must aggregate the trigger i."""
+    S = np.zeros((4, 4))
+    S[1, 3] = 0.5                              # node 1 drives node 3
+    model = AGCRN(4, 3, hidden=4, d_emb=2, adjacency="stage1", stage1_adj=S)
+    assert model.A_prior[3, 1] == pytest.approx(1.0)
+    assert model.A_prior[1].abs().sum() == 0
+
+
+def test_zero_head_starts_at_predict_zero():
+    x, m = _synthetic()
+    model = AGCRN(7, 11, hidden=8, d_emb=2, masking="per_step", zero_head=True)
+    with torch.no_grad():
+        assert model(x, m).abs().max() == 0
+
+
 # --- tensors & windows (needs the built panel) --------------------------
 @pytest.fixture(scope="module")
 def pt(node_panel_df):
@@ -120,3 +185,16 @@ def test_baseline_zero_is_reference_and_neighbours_dont_help(pt):
     for rung in ("neighbour_all", "neighbour_stage1"):
         r = run_linear(lambda rung=rung: LinearBaseline(rung, pt.nodes), win, lsd)
         assert r["r2_vs_zero"] < 0.02          # no meaningful OOS gain
+
+
+def test_signed_adjacency_is_directed_signed_and_masks_padded_senders():
+    torch.manual_seed(0)
+    m = AGCRN(4, 3, hidden=4, d_emb=2, masking="per_step", embedding="learned",
+              adjacency="signed")
+    active = torch.tensor([[True, True, False, True]])
+    A = m._adjacency(m.E, active)[0]
+    assert torch.all(A[:, 2] == 0)                       # padded sender sends nothing
+    assert not torch.allclose(A, A.t())                  # directed
+    with torch.no_grad():
+        m.E_dst.mul_(-1)
+    assert (m._adjacency(m.E, active)[0] < 0).any() or (A < 0).any()   # can be negative
