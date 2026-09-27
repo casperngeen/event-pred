@@ -49,6 +49,11 @@ worse, and the learned Ã still recovers none of the validated edges. If anythin
 the last point sharpened — the survivor set it fails to recover is now the
 non-mechanical one.*
 
+*Amended 2026-09-25 (`agcrn_checklist.md`): most of AGCRN's gap to the linear
+rungs was an implementation artefact — a random-init head kept by early
+stopping, plus padded nodes leaking into the graph. Fixed, AGCRN's best rung is
+R² −0.008 against linear's +0.0002. "No model beats predict-zero" is unchanged.*
+
 ## Why it broke down (`analysis/agcrn_diagnostics_2026_09/`)
 
 This is a **task/horizon mismatch, not an architecture failure** — no model,
