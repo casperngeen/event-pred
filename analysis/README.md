@@ -14,6 +14,7 @@ with `venv/bin/python`, never imported.
 | `event_time_2026_09` | 11 + `_panel.py` | `reports/agcrn_checklist.md` §3c–3d; `nonlinear.py` in `reports/recovery_test.md`; `ablation.py`, `metrics.py`, `returns.py`, `scoped.py`, `inversion.py`, `bayes.py` in `reports/graph_ablation.md` |
 | `recovery_2026_09` | 1 | `reports/recovery_test.md` |
 | `spillover_2026_09` | 8 + `_tape.py`, `calendar_triggers.py` | `reports/spillover_findings.md` |
+| `intraday_2026_09` | 6 + `_common.py` | `reports/intraday_path_findings.md` |
 | `relations_2026_09` | 9 | `reports/relations_findings.md` |
 | `quantile_2026_09` | 3 | `reports/quantile_findings.md` |
 | `arbitrage_2026_09` | 5 | `reports/arbitrage_findings.md` |

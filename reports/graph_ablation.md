@@ -9,6 +9,21 @@ walk-forward with 8 folds purged on label end, 3 seeds). Scripts in
 `temporal.py` (`out/temporal.txt`).
 Synthetic sign check: `analysis/recovery_2026_09/recovery.py`, tag `signs`.*
 
+> **Rerun on the backfilled archive (2026-09-28)** of `models.py`,
+> `ablation.py`, `metrics.py`, `returns.py` and `bayes.py`. The panel is now 157
+> instants and 158 candidate edges. Every conclusion below holds:
+> - no graph model beats linear on any metric, and several AGCRN ablation arms
+>   are now significantly *below* it on balanced accuracy;
+> - the best learned model is still linear on the economic signal (R² +0.007 /
+>   +0.006 on imm / settle);
+> - linear own state earns +5.08c gross (was +5.20c);
+> - the Bayesian hard-sign model still ties the one-slope linear rung (+0.0079
+>   vs +0.0066). It now supports **4 of 158** edges: PAYROLLS→FED, CPICORE→FED,
+>   CPI→FED and PCECORE→GDP. About 8 are expected by chance.
+>
+> `scoped.py`, `inversion.py` and `temporal.py` were not rerun. Detail:
+> `backfill_rerun_2026_09.md`.
+
 Four questions:
 1. Does any graph model beat the linear models on any metric?
 2. Does the STG beat temporal-only and spatial-only versions of itself?
@@ -103,7 +118,10 @@ Four questions:
    days carry no signal (every group mean's CI includes zero). AGCRN does best
    *without* its GRU (R² +0.001 / +0.006 on imm / settle, level with the
    linear economic-signal rung's +0.005 / +0.008). Where the time dimension does carry signal is inside the day after a
-   release (`intraday_path_plan.md`).
+   release (`intraday_path_plan.md`). The intraday study
+   (`intraday_path_findings.md`) finds that lag short: cross-series responses
+   are half in by 15 min. The AGCRN on intraday bars stays at predict-zero, and
+   one absorption curve beats every sequence model.
 
 ## 1. Every metric
 
@@ -604,6 +622,21 @@ The lag that does exist is *within* a release's first hours (labour → policy
 here; a third of the division-market response in the sports study). Modelling
 that is a different set-up: intraday bars after each release, planned in
 `intraday_path_plan.md`.
+
+**Follow-up (`intraday_path_findings.md`).** The intraday study found:
+- **The within-release lag exists but is short.** Cross-series responses are
+  half in by 15 min. labour → policy is complete within the hour, so it is not
+  a drift.
+- **Most of the lag is waiting for a trade.** The first post-release print
+  carries ½ to ⅔ of the move.
+- **The one slow channel is labour → growth.**
+- **An AGCRN stepped over intraday bars also stays at predict-zero.** A GRU's
+  small edge at 1 h is bid-ask bounce. The only learnable piece is the own next
+  contract's unfinished response to its z, which one pooled absorption curve
+  predicts best.
+
+So the temporal axis carries dependence inside a release, but none that a
+graph recurrence learns better than a curve.
 
 ## What this means
 

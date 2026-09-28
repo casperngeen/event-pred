@@ -47,6 +47,30 @@ has to run before it. Neither parquet is committed.
 | `liquidity_gates.py` | How much liquidity selection is already baked in? | No volume filter in the pipeline; four implicit gates. **G0, the archive, misses 44% of thin traded legs against 7% of liquid.** Relaxing our own gate mildly improves the result. |
 | `liquidity_spread_diag.py` | Why did the thin−liquid spread swing 0.94–7.43c? | It did not. No CI had been put on the difference (~±9c), and changing `k` churns a third of the portfolio (Jaccard 0.61). Population held fixed: **~+3c, P(≤0) ≈ 0.3**. |
 
+**Rerun 2026-09-28 on the backfilled archive.** The answers above are the
+2026-09-15 run. Rerun: `build_panel`, `price_structure`, `signal_model`,
+`relations`, `economics`, `maker_fill`, `move_filter`,
+`confirmation_stability`, `ablation`, `tie_handling`, `spec_v2`, `blotter`.
+
+| script | new result |
+|---|---|
+| `build_panel` | 11,884 legs, 293 trigger / 429 target events, 149 pairs |
+| `signal_model` | +3.71pp, p = 0.0020 |
+| `relations` | +0.69 / +0.38 / −0.17pp; 1 of 99 pairs survives BH (PAYROLLS → FED) |
+| `economics` | net +0.90c, CI [−0.96, +2.87] |
+| `ablation` | +4.45c, with the signal's marginal contribution at +3.79c |
+| `tie_handling` | last +3.43c, VWAP +4.39c |
+| `spec_v2` | +3.72c |
+
+Not rerun: the three `liquidity*` scripts, `exit_rules`, `sizing`,
+`leakage_audit`. Before/after: `reports/backfill_rerun_2026_09.md`.
+
+`oos_build.py` builds the 2026 inputs for the frozen test (`strategy_spec.md` §9) into
+`data/_OOS_DO_NOT_USE_built_2026/` and prints counts only; it computes no result.
+`--block val --tape raw` runs the same code on the in-sample validation block and
+checks it against `out/leadlag_legs.parquet` (969/969 rows matched; 47 `p_entry`
+differences, all from the §8c tie-break).
+
 Each script writes its captured run to `out/`, which is untracked — run
 `build_panel.py` first, then whichever script you need. Writeups:
 `reports/leadlag_findings.md`, `reports/strategy_spec.md`, and

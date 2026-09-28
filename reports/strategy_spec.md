@@ -13,6 +13,22 @@ in `analysis/leadlag_2026_09/`, with every parameter and its provenance.*
 > zero. The two principled rules agree; the arbitrary one landed on the
 > favourable side. **Read the headline as ~+4.7c.** Detail: §8c.
 
+> **Rerun on the backfilled archive (2026-09-28).** The specification is
+> unchanged. The data moved: 5,573 backfilled trades (mostly PAYROLLS 2022–23)
+> and true settlement values for 172 more events give 11,884 panel rows, 149
+> pairs. On it:
+> - committed tie-break: **+4.45c**, n = 988, CI [−0.20, +8.90];
+> - last fill at the instant: **+3.43c**, CI [−1.10, +7.78];
+> - VWAP of the instant: **+4.39c**, CI [+0.02, +8.54];
+> - `spec_v2`: +3.72c, CI [−1.51, +8.91].
+>
+> The signal's marginal contribution over the apparatus is unchanged (**+3.79c**
+> against +3.76c). The permuted-signal null fell from +1.65c to +0.65c. **Read
+> the in-sample headline as +3.4 to +4.4c**; only the VWAP rule's CI excludes
+> zero. Most of the drop is 2023, which gained the most rows. The §9
+> pre-registered expectation is left as written. The OOS test has not been run.
+> Detail: `backfill_rerun_2026_09.md`.
+
 **Status: an in-sample specification, not a demonstrated edge.** It is written
 down in full so that it can be **frozen** and tested once on the untouched 2026
 block. §7 states exactly what that test is. Nothing here has touched OOS data
@@ -460,6 +476,13 @@ To be run **once**, on the 2026 block, with no further tuning:
 7. Build the tape with simultaneous fills collapsed to a size-weighted print
    and exact duplicates removed (§8c), so the OOS number does not inherit the
    arbitrary tie-break.
+
+*Addendum, 2026-09-26, before the test was run.*
+- `KXUSGASCPI`, `KXUSEDCARCPI` and `KXSHELTERCPI` (relaunched April 2026 on the
+  index level) are treated as CPIGAS, CPIUSEDCAR and CPISHELTER. Nothing is refitted.
+- A row is in the test when its target settles on or after `OOS_START`, whatever
+  the trigger's date.
+- Inputs: `analysis/leadlag_2026_09/oos_build.py` → `data/_OOS_DO_NOT_USE_built_2026/`.
 
 Pre-registered expectation, stated before the test: given the decay measured in
 §7 and in every other effect in this project, the point estimate should be

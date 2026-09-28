@@ -5,6 +5,22 @@
 lead-lag question from scratch against a settlement target and the full target
 ladder, and it **partly retracts `relations_findings.md` Addendum 2** — see §5.*
 
+> **Rerun on the backfilled archive (2026-09-28).** The tables below are the
+> 2026-09-15 run. After the in-sample backfill (5,573 trades, mostly PAYROLLS
+> 2022–23; true settlement values for 172 more events) the panel is 11,884
+> legs, 293 trigger / 429 target events, 149 pairs, and:
+> - the signal still predicts settlement: **+3.71pp**, CI [+0.61, +6.89],
+>   p = 0.0020, in the same 10–75c region;
+> - walk-forward net **+0.90c**, CI [−0.96, +2.87]. By year it is **+3.26 /
+>   +2.00 / −0.04c**, so 2023 is much weaker than the +6.46c below;
+> - imposed beats learned as before (+0.69 / +0.38 / −0.17pp). The same three
+>   channels survive BH, and now **one pair does: PAYROLLS → FED** (+1.79pp,
+>   p = 0.0005);
+> - the confirmation trade's 2023 falls from +11.35c to **+3.59c**, and its
+>   walk-forward version is +3.30c, P(≤0) = 0.087.
+>
+> Full before/after: `backfill_rerun_2026_09.md`.
+
 ## Summary
 
 Holding a target contract from the trigger's resolution to the target's close,

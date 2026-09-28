@@ -50,4 +50,16 @@ Results (from `out/models.txt`):
 | **hold to settlement, per channel** | – | only labour→policy beats shuffled surprises (p = 0.007), BH q = 0.088 across 13 channels |
 | **net ¢/contract, walk-forward test folds** | – | econ ridge +2.51 vs intercept-only +3.00; a-priori rule −5.77; labour→policy rule +6.03 (p = 0.015) |
 
+**Rerun 2026-09-28 on the backfilled archive:** `build_panel`, `models`,
+`ablation`, `metrics`, `returns`, `bayes`. The table above is the earlier run.
+- The panel is now **157 instants** and 158 candidate edges.
+- The zero-param rule is unchanged on labour → policy (0.704 / 0.661), and
+  0.637 on the BH channels (imm).
+- The best learned model is still linear on the econ signal (R² +0.007 /
+  +0.006). The best AGCRN is −0.027 / +0.002.
+- The Bayesian graph supports 4 of 158 edges.
+
+`backtest`, `exits`, `nonlinear`, `scoped`, `inversion` and `temporal` were
+not rerun. Before/after: `reports/backfill_rerun_2026_09.md`.
+
 `out/` is untracked; see `analysis/README.md`.

@@ -5,6 +5,20 @@
 (pre-2026). Extends `leadlag_findings.md`, which only ever looked at the next
 target event.*
 
+> **Rerun on the backfilled archive (2026-09-28).** The numbers below are the
+> 2026-09-26 run. With the in-sample backfill (mostly PAYROLLS 2022–23 trades,
+> true settlement values for 172 more events) the panel is 32,230 rows over 225
+> trigger events, and labour → Fed gets **stronger**:
+> - d = 0 by horizon: **+0.5 / +4.2 / +3.8 / +5.2pp** (next meeting, then
+>   2–3 / 3–4 / 4–6 months out);
+> - 2–3m on 10–75c legs: **+16.9 / +15.0 / +5.7 / +2.2pp** at d = 0 / 1 / 7 / 30;
+> - with all three controls: **+14.0pp**, CI [+3.3, +23.7].
+>
+> The costed far-meeting rule selects the same positions, so its P&L is
+> unchanged (+6.24c; always-YES +6.30c). Its permutation p moves from 0.008 to
+> **0.022**, because the pool of surprises being shuffled changed. Conclusions
+> unchanged. Detail: `backfill_rerun_2026_09.md`.
+
 ## Summary
 
 The question: does a trigger's surprise reach some targets slowly, so that it

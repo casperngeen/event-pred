@@ -8,6 +8,17 @@ Each item was run standalone, so no conclusion here depends on another being
 adopted. Item 4 was run twice — on `surprise` and on `s_pit` — so that it does
 not inherit item 1's fate either way.
 
+> **Rerun on the backfilled archive (2026-09-28)**: items 4 and 1c only.
+> - **Item 4:** data → policy is 61.0% over 672 rows, p = 0.0006 (was 63.2%,
+>   598, p = 0.0004). labour → policy strengthens to 66.9%, p = 0.0002.
+>   inflation → policy dilutes to 59.0%, p = 0.015, because CPIFOOD and
+>   CPIAPPAREL now clear the trigger minimum.
+> - **Item 1c:** 96 comparable pairs, corr(ρ mkt, ρ cons) = +0.909. BH
+>   survivors 3 (market) and 1 (consensus), with PAYROLLS → FED in both.
+> - **The Stage-1 baseline** is the same 4 edges on a 157-pair grid.
+>
+> Items 1, 1b, 2 and 3 were not rerun. Detail: `backfill_rerun_2026_09.md`.
+
 ---
 
 ## Summary
@@ -381,6 +392,53 @@ barely moves — the selection is threshold-sensitive, not signal-sensitive:
 | PAYROLLS | FEDDECISION | hike | z_surprise | 26 | 0.4845 | 0.01 | false |
 
 ---
+
+## Item 1c — the edges survive a survey-consensus surprise (added 2026-09-25)
+
+*`analysis/relations_2026_09/consensus_surprise.py`. Calendar: lum.id findata
+economic calendar (FMP), US, 2021-10 → 2025-12, cached at
+`data/external/econ_calendar_us_2021q4_2025.parquet`.*
+
+Why: an examiner who knows the event-study literature (Kuttner 2001;
+Gürkaynak–Sack–Swanson 2005) will expect `actual − consensus`, not the
+market-relative `resolved − implied_mean`. 12 of 19 series have a consensus.
+The CPI components and WTI have none, so they drop out of both arms.
+
+**Matching.** Each event takes the calendar release within ±3 days whose
+`actual` equals Kalshi's settled value. 222 of 225 matched rows agree (the
+misses are the Oct/Nov 2025 shutdown payrolls print, one PCE revision and two
+ladder-inferred ADP values). A naïve as-of join fails on U3: the calendar
+files U-6 under "Unemployment Rate" on some dates.
+
+**The two surprises mostly agree.** Per-series Spearman is +0.84 to +0.96 for
+CPI, core, YoY, payrolls, U3, claims and GDP. Pooled sign agreement is 0.90
+(168 rows where both are non-zero). The consensus is **coarse**: it is
+exactly zero on 32–39% of CPI-family events and 73–83% of PCECORE/FED
+events, because consensus sits on the release's 0.1 tick. Rank tests lose
+information to those ties.
+
+**Stage 1, same 93 pairs, same events, only the surprise changed:**
+
+| arm | nominal p<0.05 (4.7 expected) | BH survivors |
+|---|---|---|
+| market-relative | 14 | 3 |
+| consensus | 15 | 1 (`PAYROLLS→FED`) |
+
+| edge | n | ρ̂ market | p | ρ̂ consensus | p |
+|---|---|---|---|---|---|
+| CPI → FED | 32 | +0.552 | 0.002 | +0.366 | 0.042 |
+| PAYROLLS → FEDDECISION (hike) | 25 | +0.607 | 0.002 | +0.546 | 0.008 |
+| PAYROLLS → FED | 29 | +0.621 | 0.001 | +0.578 | <0.001 |
+| CPICOREYOY → FEDDECISION (cut) | 15 | −0.669 | 0.009 | −0.632 | 0.016 |
+
+Across all 93 pairs, corr(ρ̂ market, ρ̂ consensus) = **+0.90**, and 83% of
+pairs share a sign. All four published edges keep their sign and stay
+nominally significant under the consensus surprise. Only PAYROLLS→FED clears
+BH. This repeats item 1b's pattern: **the edges are robust and the BH count
+is not**. CPI→FED weakens most (+0.55 → +0.37), which is consistent with the
+consensus tie rate being highest for CPI. So the structural claim does not
+depend on the surprise being market-relative. The market-relative measure is
+the more powerful of the two here, not a different result.
 
 ## Item 2 — magnitude is partly recoverable
 

@@ -111,4 +111,25 @@ and 2025 but loses to it by 28c in 2022. Far FED legs are too thin for a 60 s
 spread estimate at all, so the charge is the near-dated schedule. Details and
 reading in `reports/propagation_findings.md` §4–5.
 
+## Rerun 2026-09-28 on the backfilled archive
+
+All four scripts were rerun. The tables above are the 2026-09-26 run. The panel
+is now 32,230 rows over 225 trigger events. labour → policy, d = 0:
+
+| horizon | 0–1m | 1–2m | 2–3m | 3–4m | 4–6m |
+|---|---|---|---|---|---|
+| aligned residual (pp) | +0.5 | +1.2 | **+4.2** | **+3.8** | **+5.2** |
+| perm p | 0.15 | 0.04 | 0.00 | 0.02 | 0.01 |
+
+2–3m on 10–75c legs, by entry delay:
+
+| controls | d = 0 | d = 1 | d = 7 | d = 30 |
+|---|---|---|---|---|
+| none (pp) | **+15.8** (BH) | **+14.0** (BH) | +6.5 | +3.2 |
+| all three (pp) | **+14.0** (BH), CI [+3.3, +23.7] | **+12.8** (BH) | +4.9 | +5.6 |
+
+`economics.py` P&L is unchanged: the rule selects the same positions. Its
+permutation p is now 0.052 on all legs and **0.022** on 10–75c legs. Detail:
+`reports/backfill_rerun_2026_09.md`.
+
 `out/` is untracked; see `analysis/README.md`.

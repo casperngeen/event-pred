@@ -78,3 +78,5 @@ out/
 # Legacy capture convention, superseded by out/ above. Kept so a stray capture
 # written the old way is still ignored rather than silently committed.
 *_output.txt
+
+papers/
