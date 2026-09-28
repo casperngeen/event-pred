@@ -93,8 +93,16 @@ def scan_trades(is_only: bool = True) -> pl.LazyFrame:
 # See ``data/MANIFEST_new_pulls.md``: this file is structural/settlement
 # metadata, not price history, and its ``result``/``expiration_value`` fields
 # must not be used on 2026 events. ``is_only=True`` enforces that here.
+#
+# A second source, the in-sample backfill listing (2026-09-28,
+# ``scripts/fetch_is_backfill.py``), adds true values for 172 events the re-pull
+# lacks: the CPI subcomponents, legacy JOBLESS and the 2022 PROLLS events. It is
+# in-sample only by construction, and the two files agree on all 356 events they
+# share. The conflict check below spans both.
 
 SETTLEMENT_PATH = ARCHIVE_DIR / "markets_api_pull" / "markets_api_pull_raw.jsonl"
+SETTLEMENT_PATHS = (SETTLEMENT_PATH,
+                    ARCHIVE_DIR / "backfill_2026_09" / "markets_listing.jsonl")
 
 _SETTLEMENT_STRIP = str.maketrans("", "", ",$%")
 
@@ -118,9 +126,9 @@ def _parse_settlement(raw) -> "float | None":
 
 
 def load_settlement_values(is_only: bool = True) -> pl.DataFrame:
-    """``event_ticker -> resolved_value_true`` from the raw re-pull.
+    """``event_ticker -> resolved_value_true`` from ``SETTLEMENT_PATHS``.
 
-    Returns an empty frame (not an error) when the file is absent, so the
+    Returns an empty frame (not an error) when no file is present, so the
     surprise panel degrades to the ladder-inferred value rather than failing.
 
     Columns: ``event_ticker, resolved_value_true``.
@@ -129,22 +137,24 @@ def load_settlement_values(is_only: bool = True) -> pl.DataFrame:
 
     empty = pl.DataFrame(schema={"event_ticker": pl.Utf8,
                                  "resolved_value_true": pl.Float64})
-    if not SETTLEMENT_PATH.exists():
+    paths = [p for p in SETTLEMENT_PATHS if p.exists()]
+    if not paths:
         return empty
 
     vals: dict[str, set[float]] = {}
     closes: dict[str, str] = {}
-    with SETTLEMENT_PATH.open() as fh:
-        for line in fh:
-            rec = json.loads(line)
-            v = _parse_settlement(rec.get("expiration_value"))
-            if v is None:
-                continue
-            ev = rec["event_ticker"]
-            vals.setdefault(ev, set()).add(v)
-            ct = rec.get("close_time")
-            if ct and (ev not in closes or ct < closes[ev]):
-                closes[ev] = ct
+    for path in paths:
+        with path.open() as fh:
+            for line in fh:
+                rec = json.loads(line)
+                v = _parse_settlement(rec.get("expiration_value"))
+                if v is None:
+                    continue
+                ev = rec["event_ticker"]
+                vals.setdefault(ev, set()).add(v)
+                ct = rec.get("close_time")
+                if ct and (ev not in closes or ct < closes[ev]):
+                    closes[ev] = ct
 
     # Formatting differs across a ladder's rows ("0.0" vs "0.00") but the
     # parsed number must not. A genuine conflict means the pull is mixing two

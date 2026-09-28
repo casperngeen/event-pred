@@ -1,7 +1,13 @@
 #!/usr/bin/env python
 """Rebuild every durable panel artifact from ``data/`` alone.
 
-    venv/bin/python scripts/build_panels.py [--min-events 5] [--cadence event]
+    venv/bin/python scripts/build_panels.py [--min-events 5] [--cadence event] [--only CANON ...]
+
+``--only`` rebuilds just the named canonical series, reading only their trades,
+and keeps every other series' rows from the existing artifacts. Both panels are
+built one series at a time; the one cross-series input, the node panel's
+event-date grid, is always taken from the full target universe. So the result
+equals a full rebuild whenever the other series' data has not changed.
 
 Writes to ``artifacts/panels/``:
 
@@ -30,16 +36,26 @@ from stg.panel import (
     target_universe, trigger_universe,
 )
 from stg.panel._io import load_markets, scan_trades
+from stg.panel.registry import SPECS, canonical
 from stg.panel.surprise import gate_panel, gate_report, usable_triggers
 from stg.splits import OOS_START, assert_no_oos
 
 OUT = Path("artifacts/panels")
 
 
+def _splice(new: pl.DataFrame, path: Path, only: list[str], time_col: str) -> pl.DataFrame:
+    """``new`` rows for the rebuilt series + the existing artifact's rows for the rest."""
+    old = pl.read_parquet(path).filter(~pl.col("series").is_in(only))
+    return (pl.concat([old, new.select(old.columns)], how="vertical_relaxed")
+            .sort("series", time_col))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--min-events", type=int, default=5)
     ap.add_argument("--cadence", default="event", choices=["event", "daily", "weekly"])
+    ap.add_argument("--only", nargs="+", metavar="CANON",
+                    help="rebuild only these series; keep the rest from the existing artifacts")
     args = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
 
@@ -47,6 +63,18 @@ def main() -> None:
     tr = scan_trades(is_only=True)
     trigs = trigger_universe(args.min_events, mk)
     tgts = target_universe(args.min_events, mk)
+    build_trigs, build_tgts = trigs, tgts
+    if args.only:
+        unknown = set(args.only) - set(SPECS)
+        assert not unknown, f"not registered: {sorted(unknown)}"
+        build_trigs = [s for s in trigs if s in args.only]
+        build_tgts = [s for s in tgts if s in args.only]
+        tickers = (mk.with_columns(pl.col("series_raw").map_elements(canonical, return_dtype=pl.String)
+                                   .alias("_canon"))
+                   .filter(pl.col("_canon").is_in(args.only))["ticker"])
+        tr = tr.filter(pl.col("ticker").is_in(tickers.implode()))
+        print(f"--only: rebuilding {len(build_trigs)} trigger / {len(build_tgts)} target series "
+              f"on {tickers.len()} legs; other series kept from {OUT}/")
 
     counts = event_counts(mk)
     counts.write_parquet(OUT / "universe.parquet")
@@ -55,7 +83,9 @@ def main() -> None:
           f"targets N={len(tgts)}")
     # Built ungated first so the MANIFEST can report what the quality gates
     # cost, rather than leaving the drop invisible in a row count.
-    raw = build_surprise_panel(trigs, markets=mk, trades=tr, gated=False)
+    raw = build_surprise_panel(build_trigs, markets=mk, trades=tr, gated=False)
+    if args.only:
+        raw = _splice(raw, OUT / "surprise_panel_ungated.parquet", args.only, "close_time")
     gates = gate_report(raw)
     # The ungated panel is now written too. The calibration study in
     # analysis/relations_2026_09/ has to run on it: the mass and coverage gates
@@ -73,8 +103,10 @@ def main() -> None:
         "rather than cleaning it — inspect gate_report() before proceeding"
     )
 
-    node = build_node_panel(tgts, cadence=args.cadence, min_events=args.min_events,
-                            markets=mk)
+    node = build_node_panel(build_tgts, cadence=args.cadence, min_events=args.min_events,
+                            markets=mk, trades=tr, grid_series=tgts)
+    if args.only:
+        node = _splice(node, OUT / f"node_panel_{args.cadence}.parquet", args.only, "date")
     assert_no_oos(node, time_col="date")
     node.write_parquet(OUT / f"node_panel_{args.cadence}.parquet")
 

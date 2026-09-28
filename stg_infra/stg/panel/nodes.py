@@ -189,8 +189,16 @@ def build_node_panel(
     freshness: str = "fresh",
     min_fresh_legs: int = MIN_FRESH_LEGS,
     markets: Optional[pl.DataFrame] = None,
+    trades: Optional[pl.LazyFrame] = None,
+    grid_series: Optional[list[str]] = None,
 ) -> pl.DataFrame:
     """Node-feature rows.
+
+    ``trades`` defaults to the whole in-sample archive, which is collected into
+    memory; pass a scan already filtered to the series' tickers to avoid that.
+    ``grid_series`` sets whose resolution dates form the ``cadence="event"``
+    grid; it defaults to the series being built. Building a subset of series
+    against the full grid needs it set to the full list.
 
     ``cadence="event"`` keeps only rows on macro-resolution dates (the snapshot
     grid); ``cadence="daily"`` keeps every day; ``cadence="weekly"`` resamples
@@ -214,7 +222,7 @@ def build_node_panel(
     :mod:`stg.direction.folds`. Set it non-zero only for a deliberate experiment.
     """
     mk = markets if markets is not None else load_markets(is_only=True)
-    tr_lf = scan_trades(is_only=True)
+    tr_lf = trades if trades is not None else scan_trades(is_only=True)
     tr_df = tr_lf.collect()
     names = series if series is not None else target_universe(min_events, mk)
 
@@ -292,7 +300,7 @@ def build_node_panel(
 
     if cadence == "event":
         from stg.panel.snapshots import macro_resolution_dates
-        snaps = macro_resolution_dates(mk, names)
+        snaps = macro_resolution_dates(mk, grid_series if grid_series is not None else names)
         panel = panel.filter(pl.col("date").is_in(snaps))
     elif cadence == "weekly":
         panel = panel.filter(pl.col("date").dt.weekday() == 1)
