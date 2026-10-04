@@ -53,6 +53,15 @@ BURN_IN_END = dt.datetime(2022, 1, 1, tzinfo=UTC)
 # --- purge band around each boundary (event-study window + slack) ---------
 PURGE_DAYS = 21
 
+# --- the sports arm's wall (Kalshi MLB / NBA / NFL, 2025 onward) ---------
+# Its own boundary, independent of the macro one above: sports markets closing
+# on or after this date sit under ``data/sports/_HOLDOUT_DO_NOT_USE/`` and are
+# read once, for the final test. Jan-Jun 2026 is in sample
+# (reports/sports_research_plan.md §14). ``scripts/fetch_sports.py`` writes the
+# split with the same date; ``tests/test_splits.py`` checks they agree.
+SPORTS_HOLDOUT_START = dt.datetime(2026, 7, 1, tzinfo=UTC)
+SPORTS_HOLDOUT_DIR = "_HOLDOUT_DO_NOT_USE"
+
 SPLITS = {
     "burn_in": (None, BURN_IN_END),
     "train": (BURN_IN_END, TRAIN_VAL_SPLIT),
@@ -106,4 +115,15 @@ def assert_no_oos(frame, time_col: str | None = None) -> None:
         raise AssertionError(
             f"{n} rows at/after OOS_START ({OOS_START.date()}) in column {col!r}. "
             "Exploratory analysis must not touch the holdout — see stg/splits.py."
+        )
+
+
+def assert_no_sports_holdout(frame, time_col: str = "close_time") -> None:
+    """Raise if any row falls at or after the sports holdout wall."""
+    lf = frame.lazy() if isinstance(frame, pl.DataFrame) else frame
+    n = lf.filter(pl.col(time_col) >= SPORTS_HOLDOUT_START).select(pl.len()).collect().item()
+    if n:
+        raise AssertionError(
+            f"{n} rows at/after SPORTS_HOLDOUT_START ({SPORTS_HOLDOUT_START.date()}) in column "
+            f"{time_col!r}. The sports holdout is read once, for the final test — see stg/splits.py."
         )

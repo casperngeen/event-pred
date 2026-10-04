@@ -80,3 +80,6 @@ out/
 *_output.txt
 
 papers/
+# Kalshi API private key -- never commit
+kalshi_api_key.txt
+*.pem
