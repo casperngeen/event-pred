@@ -59,6 +59,7 @@ class MaskedSigned(AGCRN):
 def fit_read(make, m, seed):
     """Train like graphs.torch_graph and read the effective edges ∂ŷ_b/∂z_a."""
     torch.manual_seed(seed)
+    WIN, YSD = G.fold_data(m)
     wi = np.isin(WIN["day"], G.days[m])
     d = WIN["day"][wi]
     es_cut = np.sort(d)[int(len(d) * 0.85)]
@@ -67,7 +68,7 @@ def fit_read(make, m, seed):
 
     def prep(s):
         return (torch.tensor(apply_feature_scaler(WIN["Xs"][s], mu, sd)), torch.tensor(WIN["Ms"][s]),
-                torch.tensor(WIN["y"][s] / G.YSD, dtype=torch.float32), torch.tensor(WIN["ym"][s]))
+                torch.tensor(WIN["y"][s] / YSD, dtype=torch.float32), torch.tensor(WIN["ym"][s]))
     model, _ = fit_fold(make, prep(fit), prep(es))
     X, Mk = prep(wi)[:2]
     X = X.clone().requires_grad_(True)

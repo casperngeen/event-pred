@@ -23,10 +23,12 @@ sign +), and its division rivals' division and championship contracts (−).
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import polars as pl
 
-OUT = "analysis/sports_2026_09/out"
+OUT = os.environ.get("SPORTS_PILOT_OUT", "analysis/sports_2026_09/out")
 H = np.timedelta64(1, "h")
 STALE = np.timedelta64(7, "D")
 

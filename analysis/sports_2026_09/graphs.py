@@ -34,6 +34,7 @@ on the true edges (self + vs rival −); precision at 150.
 """
 from __future__ import annotations
 
+import os
 import sys
 import zlib
 
@@ -50,7 +51,8 @@ from stg.models.tensors import apply_feature_scaler, fit_feature_scaler
 from stg.models.train import fit_fold
 from stg.structure.stats import benjamini_hochberg, spearman, spearman_p
 
-OUT = "analysis/sports_2026_09/out"
+OUT = os.environ.get("SPORTS_PILOT_OUT", "analysis/sports_2026_09/out")
+ASOF = os.environ.get("SPORTS_PILOT_ASOF") == "1"
 SEASON_END = "2025-09-28"
 CUTS = ["2025-05-15", "2025-06-15", "2025-07-15", "2025-08-15", SEASON_END]
 L, SEEDS = 6, (0, 1, 2)
@@ -194,27 +196,51 @@ class DiagLowRank(nn.Module):
 # previous-slate change, pennant and championship price (as-of at slate start)
 PP0, CP0 = grid("pennant_p0"), grid("champ_p0")
 prev = np.vstack([np.full((1, N), np.nan), Y[:-1]])
-FEATS = np.stack([Z, PLAYED.astype(float), DP0, np.nan_to_num(prev), PP0, CP0], -1)
-for f in range(FEATS.shape[-1]):
-    col = FEATS[..., f]
-    FEATS[..., f] = np.where(np.isfinite(col), col, np.nanmedian(col, axis=0, keepdims=True))
-FEATS = np.nan_to_num(FEATS).astype(np.float32)
+RAW = np.stack([Z, PLAYED.astype(float), DP0, np.nan_to_num(prev), PP0, CP0], -1)
 ACTIVE = np.isfinite(DP0)
 
 
-def windows():
+def filled(fit=None):
+    """RAW with each team's missing values set to its median, over the days ``fit`` (all if None)."""
+    F = RAW.copy()
+    rows = slice(None) if fit is None else fit
+    for f in range(F.shape[-1]):
+        col = F[..., f]
+        F[..., f] = np.where(np.isfinite(col), col, np.nanmedian(col[rows], axis=0, keepdims=True))
+    return np.nan_to_num(F).astype(np.float32)
+
+
+def windows(feats):
     idx = np.arange(L - 1, T)
-    return dict(Xs=np.stack([FEATS[t - L + 1:t + 1] for t in idx]),
+    return dict(Xs=np.stack([feats[t - L + 1:t + 1] for t in idx]),
                 Ms=np.stack([ACTIVE[t - L + 1:t + 1] for t in idx]),
                 y=np.nan_to_num(Y[idx]), ym=np.isfinite(Y[idx]), day=days[idx])
 
 
-WIN = windows()
+FEATS = filled()
+WIN = windows(FEATS)
 YSD = np.nanstd(Y)
+_FOLDS = {}
+
+
+def fold_data(m):
+    """Windows and label scale for a fit on the days ``m``.
+
+    Originally both were season-wide: missing features filled with each team's
+    median over the whole season, and labels divided by the season's sd. With
+    ``SPORTS_PILOT_ASOF=1`` both are fitted on the fold's days only.
+    """
+    if not ASOF:
+        return WIN, YSD
+    k = m.tobytes()
+    if k not in _FOLDS:
+        _FOLDS[k] = (windows(filled(m)), float(np.nanstd(Y[m])))
+    return _FOLDS[k]
 
 
 def torch_graph(kind, m, seed, cols=None):
     torch.manual_seed(seed)
+    WIN, YSD = fold_data(m)
     wi = np.isin(WIN["day"], days[m])
     d = WIN["day"][wi]
     es_cut = np.sort(d)[int(len(d) * 0.85)]

@@ -28,13 +28,15 @@ from __future__ import annotations
 
 import sys
 
+import os
+
 import numpy as np
 import polars as pl
 
 sys.path.insert(0, "analysis/sports_2026_09")
 import graphs as G  # noqa: E402
 
-OUT = "analysis/sports_2026_09/out"
+OUT = os.environ.get("SPORTS_PILOT_OUT", "analysis/sports_2026_09/out")
 H = np.timedelta64(1, "h")
 N_BOOT = 2000
 rng = np.random.default_rng(0)

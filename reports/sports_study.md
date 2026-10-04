@@ -196,6 +196,48 @@ games.
 - **It isn't tradeable.** +0.32¢ gross is a fraction of a taker fee on these
   contracts. The lag is a diffusion finding, not a strategy.
 
+## As-of rerun (2026-09-29)
+
+Phase 0 of `sports_research_plan.md` rebuilt the pilot through the as-of data
+layer (`stg/sports/`) to remove three leaks, and reran every table.
+
+| Leak | Fix |
+|---|---|
+| First pitch detected from the tape by looking back from the game's end (`build_mlb.py`) | the actual first pitch (MLB Stats API), known when it happens (`build_mlb_asof.py`) |
+| Missing features filled with each team's season-wide median (`graphs.py`) | fitted on each fold's days only (`SPORTS_PILOT_ASOF=1`) |
+| Labels scaled by the season-wide sd (`graphs.py`) | the same |
+
+The rerun also reads the sports archive (`data/sports/`) instead of the macro
+archive: 2,196 games instead of 2,193, and practically the same futures tape.
+
+**The detected start was badly off.** It fell a median 13 min *before* the
+first pitch, and more than 15 min off for 52% of team-games (p5: 146 min early;
+15% fell after the first pitch). Game duration (start → end) drops from a
+median 3.33 h to 2.88 h.
+
+**None of the conclusions move.** Outputs are in `out/asof/`, and `out/fixonly/`
+has the two `graphs.py` fixes alone.
+
+| | Before | After |
+|---|---|---|
+| Division drift after the first post-game trade (own, rivals) | +1.42c (t 6.0), −0.33c (t −4.1) | +1.33c (t 5.7), −0.32c (t −4.0) |
+| Share of the own-division +24 h move in place at the first post-game trade | 0.68 | 0.70 |
+| Learned graphs, rival-only AUROC at the season's end | 0.46–0.57 | 0.46–0.55 |
+| AGCRN + schedule support, rival signs right | 0.89 | 0.89 |
+| Trading the lag, mechanical graph (gross ¢/contract) | +0.32 [+0.22, +0.42] | +0.31 [+0.21, +0.41] |
+| Trading the lag, AGCRN signed | +0.15 [+0.05, +0.24] | +0.09 [−0.00, +0.19] |
+
+- **The two `graphs.py` leaks were harmless.** At the full-season cut a fold's
+  days are the season, so nothing changes. On the earlier folds scores move by
+  at most 0.03 AUROC, within the spread across seeds.
+- **The start fix matters only for in-game timing.** The post-game drift is
+  measured from the end, so it barely moves. The in-game (start → end⁻)
+  columns shift a little, and the NBA/NFL studies will use the as-of starts
+  from the outset.
+- **The weaker AGCRN-signed P&L** is the only material change. It is within
+  noise, but the learned graphs' small edge over a random side was never
+  robust.
+
 ## What this adds to the thesis
 
 1. **Information diffusion is directly measurable where the graph is known.**
