@@ -483,6 +483,9 @@ To be run **once**, on the 2026 block, with no further tuning:
 - A row is in the test when its target settles on or after `OOS_START`, whatever
   the trigger's date.
 - Inputs: `analysis/leadlag_2026_09/oos_build.py` → `data/_OOS_DO_NOT_USE_built_2026/`.
+- Rule: the original (confirm on the first post-`t_res` print, fill at the second)
+  on the VWAP tape; `analysis/leadlag_2026_09/oos_test.py`. In-sample reference on
+  the same code: **+4.39c, CI [+0.02, +8.54]**, 910 positions, 221 events.
 
 Pre-registered expectation, stated before the test: given the decay measured in
 §7 and in every other effect in this project, the point estimate should be
