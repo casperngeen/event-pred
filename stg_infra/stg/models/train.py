@@ -5,6 +5,11 @@ target date is before the fold cut, hold out the next slice, with a
 ``PURGE_DAYS`` gap so a target's label window cannot straddle the boundary. Val
 predictions are pooled across folds. The 2026 wall is never approached — inputs
 come from the IS-only node panel.
+
+``label_sd``: a fixed per-node label scale (the macro study passes
+``global_label_sd`` over the whole panel), or None to fit it on each fold's
+training rows only, so no statistic comes from data after the fold cut. Use
+None for new work (the sports arm).
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ import numpy as np
 import torch
 
 from stg.models.tensors import (
-    apply_feature_scaler, apply_label_scaler, fit_feature_scaler,
+    apply_feature_scaler, apply_label_scaler, fit_feature_scaler, fit_label_scaler,
 )
 from stg.splits import PURGE_DAYS
 
@@ -46,7 +51,14 @@ def evaluate(y: np.ndarray, yhat: np.ndarray, mask: np.ndarray) -> dict:
 
 
 # ----------------------------------------------------------------- linear
-def run_linear(make_model: Callable, win: dict, label_sd: np.ndarray, *,
+def _fold_label_sd(win: dict, rows: np.ndarray, label_sd: np.ndarray | None) -> np.ndarray:
+    """The given scale, or (None) one fitted on these training rows only."""
+    if label_sd is not None:
+        return label_sd
+    return fit_label_scaler(win["y"][rows], win["ym"][rows], "belief_z")
+
+
+def run_linear(make_model: Callable, win: dict, label_sd: np.ndarray | None, *,
                n_folds: int = 8) -> dict:
     dates = win["dates"]
     ends = _label_end(win)
@@ -59,17 +71,18 @@ def run_linear(make_model: Callable, win: dict, label_sd: np.ndarray, *,
         te = (dates >= cuts[i]) & (dates < cuts[i + 1])
         if tr.sum() < 30 or te.sum() == 0:
             continue
+        sd_y = _fold_label_sd(win, tr, label_sd)
         wtr = _subset(win, tr)
-        wtr["y"] = apply_label_scaler(wtr["y"], label_sd)
+        wtr["y"] = apply_label_scaler(wtr["y"], sd_y)
         model = make_model().fit(wtr)
         preds[te] = model.predict(_subset(win, te))
-        y_eval[te] = apply_label_scaler(win["y"][te], label_sd)
+        y_eval[te] = apply_label_scaler(win["y"][te], sd_y)
         covered[te] = True
     return _pooled(win, preds, y_eval, covered)
 
 
 # ----------------------------------------------------------------- torch
-def run_torch(make_model: Callable, win: dict, label_sd: np.ndarray, *,
+def run_torch(make_model: Callable, win: dict, label_sd: np.ndarray | None, *,
               n_folds: int = 8, seeds=(0,), max_epochs: int = 200,
               patience: int = 15, lr: float = 1e-3, wd: float = 1e-4,
               device: str = "cpu", on_fold: Callable | None = None) -> dict:
@@ -103,7 +116,7 @@ def run_torch(make_model: Callable, win: dict, label_sd: np.ndarray, *,
                 fit_m, es_m = tr, tr
 
             mu, sd_f = fit_feature_scaler(win["Xs"][fit_m], win["Ms"][fit_m])
-            sd_y = label_sd
+            sd_y = _fold_label_sd(win, fit_m, label_sd)
 
             def prep(m):
                 return (

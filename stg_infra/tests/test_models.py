@@ -198,3 +198,17 @@ def test_signed_adjacency_is_directed_signed_and_masks_padded_senders():
     with torch.no_grad():
         m.E_dst.mul_(-1)
     assert (m._adjacency(m.E, active)[0] < 0).any() or (A < 0).any()   # can be negative
+
+
+def test_fold_label_scale_uses_training_rows_only():
+    from stg.models.train import _fold_label_sd
+    rng = np.random.default_rng(0)
+    y = rng.normal(size=(100, 3))
+    win = {"y": y, "ym": np.ones_like(y, dtype=bool)}
+    tr = np.arange(100) < 60
+    a = _fold_label_sd(win, tr, None)
+    y[~tr] *= 50                                   # the future changes wildly
+    assert np.allclose(a, _fold_label_sd(win, tr, None))
+    assert np.allclose(a, y[tr].std(0))
+    fixed = np.array([1.0, 2.0, 3.0])
+    assert _fold_label_sd(win, tr, fixed) is fixed  # the macro study's fixed scale is passed through
