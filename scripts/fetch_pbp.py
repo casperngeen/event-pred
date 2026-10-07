@@ -154,7 +154,7 @@ def kalshi_games() -> pl.DataFrame:
             "teams": "-".join(codes) if len(codes) == 2 else None,
             "close_time": g["close_time"].max(),
         })
-    return (pl.DataFrame(rows)
+    return (pl.DataFrame(rows, infer_schema_length=None)       # game_no is mostly null: infer from every row
               .with_columns((pl.col("close_time") >= HOLDOUT_START).alias("holdout"))
               .sort("league", "date_local", "event_ticker"))
 

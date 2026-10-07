@@ -7,6 +7,7 @@ Stages, run in order; each one resumes where a previous run stopped:
     venv/bin/python scripts/fetch_sports.py seed      # reuse legs data/trades/ already holds in full
     venv/bin/python scripts/fetch_sports.py candles   # bid/ask candles (see "candles" below)
     venv/bin/python scripts/fetch_sports.py trades    # every trade, all listed markets
+    venv/bin/python scripts/fetch_sports.py futures1m # 1-min candles on season-long legs (optional)
 
 ``--sports MLB NBA NFL`` picks the leagues (series whose ticker starts with
 ``KX<league>``; parlay/MVE series are not in the Sports category and are never
@@ -15,7 +16,9 @@ pulled). ``--since 2025-01-01`` (default) bounds market close time in every stag
 Candles: game-level legs (see ``game_level``) get 1-min candles, winner
 markets (…GAME) over their whole life and every other game-level leg over the
 last ``--hours`` (12) before it closes; season-long legs get hourly candles
-over their whole life. Kalshi's historical and live candle endpoints name
+over their whole life (``futures1m`` pulls them again at 1 min, over their whole
+life, into ``candles_futures_1m/``; 1-min candles exist only in active minutes,
+~3% of a future's life). Kalshi's historical and live candle endpoints name
 their fields differently; ``flatten_candle`` reads both.
 
 Holdout: markets closing on or after ``HOLDOUT_START`` are written under
@@ -25,6 +28,7 @@ convention as the macro 2026 block. Only counts and sizes are printed for them.
 Layout (``data/`` is git-ignored):
     data/sports/markets.parquet                     listing, working block
     data/sports/candles/<series>/<n>.parquet        candles (1-min game-level, hourly season-long)
+    data/sports/candles_futures_1m/<series>/<n>.parquet  1-min candles, season-long legs only
     data/sports/trades/<series>/<n>.parquet         trades
     data/sports/_HOLDOUT_DO_NOT_USE/{markets.parquet,candles/,trades/}
     data/sports/state/                              resume checkpoints
@@ -447,7 +451,7 @@ def candle_window(m: dict, hours: float | None) -> tuple[dt.datetime, dt.datetim
     winner (…GAME) leg; season-long legs: hourly over their life. The end is
     clamped to now, so futures closing years out are not requested into the future."""
     game = game_level(m)
-    interval = 1 if game else 60
+    interval = 1 if game else FUTURES_INTERVAL
     h = None if not game or FULL_LIFE_SERIES.search(m["series_ticker"]) else hours   # futures: whole life
     lo, hi = m["open_time"], m["close_time"]
     if lo and hi and interval == 1 and h is not None:
@@ -628,7 +632,10 @@ def pull(api: Api, kind: str, since: dt.datetime, workers: int, flush_every: int
         return f"holdout:{m['series_ticker']}" if m["close_time"] >= HOLDOUT_START else m["ticker"]
 
     # a unit is one leg, or (live candles) a batch of legs fetched in one request
-    if kind == "candles":
+    if kind == "candles_futures_1m":    # season-long legs only; game-level legs are already 1-min
+        todo = [m for m in todo if not game_level(m)]
+        print(f"{kind}: {len(todo):,} season-long legs to pull", flush=True)
+    if kind.startswith("candles"):
         live = [m for m in todo if m["close_time"] >= cutoff]
         batches, solo = candle_batches(live, hours)
         units = batches + [[m] for m in solo] + [[m] for m in todo if m["close_time"] < cutoff]
@@ -757,12 +764,13 @@ def stage_seed(since: dt.datetime) -> None:
 # --------------------------------------------------------------------------- main
 
 api_rate = 12.0
+FUTURES_INTERVAL = 60                        # minutes per candle on season-long legs; futures1m sets 1
 
 
 def main() -> None:
-    global api_rate
+    global api_rate, FUTURES_INTERVAL
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["list", "estimate", "seed", "candles", "trades"])
+    ap.add_argument("stage", choices=["list", "estimate", "seed", "candles", "trades", "futures1m"])
     ap.add_argument("--sports", nargs="+", default=["MLB", "NBA", "NFL"])
     ap.add_argument("--since", default="2025-01-01")
     ap.add_argument("--workers", type=int, default=16)
@@ -790,7 +798,10 @@ def main() -> None:
     elif a.stage == "estimate":
         stage_estimate(api, since, a.workers, a.hours)
     else:
-        n_failed = pull(api, a.stage, since, a.workers, a.flush_every, a.only, a.scope, a.hours)
+        kind = a.stage
+        if kind == "futures1m":
+            FUTURES_INTERVAL, kind = 1, "candles_futures_1m"
+        n_failed = pull(api, kind, since, a.workers, a.flush_every, a.only, a.scope, a.hours)
         print(f"requests made: {api.n:,}")
         return 3 if n_failed else 0      # 3 = finished, but some legs need a rerun
     print(f"requests made: {api.n:,}")
