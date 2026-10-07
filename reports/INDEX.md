@@ -30,6 +30,13 @@ Submission target November 2026; analysis freeze early October.
 | [progress_2026_09.md](progress_2026_09.md) | **Supervisor-facing progress report, CA submission (2026-08-12) → 2026-09-14.** What changed about each of the thesis's claims, what was retracted and why, the open decisions, and a risk register for the final report. `update_2026_08.md` covers only the first four weeks of that period; the supervisor-facing successor to `update_2026_08.md` is `update_2026_09.md`. |
 | [update_2026_09.md](update_2026_09.md) | **Supervisor-facing update for September 2026, standalone** (no references to other documents). Follows `update_2026_08.md`: what happened to its seven proposals, the nine-defect audit, the revised Stage-1 result (4 edges, all macro → policy, robust in sign), the withdrawn direction result, economic significance and five efficiency results, the frozen lead-lag specification with its OOS test built but not run, and the STG question answered (imposed beats learned on every axis). Corrections log, open decisions, risk register. **Start here for the current state.** |
 
+## In-game sports model (October 2026)
+
+| Document | What it is |
+|---|---|
+| [ingame_journal.md](ingame_journal.md) | **Decisions and design journal for the in-game (play-by-play → Kalshi prices) model**, started 2026-10-04: goal and trading focus, data facts, event timing, inputs, preliminary findings, splits, the GRU graph model, NFL results by feed delay, infrastructure and cluster rules, open items. Kept up to date as the work moves. |
+| [holdout_spec.md](holdout_spec.md) | **Frozen spec for the in-game holdout test** (frozen 2026-10-07): the final model (panel_v3, GRU, 10 s delay, 5-seed average), the maker strategy with both exits (fixed, hold to settlement) and the sizing rule, the four candidates, what is reported (no pre-set pass rule), and the order of work. |
+
 ## Findings and measurement
 
 | Document | What it is |
