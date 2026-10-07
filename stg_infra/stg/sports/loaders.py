@@ -29,6 +29,19 @@ Nothing here reads ``_HOLDOUT_DO_NOT_USE/``: every path goes through
     listing, final   status, result, close_time, settlement_ts, volume,
                      open_interest, last_price, expiration_value: settlement_ts
 
+``t_event`` (play-by-play only): when the play's outcome happened on the field, for aligning
+prices with plays. It is not when a feed would have delivered it (``known_at`` stays the strict
+stamp for trading tests):
+
+    MLB pitch        the pitch's start: the outcome is visible within seconds (a home run moves the
+                     price 3-5 s after it), while the recorded end comes after the play finishes
+                     (home runs: a median 26 s, after the trot); other events: known_at
+    NBA play         its wallclock
+    NFL play         the play's end (nflverse end_clock_time, matched to the ESPN row by its snap).
+                     Without one: the snap plus the median snap-to-end time of the same play type
+                     over plays in earlier games only (the snap itself before any exist). Stoppages
+                     (timeouts, two-minute warning, ends of periods): their own timestamp
+
 ``close_time`` is final: Kalshi moves it to when the game actually ended. Use it
 only through :class:`stg.sports.asof.SportsData`, which reveals it once it has
 passed.
@@ -41,6 +54,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 
 from stg.splits import SPORTS_HOLDOUT_DIR, SPORTS_HOLDOUT_START, assert_no_sports_holdout
@@ -168,7 +182,66 @@ def load_pbp(league: str) -> pl.DataFrame:
         # the last play has no next snap: the game's own end event (never Kalshi's close)
         end_evt = pl.col("t").filter(pl.col("event_type") == "End of Game").max().over("game_id")
         known = pl.coalesce(pl.col("t").shift(-1).over("game_id", order_by="seq"), end_evt, pl.col("t"))
-    return ev.with_columns(known.alias("known_at")).sort("game_id", "seq")
+    ev = ev.with_columns(known.alias("known_at"))
+    if league == "NFL":
+        ev = _nfl_play_ends(ev)
+    else:
+        ev = ev.with_columns(pl.lit(None, pl.String).alias("play_type"),
+                             (pl.when(pl.col("is_pitch")).then(pl.col("t")).otherwise(pl.col("known_at"))
+                              if league == "MLB" else pl.col("t")).alias("t_event"))
+    return ev.sort("game_id", "seq")
+
+
+NFL_STOPPAGES = ("Timeout", "Official Timeout", "Two-minute warning", "End Period", "End of Half",
+                 "End of Regulation", "End of Game")
+NFL_END_MATCH = dt.timedelta(seconds=3)     # ESPN wallclock vs nflverse snap: median 0 s
+
+
+def _nflverse_plays() -> pl.DataFrame:
+    """nflverse rows with a snap time: nflverse_key, snap, play end, play type, nflverse's home win
+    probability after the play (its model is trained on earlier seasons)."""
+    files = sorted(safe_path("pbp", "raw", "NFL").glob("nflverse_pbp_*.parquet"))
+    cols = ["game_date", "away_team", "home_team", "time_of_day", "end_clock_time", "play_type", "home_wp_post"]
+    nv = pl.concat([pl.read_parquet(f, columns=cols) for f in files], how="vertical_relaxed")
+    ts_ = lambda c: pl.col(c).str.to_datetime(time_zone="UTC", strict=False).dt.cast_time_unit("us")  # noqa: E731
+    return (nv.select(pl.format("{}_{}_{}", "game_date", "away_team", "home_team").alias("nflverse_key"),
+                      ts_("time_of_day").alias("snap"), ts_("end_clock_time").alias("play_end"), "play_type",
+                      pl.col("home_wp_post").alias("nflverse_home_wp_post"))
+            .filter(pl.col("snap").is_not_null()).sort("snap"))
+
+
+def _nfl_play_ends(ev: pl.DataFrame) -> pl.DataFrame:
+    """Fill t_end with the play's end; add play_type, t_event (see the module docstring) and
+    nflverse_home_wp_post (null on stoppages and unmatched rows; home_wp_post stays ESPN's)."""
+    keys = load_games().filter(pl.col("league") == "NFL").select("game_id", "nflverse_key").unique("game_id")
+    e = ev.drop("t_end").join(keys, on="game_id", how="left").sort("t")
+    m = e.join_asof(_nflverse_plays(), left_on="t", right_on="snap", by="nflverse_key", strategy="nearest",
+                    tolerance=NFL_END_MATCH, check_sortedness=False)
+    stop = pl.col("event_type").is_in(NFL_STOPPAGES)
+    m = m.with_columns(pl.when(stop).then(None).otherwise(pl.col("play_end")).alias("t_end"),
+                       pl.when(stop).then(pl.lit("stoppage")).otherwise(pl.col("play_type")).alias("play_type"),
+                       pl.when(stop).then(None).otherwise(pl.col("nflverse_home_wp_post")).alias("nflverse_home_wp_post"))
+    # fallback: median snap-to-end of the same play type over earlier games' plays (expanding, as-of)
+    dur = (m.filter(pl.col("t_end").is_not_null(), pl.col("t_end") > pl.col("t"))
+           .with_columns((pl.col("t_end") - pl.col("t")).dt.total_milliseconds().alias("dur_ms"),
+                         pl.col("t").min().over("game_id").alias("game_start"))
+           .select("play_type", "game_start", "dur_ms"))
+    starts = m.select("game_id", pl.col("t").min().over("game_id").alias("game_start")).unique("game_id")
+    fb = []
+    for (pt,), d in dur.partition_by("play_type", as_dict=True).items():
+        d = d.sort("game_start")
+        gs, ms = d["game_start"].to_numpy(), d["dur_ms"].to_numpy().astype(float)
+        for gid, g0 in starts.iter_rows():
+            k = int(np.searchsorted(gs, np.datetime64(g0.replace(tzinfo=None), "us"), side="left"))
+            if k:                                   # plays of games that started before this one
+                fb.append((gid, pt, float(np.median(ms[:k]))))
+    fb = pl.DataFrame(fb, schema={"game_id": pl.String, "play_type": pl.String, "fallback_ms": pl.Float64},
+                      orient="row")
+    m = m.join(fb, on=["game_id", "play_type"], how="left")
+    t_event = (pl.when(stop).then(pl.col("t"))
+               .when(pl.col("t_end").is_not_null()).then(pl.col("t_end"))
+               .otherwise(pl.col("t") + pl.duration(milliseconds=pl.col("fallback_ms").fill_null(0))))
+    return m.with_columns(t_event.alias("t_event")).drop("nflverse_key", "snap", "play_end", "fallback_ms")
 
 
 @lru_cache(maxsize=1)
