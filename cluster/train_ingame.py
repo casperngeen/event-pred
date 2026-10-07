@@ -13,6 +13,13 @@ data that may be copied to the cluster.
 
 Writes <out>/<league>_fold<k>_<memory>_d<delay>[_h<horizons>]_seed<s>.json (settings, epochs, and the test metrics) and
 prints a short table; with --save-preds also the test predictions (.npz) for backtests.
+
+The final model for the holdout test (--final instead of --test-fold): trained the same way on every game in the
+panel (the last 15% by date for early stopping), no test set; --save-model writes the weights (.pt) next to the
+json, named <league>_final_<memory>_d<delay>[_h…]_seed<s>:
+
+    python cluster/train_ingame.py --panel panels/MLB_v3 --final --save-model --delay 10 --horizons 30s,60s,120s,1800s \
+        --games-per-batch 16 --steps-per-game 256 --seed 0 --out results/ingame/final
 """
 from __future__ import annotations
 
@@ -36,7 +43,9 @@ Panel, train = _ingame.Panel, _ingame.train
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--panel", required=True)
-    ap.add_argument("--test-fold", type=int, required=True)
+    fold = ap.add_mutually_exclusive_group(required=True)
+    fold.add_argument("--test-fold", type=int)
+    fold.add_argument("--final", action="store_true", help="train on every game (the holdout model); no test set")
     ap.add_argument("--memory", choices=["gru", "transformer", "none"], default="gru")
     ap.add_argument("--hidden", type=int, default=64)
     ap.add_argument("--tf-window", type=int, default=0, help="transformer memory: attend to the last N plays only (0 = all)")
@@ -56,14 +65,15 @@ def main() -> None:
     ap.add_argument("--device", default="auto")
     ap.add_argument("--out", default="results/ingame")
     ap.add_argument("--save-preds", action="store_true", help="also write the test predictions (npz) for backtests")
+    ap.add_argument("--save-model", action="store_true", help="also write the trained weights (.pt)")
     a = ap.parse_args()
     t0 = time.time()
     hz = [h for h in a.horizons.split(",") if h]
     pn = Panel(a.panel, horizons=hz or None)
-    got = train(pn, a.test_fold, memory=a.memory, hidden=a.hidden, n_rounds=a.rounds, dropout=a.dropout, lr=a.lr,
+    got = train(pn, None if a.final else a.test_fold, memory=a.memory, hidden=a.hidden, n_rounds=a.rounds, dropout=a.dropout, lr=a.lr,
                    epochs=a.epochs, patience=a.patience, games_per_batch=a.games_per_batch,
                    steps_per_game=a.steps_per_game, lambda_y=a.lambda_y, eval_stride=a.eval_stride, seed=a.seed, delay_s=a.delay, tf_window=a.tf_window, huber=a.huber,
-                   device=a.device, log=lambda s: print(s, flush=True), return_preds=a.save_preds)
+                   device=a.device, log=lambda s: print(s, flush=True), return_preds=a.save_preds and not a.final)
     res = got[0]
     res["seconds"] = round(time.time() - t0, 1)
     out = Path(a.out)
@@ -77,9 +87,15 @@ def main() -> None:
     tag += f"_r{a.rounds}" if a.rounds != 2 else ""          # _r0: no message passing (graph ablation)
     res["targets"] = pn.manifest.get("targets", "quotes")
     mem = a.memory + (f"w{a.tf_window}" if a.memory == "transformer" and a.tf_window else "")
-    f = out / f"{res['league']}_fold{a.test_fold}_{mem}_d{a.delay:g}{tag}_seed{a.seed}.json"
+    split = "final" if a.final else f"fold{a.test_fold}"
+    f = out / f"{res['league']}_{split}_{mem}_d{a.delay:g}{tag}_seed{a.seed}.json"
+    res["args"] = vars(a)
     f.write_text(json.dumps(res, indent=1))
-    if a.save_preds:
+    if a.save_model:
+        _ingame.save_model(f.with_suffix(".pt"), got[1], pn,
+                           _ingame.model_config(pn, hidden=a.hidden, memory=a.memory, n_rounds=a.rounds, dropout=a.dropout,
+                                                tf_window=a.tf_window), res)
+    if a.save_preds and not a.final:
         import numpy as np
         np.savez_compressed(f.with_suffix(".npz"), **got[2])
     print(f"\nwrote {f} ({res['seconds']} s)")

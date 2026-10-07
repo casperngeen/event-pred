@@ -67,3 +67,14 @@ On the cluster:
 
 Copy the results back with `rsync -av xlogin:~/event-pred/results/ingame/ results/ingame/`. The NFL also
 runs on the laptop in minutes: `bash cluster/run_ingame_local.sh NFL`.
+
+## Final models for the holdout test
+
+The frozen spec is `reports/holdout_spec.md`. Train each league's final model (5 seeds, every training
+game, weights saved) on the same `panels/<league>_v3` copies as the test-fold runs:
+
+    sbatch cluster/train_final.sbatch                  # NBA MLB NFL x seeds 0-4 = 15 tasks
+    ls results/ingame/final/                           # <league>_final_gru_d10_h30-60-120-1800_tp_seed<s>.json + .pt
+
+Copy the weights back with `rsync -av xlogin:~/event-pred/results/ingame/final/ results/ingame/final/`.
+Holdout data never go to the cluster: the holdout panel, forecasts and backtest run on the laptop.

@@ -34,6 +34,14 @@ later values and y. A live feed's delay is applied later, when batches are built
 play and step times; stg.models.ingame recomputes what is known for a given delay). The baseline is not stored: its inputs are, so it can be refitted per fold.
 
     venv/bin/python -W ignore analysis/graph_2026_10/b3_table.py NFL
+
+Final test only (on the laptop, once the spec is frozen): with STG_SPORTS_UNSEAL=final-test the same
+table is built from the holdout folder alone, into _HOLDOUT_DO_NOT_USE/derived/ingame/<league>/. The
+games are those b1_splits would use (a result, winner + spread + total contracts, no spring training),
+all after the holdout start, as fold 99; no futures (the frozen model has none). MLB and NFL only:
+the NBA possession table (b1_nba_events) is built before the holdout.
+
+    STG_SPORTS_UNSEAL=final-test venv/bin/python -W ignore analysis/graph_2026_10/b3_table.py MLB
 """
 from __future__ import annotations
 
@@ -55,7 +63,7 @@ import b1_response as R                                    # noqa: E402
 from stg.sports.asof import SportsData                     # noqa: E402
 from stg.sports.loaders import derived_dir, load_games, load_pbp, safe_path, scan_trades   # noqa: E402
 from stg.sports.prices import QUOTE_SCHEMA, _trade_obs, quotes_at, scan_quotes   # noqa: E402
-from stg.splits import SPORTS_HOLDOUT_START                # noqa: E402
+from stg.splits import SPORTS_HOLDOUT_START, sports_holdout_unsealed   # noqa: E402
 
 STEP = 5                                   # seconds
 HORIZONS = {"10s": 10, "30s": 30, "60s": 60, "120s": 120, "300s": 300, "600s": 600, "1800s": 1800}
@@ -67,6 +75,22 @@ FUT_AGE_S = 86400       # a futures quote stays current up to a day (a 1-min can
 PRINT_W_FUT_S = 120     # futures trade thinly: target window (t + h, t + h + 120 s]
 OUT = derived_dir() / "ingame" / LEAGUE
 FOLDS = Path(__file__).resolve().parent / "out" / f"b1_folds_{LEAGUE}.parquet"
+HOLDOUT = sports_holdout_unsealed()        # the final test: build from the holdout folder only
+HOLDOUT_FOLD = 99
+
+
+def holdout_folds(d: SportsData) -> pl.DataFrame:
+    """The final test's games, chosen as b1_splits chooses the folds' games, all as fold HOLDOUT_FOLD."""
+    from b1_stability import game_meta
+    con = d.contracts.filter(pl.col("league") == LEAGUE, pl.col("scope") == "game", pl.col("game_id").is_not_null())
+    has = lambda kind: con.filter(pl.col("kind") == kind)["game_id"].unique().implode()   # noqa: E731
+    g = (d.results.filter(pl.col("league") == LEAGUE).select("game_id", "first_play")
+         .filter(pl.col("game_id").is_in(has("winner")), pl.col("game_id").is_in(has("spread")), pl.col("game_id").is_in(has("total")))
+         .join(game_meta(), on="game_id").filter(pl.col("type") != "spring training"))
+    assert g["first_play"].min() >= SPORTS_HOLDOUT_START, "a holdout-folder game starts before the holdout"
+    print(f"final test: {g.height} {LEAGUE} games, {g['first_play'].min()} .. {g['first_play'].max()}, by type "
+          f"{dict(g.group_by('type').len().iter_rows())}")
+    return g.select("game_id", pl.lit(HOLDOUT_FOLD).alias("fold"))
 
 
 def _finish_plays(ev: pl.DataFrame) -> pl.DataFrame:
@@ -218,8 +242,10 @@ def plays_table(games: pl.DataFrame) -> pl.DataFrame:
 def main() -> None:
     pl.Config.set_tbl_cols(30)
     pl.Config.set_tbl_width_chars(220)
+    if HOLDOUT and LEAGUE == "NBA":
+        raise SystemExit("final test: NBA needs the possession table (b1_nba_events) built from the holdout first")
     d = SportsData()
-    folds = pl.read_parquet(FOLDS).select("game_id", "fold")
+    folds = holdout_folds(d) if HOLDOUT else pl.read_parquet(FOLDS).select("game_id", "fold")
     con = (d.contracts.filter(pl.col("league") == LEAGUE, pl.col("scope") == "game", pl.col("kind").is_in(KINDS),
                               pl.col("game_id").is_in(folds["game_id"].implode()))
            .select("ticker", "series_ticker", "kind", "side", "strike", "game_id"))
@@ -233,6 +259,8 @@ def main() -> None:
     plays = plays_table(games)
     games = games.join(plays.group_by("game_id").agg(pl.col("home_id").first()), on="game_id", how="left")
     fut = futures_contracts(d, games)
+    if HOLDOUT:                                # the frozen model (panel_v3) has no futures nodes
+        fut = fut.clear()
     print(f"futures nodes: {fut.height} (game, team, kind) contracts over {fut['game_id'].n_unique()} games")
     con = pl.concat([con, fut], how="vertical_relaxed")
     # futures settle months later (some after the holdout start): no final-result target for them
@@ -244,8 +272,9 @@ def main() -> None:
     games.write_parquet(OUT / "games.parquet")
 
     longest = max(HORIZONS.values())
-    q_all = pl.concat([scan_quotes(con.filter(pl.col("kind").is_in(KINDS))["series_ticker"].unique().to_list()),
-                       futures_quotes(fut["series_ticker"].unique().to_list()).collect().lazy()], how="vertical_relaxed")
+    q_all = pl.concat([scan_quotes(con.filter(pl.col("kind").is_in(KINDS))["series_ticker"].unique().to_list())]
+                      + ([futures_quotes(fut["series_ticker"].unique().to_list()).collect().lazy()] if fut.height else []),
+                      how="vertical_relaxed")
     w = con.filter(pl.col("kind") == "winner")
     wtr = (scan_trades(w["series_ticker"].unique().to_list()).filter(pl.col("ticker").is_in(w["ticker"].implode()))
            .select("ticker", pl.col("created_time").cast(pl.Datetime("us", "UTC")).alias("tt")).collect()
@@ -253,6 +282,9 @@ def main() -> None:
     # trade prints, compact: game contracts belong to one game (sorted by game, sliced per game without copies);
     # futures prints stay one small table and are cut to each game's window inside the loop
     def load_prints(c: pl.DataFrame) -> pl.DataFrame:
+        if c.height == 0:                      # (scan_trades of no series would scan every series)
+            return pl.DataFrame(schema={"ticker": pl.String, "tp": pl.Datetime("us", "UTC"), "yes_price": pl.Float32,
+                                        "is_yes": pl.Boolean, "count": pl.Float32})
         return (scan_trades(c["series_ticker"].unique().to_list()).filter(pl.col("ticker").is_in(c["ticker"].unique().implode()))
                 .select("ticker", pl.col("created_time").cast(pl.Datetime("us", "UTC")).alias("tp"),
                         pl.col("yes_price").cast(pl.Float32), (pl.col("taker_side") == "yes").alias("is_yes"),

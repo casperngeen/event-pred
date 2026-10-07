@@ -12,7 +12,8 @@ Layout (``scripts/fetch_sports.py``, ``scripts/fetch_pbp.py``; run from
 
 Nothing here reads ``_HOLDOUT_DO_NOT_USE/``: every path goes through
 :func:`safe_path`, and every frame keyed on a market is checked against
-``SPORTS_HOLDOUT_START``.
+``SPORTS_HOLDOUT_START``. The one exception is the final test, which unseals it on purpose
+(``STG_SPORTS_UNSEAL=final-test``, see stg.splits): then everything reads the holdout folder only.
 
 ``known_at`` (reports/sports_research_plan.md §4):
 
@@ -57,7 +58,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from stg.splits import SPORTS_HOLDOUT_DIR, SPORTS_HOLDOUT_START, assert_no_sports_holdout
+from stg.splits import SPORTS_HOLDOUT_DIR, SPORTS_HOLDOUT_START, assert_no_sports_holdout, sports_holdout_unsealed
 
 UTC = dt.timezone.utc
 LEAGUES = ("MLB", "NBA", "NFL")
@@ -70,15 +71,24 @@ FINAL_COLS = ("status", "result", "close_time", "settlement_ts", "volume", "open
 
 
 def sports_dir() -> Path:
-    return Path(os.environ.get("KALSHI_SPORTS_DIR", "data/sports"))
+    """The sports root; while the holdout is unsealed (stg.splits), the holdout folder instead."""
+    root = Path(os.environ.get("KALSHI_SPORTS_DIR", "data/sports"))
+    return root / SPORTS_HOLDOUT_DIR if sports_holdout_unsealed() else root
 
 
 def safe_path(*parts: str | Path) -> Path:
-    """A path under the sports root, refusing anything inside the holdout folder."""
-    p = sports_dir().joinpath(*map(str, parts))
-    if SPORTS_HOLDOUT_DIR in p.parts:
+    """A path under the sports root, refusing anything inside the holdout folder (while unsealed:
+    anything outside it)."""
+    p = Path(os.path.normpath(sports_dir().joinpath(*map(str, parts))))     # no '..' around the check
+    if (SPORTS_HOLDOUT_DIR in p.parts) != sports_holdout_unsealed():
         raise PermissionError(f"{p}: the sports holdout is read once, for the final test")
     return p
+
+
+def _before_wall(col: str) -> pl.Expr:
+    """Rows strictly before the holdout start; while unsealed, every row of the holdout's markets
+    (their trades and candles from before the start are history known at the time)."""
+    return pl.lit(True) if sports_holdout_unsealed() else pl.col(col) < SPORTS_HOLDOUT_START
 
 
 def derived_dir() -> Path:
@@ -130,7 +140,7 @@ def scan_trades(series: str | list[str] | None = None) -> pl.LazyFrame:
             .select("trade_id", "ticker", "count", "yes_price", "no_price", "taker_side",
                     pl.col("created_time").cast(pl.Datetime("us", "UTC")))
             .unique("trade_id")
-            .filter(pl.col("created_time") < SPORTS_HOLDOUT_START)
+            .filter(_before_wall("created_time"))
             .with_columns(pl.col("created_time").alias("known_at")))
 
 
@@ -143,7 +153,7 @@ def scan_candles(series: str | list[str] | None = None) -> pl.LazyFrame | None:
     return (pl.scan_parquet(files, missing_columns="insert", extra_columns="ignore")
             .with_columns(pl.col("ts").cast(pl.Datetime("us", "UTC")))
             .unique(["ticker", "ts"])
-            .filter(pl.col("ts") < SPORTS_HOLDOUT_START)
+            .filter(_before_wall("ts"))
             .with_columns(pl.col("ts").alias("known_at")))
 
 
@@ -158,7 +168,8 @@ def load_games() -> pl.DataFrame:
     in advance; the actual start comes from the play-by-play (``first_play``).
     """
     g = pl.read_parquet(safe_path("pbp", "games.parquet"))
-    g = g.filter(pl.col("game_id").is_not_null(), ~pl.col("preseason"), ~pl.col("holdout"))
+    g = g.filter(pl.col("game_id").is_not_null(), ~pl.col("preseason"),
+                 pl.col("holdout") if sports_holdout_unsealed() else ~pl.col("holdout"))
     assert_no_sports_holdout(g, "close_time")
     return g
 
@@ -304,6 +315,8 @@ def game_results() -> pl.DataFrame:
     """
     out = []
     for lg in LEAGUES:
+        if not safe_path("pbp", f"events_{lg}.parquet").exists():      # a league with no games yet (holdout)
+            continue
         ev = load_pbp(lg).filter(~pl.col("t_outside_window"))
         first = ev.filter(pl.col("is_pitch")) if lg == "MLB" else ev
         f = first.group_by("game_id").agg(pl.col("t").min().alias("first_play"))

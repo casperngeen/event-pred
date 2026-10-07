@@ -30,6 +30,7 @@ Usage
 from __future__ import annotations
 
 import datetime as dt
+import os
 from typing import TYPE_CHECKING
 
 import polars as pl
@@ -61,6 +62,17 @@ PURGE_DAYS = 21
 # split with the same date; ``tests/test_splits.py`` checks they agree.
 SPORTS_HOLDOUT_START = dt.datetime(2026, 7, 1, tzinfo=UTC)
 SPORTS_HOLDOUT_DIR = "_HOLDOUT_DO_NOT_USE"
+# The final test unseals the holdout on purpose, and only on the laptop: with
+# STG_SPORTS_UNSEAL=final-test the sports loaders read ONLY the holdout folder
+# (its own markets, trades, play-by-play and derived/ layer), with the wall's
+# filters reversed. Never set it for development or on the cluster.
+SPORTS_UNSEAL_ENV, SPORTS_UNSEAL_PHRASE = "STG_SPORTS_UNSEAL", "final-test"
+
+
+def sports_holdout_unsealed() -> bool:
+    """True only while the final test deliberately reads the sports holdout."""
+    return os.environ.get(SPORTS_UNSEAL_ENV) == SPORTS_UNSEAL_PHRASE
+
 
 SPLITS = {
     "burn_in": (None, BURN_IN_END),
@@ -119,7 +131,9 @@ def assert_no_oos(frame, time_col: str | None = None) -> None:
 
 
 def assert_no_sports_holdout(frame, time_col: str = "close_time") -> None:
-    """Raise if any row falls at or after the sports holdout wall."""
+    """Raise if any row falls at or after the sports holdout wall (no check while unsealed)."""
+    if sports_holdout_unsealed():
+        return
     lf = frame.lazy() if isinstance(frame, pl.DataFrame) else frame
     n = lf.filter(pl.col(time_col) >= SPORTS_HOLDOUT_START).select(pl.len()).collect().item()
     if n:

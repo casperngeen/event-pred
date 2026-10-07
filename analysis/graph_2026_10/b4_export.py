@@ -46,6 +46,14 @@ after the game's end, the result). lo = hi = value_h. Neither end contains the b
 bid and the ask, which a trade price does.
 
     venv/bin/python -W ignore analysis/graph_2026_10/b4_export.py NFL [prints | prints+futures | mid]
+
+Final test only: with STG_SPORTS_UNSEAL=final-test it reads the holdout table (b3_table, same switch)
+and writes the panel inside the holdout folder, _HOLDOUT_DO_NOT_USE/derived/ingame/<league>/panel_v3/
+(never copied anywhere). The check is reversed: every game must start on or after the holdout start.
+Scales and baseline widths are the fixed per-league constants below, nothing is fitted on the data, so
+the holdout panel is on the same footing as the training panel.
+
+    STG_SPORTS_UNSEAL=final-test venv/bin/python -W ignore analysis/graph_2026_10/b4_export.py MLB prints
 """
 from __future__ import annotations
 
@@ -64,11 +72,13 @@ LEAGUE = sys.argv[1] if len(sys.argv) > 1 else "NFL"
 
 import b1_response as R                                    # noqa: E402  (reads the league from argv)
 from stg.sports.loaders import derived_dir                 # noqa: E402
-from stg.splits import SPORTS_HOLDOUT_START                # noqa: E402
+from stg.splits import SPORTS_HOLDOUT_DIR, SPORTS_HOLDOUT_START, sports_holdout_unsealed   # noqa: E402
 
 MODE = sys.argv[2] if len(sys.argv) > 2 else "quotes"
 assert MODE in ("quotes", "prints", "prints+futures", "mid"), MODE
 PRINTS, FUTURES, MID = MODE != "quotes", MODE == "prints+futures", MODE == "mid"     # PRINTS: print inputs
+HOLDOUT = sports_holdout_unsealed()
+assert not HOLDOUT or MODE == "prints", "final test: only the frozen model's panel (panel_v3, mode prints)"
 FRESH_S = 30                 # mid mode: a target mid counts only if both sides are at most this old at t + h
 KIND_CODE = {"winner": 0, "spread": 1, "total": 2, "champ": 3, "conference": 4, "division": 5, "playoffs": 6}
 PRINT_MAX_AGE_S = 120        # prints mode: the anchor is the last print if at most this old, else the quote value
@@ -140,8 +150,12 @@ def main() -> None:
     steps = pl.read_parquet(D / "steps.parquet")
     con = pl.read_parquet(D / "contracts.parquet")
     H = SPORTS_HOLDOUT_START
-    assert (games["feed_end"] + dt.timedelta(seconds=max(meta["horizons_s"].values()))).max() < H, "targets reach the holdout"
-    assert plays["known_at"].max() < H and steps["t"].max() < H, "plays / steps reach the holdout"
+    if HOLDOUT:                       # the final test: holdout games only, written inside the holdout folder
+        assert SPORTS_HOLDOUT_DIR in OUT.parts, OUT
+        assert games["first_play"].min() >= H and (games["fold"] == 99).all(), "a game before the holdout in the final-test table"
+    else:
+        assert (games["feed_end"] + dt.timedelta(seconds=max(meta["horizons_s"].values()))).max() < H, "targets reach the holdout"
+        assert plays["known_at"].max() < H and steps["t"].max() < H, "plays / steps reach the holdout"
     gids = games["game_id"].to_list()
     gidx = {g: i for i, g in enumerate(gids)}
 
@@ -232,7 +246,7 @@ def main() -> None:
         league=LEAGUE, version=4 if MID else 3 if PRINTS else 2,
         targets="fresh mid" if MID else "trade prints" if PRINTS else "quotes", futures=FUTURES, fresh_s=FRESH_S if MID else None, games=gids, horizons=hz, play_features=pcols, step_market_features=["p_home", "has_p_home",
         "log_activity"], node_market_features=NODE_FEATS, kinds=list(KIND_CODE) if FUTURES else ["winner", "spread", "total"], baseline_S=S,
-        scale=SCALE, tot_scale=TOT_SCALE, holdout_start=H.isoformat(), built=dt.datetime.now(dt.timezone.utc).isoformat(),
+        scale=SCALE, tot_scale=TOT_SCALE, holdout_start=H.isoformat(), holdout_panel=HOLDOUT, built=dt.datetime.now(dt.timezone.utc).isoformat(),
         rows=n), indent=1))
     mb = sum(f.stat().st_size for f in OUT.glob("*.npy")) / 2**20
     print(f"{LEAGUE}: {len(gids)} games, {len(pt):,} plays, {len(st):,} steps, {n:,} contract rows, horizons {hz} "

@@ -251,6 +251,37 @@ class InGameGraph(nn.Module):
         return 10.0 * self.delta(z), self.outcome(z).squeeze(-1)
 
 
+PANEL_IDENTITY = ("league", "version", "targets", "futures", "horizons", "play_features", "step_market_features",
+                  "node_market_features", "kinds", "baseline_S", "scale", "tot_scale")
+
+
+def model_config(pn: Panel, *, hidden: int = 64, memory: str = "gru", n_rounds: int = 2, dropout: float = 0.1,
+                 tf_window: int = 0) -> dict:
+    """InGameGraph's arguments for this panel (stored with saved weights)."""
+    return dict(fp=pn.fp, fs=pn.fs, fc=pn.fc, hidden=hidden, memory=memory, n_rounds=n_rounds, dropout=dropout,
+                n_horizons=pn.n_h, tf_window=tf_window)
+
+
+def save_model(path: str | Path, model: InGameGraph, pn: Panel, config: dict, info: dict) -> None:
+    """Weights + model arguments + what the panel looked like (features, scales, horizons), so a later
+    panel (the holdout) can be checked to match before predicting."""
+    ident = {k: pn.manifest.get(k) for k in PANEL_IDENTITY} | {"train_horizons": pn.horizons}
+    torch.save({"state_dict": {k: v.detach().cpu() for k, v in model.state_dict().items()}, "config": config,
+                "panel": ident, "info": info}, path)
+
+
+def load_model(path: str | Path, pn: Panel, device: torch.device) -> tuple[InGameGraph, dict]:
+    """Saved weights for this panel; refuses a panel whose features, scales or horizons differ."""
+    ck = torch.load(path, map_location="cpu", weights_only=False)
+    ident = {k: pn.manifest.get(k) for k in PANEL_IDENTITY} | {"train_horizons": pn.horizons}
+    bad = {k: (ck["panel"].get(k), v) for k, v in ident.items() if k != "league" and ck["panel"].get(k) != v}
+    if bad or ck["panel"]["league"] != ident["league"]:
+        raise ValueError(f"{path}: panel differs from the one the model was trained on: {bad or 'league'}")
+    model = InGameGraph(**ck["config"])
+    model.load_state_dict(ck["state_dict"])
+    return model.to(device), ck
+
+
 # ----------------------------------------------------------------------------- loss and metrics
 
 def interval_error(pred_level: torch.Tensor, lo: torch.Tensor, hi: torch.Tensor) -> torch.Tensor:
@@ -377,26 +408,28 @@ def metrics(pr: dict[str, np.ndarray], beta: np.ndarray, horizons: list[str]) ->
     return res
 
 
-def train(pn: Panel, test_fold: int, *, memory: str = "gru", hidden: int = 64, n_rounds: int = 2, dropout: float = 0.1,
+def train(pn: Panel, test_fold: int | None, *, memory: str = "gru", hidden: int = 64, n_rounds: int = 2, dropout: float = 0.1,
           lr: float = 1e-3, weight_decay: float = 1e-4, epochs: int = 40, patience: int = 5, games_per_batch: int = 8,
           steps_per_game: int = 128, lambda_y: float = 0.1, val_share: float = 0.15, eval_stride: int = 1,
           seed: int = 0, device: str = "auto", log=print, return_preds: bool = False, delay_s: float = 0.0,
           tf_window: int = 0, huber: float = 5.0) -> dict:
     """Walk-forward: train on folds < test_fold (the last val_share of those games, by date, for early
-    stopping), test on fold == test_fold. huber: the loss's switch from squared to linear error, in
+    stopping), test on fold == test_fold. test_fold=None: the final model, trained the same way on every
+    game in the panel (no test set, no metrics). huber: the loss's switch from squared to linear error, in
     cents (a large value is close to squared error)."""
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     dev = pick_device(device)
     fold = np.asarray(pn.game_fold)
-    train_all = [g for g in range(pn.n_games) if fold[g] < test_fold]          # games are in date order
+    train_all = [g for g in range(pn.n_games) if test_fold is None or fold[g] < test_fold]   # games are in date order
     n_val = max(1, int(len(train_all) * val_share))
     tr, va = train_all[:-n_val], train_all[-n_val:]
-    te = [g for g in range(pn.n_games) if fold[g] == test_fold]
-    model = InGameGraph(pn.fp, pn.fs, pn.fc, hidden=hidden, memory=memory, n_rounds=n_rounds, dropout=dropout,
-                        n_horizons=pn.n_h, tf_window=tf_window).to(dev)
+    te = [g for g in range(pn.n_games) if test_fold is not None and fold[g] == test_fold]
+    model = InGameGraph(**model_config(pn, hidden=hidden, memory=memory, n_rounds=n_rounds, dropout=dropout,
+                                       tf_window=tf_window)).to(dev)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    log(f"device {dev}; train {len(tr)} games, val {len(va)}, test {len(te)} (fold {test_fold}); memory={memory}; "
+    log(f"device {dev}; train {len(tr)} games, val {len(va)}, test {len(te)} "
+        f"({'final model, no test fold' if test_fold is None else f'fold {test_fold}'}); memory={memory}; "
         f"feed delay {delay_s:g} s; "
         f"params {sum(p.numel() for p in model.parameters()):,}")
     best, best_state, bad = math.inf, None, 0
@@ -426,6 +459,12 @@ def train(pn: Panel, test_fold: int, *, memory: str = "gru", hidden: int = 64, n
             if bad >= patience:
                 break
     model.load_state_dict(best_state)
+    if test_fold is None:
+        res = dict(league=pn.manifest["league"], test_fold=None, memory=memory, tf_window=tf_window, seed=seed, hidden=hidden,
+                   delay_s=delay_s, huber=huber, lambda_y=lambda_y, params=sum(p.numel() for p in model.parameters()),
+                   n_rounds=n_rounds, epochs_run=ep + 1, best_val_interval=best, train_games=len(tr), val_games=len(va),
+                   test_games=0, horizons=pn.horizons, metrics={})
+        return (res, model, None) if return_preds else (res, model)
     beta = fit_baseline_reversion(pn, tr, dev, delay_s)
     pt = predict(model, pn, te, dev, stride=eval_stride, delay_s=delay_s)
     if return_preds:

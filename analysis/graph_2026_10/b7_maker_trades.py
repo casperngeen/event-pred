@@ -28,7 +28,8 @@ import polars as pl
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from b5_longshort import LEAGUE, DELAY, MEMORY, PANEL, RUN_TAG, SEED, Panel, attach_tickers, rows   # noqa: E402
 from b6_maker_exit import ENTRY_S, EXIT_S, REF_MAX_S, first_taker                    # noqa: E402
-from stg.sports.loaders import scan_trades                                           # noqa: E402
+from stg.sports.loaders import derived_dir, scan_trades                              # noqa: E402
+from stg.splits import sports_holdout_unsealed                                       # noqa: E402
 
 HOLDS = {"60s": 60, "120s": 120}
 MIN_SIGNAL = float(os.environ.get("MIN_SIGNAL", 5.0))   # smallest |signal| logged (lower for models with smaller forecasts)
@@ -107,7 +108,9 @@ def main() -> None:
     g = pl.read_parquet(PANEL.parent / "games.parquet").select("game_id", "fold", "first_play")
     f = (simulate(r, tr).join(r.select("row", "kind", "game_id", "ticker", "t", "ref", "strike", "y"), on="row")
          .join(g, on="game_id", how="left").join(dec, on="kind"))
-    out = Path(__file__).resolve().parent / "out" / (f"b7_maker_trades_{LEAGUE}_d{DELAY:g}{RUN_TAG}{'_sa' if SIGNAL_FROM == 'anchor' else ''}"
+    # the final test's trade logs stay inside the holdout folder (and never overwrite the test folds' logs)
+    base_dir = derived_dir() / "ingame" / "results" if sports_holdout_unsealed() else Path(__file__).resolve().parent / "out"
+    out = base_dir / (f"b7_maker_trades_{LEAGUE}_d{DELAY:g}{RUN_TAG}{'_sa' if SIGNAL_FROM == 'anchor' else ''}"
                                                      f"{'' if MEMORY == 'gru' else '_' + MEMORY}{f'_seed{SEED}' if SEED else ''}.parquet")
     f.write_parquet(out)
     print(f"{LEAGUE} d{DELAY:g}: {f.height:,} trades -> {out}")
