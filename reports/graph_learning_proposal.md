@@ -213,3 +213,14 @@ Order, chunk by chunk:
    winner → spread / total lead-lag, the strike-relative-to-state effect.
 3. A shared panel builder for both, and a 1-layer model that reproduces the linear baseline in each.
 4. Rung 2 in both, then rungs 1 and 3 plus the no-graph baselines.
+
+## Parked: an explanatory "response" mode for the in-game model (2026-10-05)
+
+The in-game focus is now **trading**: the GRU v1 model (`stg_infra/stg/models/ingame.py`) is a pure
+forecaster, so every input is known at the step. The parked idea is a second mode on the same model
+and folds. It would condition on what happens *inside* the horizon (the plays in the window and the
+winner contract's move over it) and ask how much of each spread, total and futures move follows. Its
+learned link weights would then be the explanation: how strongly a play of a given size and state
+moves each contract. It should explain far more variance than forecasting (GRU v1: 60 s spread /
+total R² 0.05 / 0.08). It isn't tradable, because it uses information from inside the horizon.
+Revisit for the thesis's explanatory chapter.

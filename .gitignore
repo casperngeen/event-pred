@@ -83,3 +83,8 @@ papers/
 # Kalshi API private key -- never commit
 kalshi_api_key.txt
 *.pem
+
+# in-game model: cluster copy of the exported panel, and training results
+panels/
+results/ingame/
+results/ingame_ridge/

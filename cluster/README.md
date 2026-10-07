@@ -22,8 +22,11 @@ on your laptop, so `ssh`, `rsync` and `scp` all go through it:
 From your laptop, copy the code, never `data/` (holdout data must not leave the
 laptop; jobs get prepared, working-block tensors only):
 
-    rsync -av --exclude data/ --exclude venv/ --exclude .venv-cluster/ \
-          --exclude '__pycache__/' ./ xlogin:~/event-pred/
+    rsync -av --exclude '__pycache__/' --exclude '*.egg-info/' --exclude '.pytest_cache/' \
+          stg_infra cluster xlogin:~/event-pred/
+
+Copy only `stg_infra/` and `cluster/`: never the repo root, which holds `.git`, notebooks,
+`analysis/*/out` (derived data) and `kalshi_api_key.txt`.
 
 On the cluster, from `~/event-pred`:
 
@@ -45,3 +48,22 @@ each writing its own result file, plus a collect step:
 - between-game grid: `normal` partition, one CPU per task.
 
 These come with the trainer (sports plan, Phase 3b).
+
+## In-game model (stg.models.ingame)
+
+Build the panel on the laptop (it refuses to write anything reaching the 2026-07-01 holdout), then
+copy only that directory; raw `data/` never leaves the laptop:
+
+    venv/bin/python -W ignore analysis/graph_2026_10/b3_table.py NFL     # training table
+    venv/bin/python -W ignore analysis/graph_2026_10/b4_export.py NFL    # -> data/sports/derived/ingame/NFL/panel_v2
+    rsync -av data/sports/derived/ingame/NFL/panel_v2/ xlogin:~/event-pred/panels/NFL/
+    rsync -av --exclude '__pycache__/' --exclude '*.egg-info/' --exclude '.pytest_cache/' stg_infra cluster xlogin:~/event-pred/
+
+On the cluster:
+
+    sbatch cluster/train_ingame.sbatch                 # GRU, folds 1-5 x feed delays 0/2/5/10/15/20 s
+    MEMORY=none DELAYS="0 15" sbatch --array=0-9 cluster/train_ingame.sbatch     # the no-memory ablation
+    ls results/ingame/                                 # one JSON per task
+
+Copy the results back with `rsync -av xlogin:~/event-pred/results/ingame/ results/ingame/`. The NFL also
+runs on the laptop in minutes: `bash cluster/run_ingame_local.sh NFL`.
