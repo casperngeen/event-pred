@@ -4,7 +4,7 @@ Written 2026-10-07, **before** any holdout data has been read. Everything below 
 runs once. If a bug is found after seeing results, fix it, log it in `ingame_journal.md`, and report
 both the before-fix and after-fix numbers.
 
-**Status: FROZEN on 2026-10-07** at code commit `eb92644`. **Revised 2026-10-08, before any holdout result was read** (section 9): MLB moves to the every-pitch model with its own decision rule, all six spread / total contract types are candidates, and the fixed exit is the main result. The holdout runs the code commit recorded in section 9.
+**Status: FROZEN on 2026-10-07** at code commit `eb92644`. **Revised 2026-10-08, before any holdout result was read** (section 9): MLB moves to the every-pitch model with its own decision rule, all six spread / total contract types are candidates, and the fixed exit is the main result. The holdout runs code commit `cb255a4`.
 
 ## 1. What is being tested
 
