@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -83,7 +84,8 @@ FRESH_S = 30                 # mid mode: a target mid counts only if both sides 
 KIND_CODE = {"winner": 0, "spread": 1, "total": 2, "champ": 3, "conference": 4, "division": 5, "playoffs": 6}
 PRINT_MAX_AGE_S = 120        # prints mode: the anchor is the last print if at most this old, else the quote value
 
-D = derived_dir() / "ingame" / LEAGUE
+PLAY_UNIT = os.environ.get("PLAY_UNIT", "pa")      # "pitch": MLB with every pitch as a play (b3_table, same switch)
+D = derived_dir() / "ingame" / (LEAGUE + ("_pitch" if PLAY_UNIT == "pitch" else ""))
 OUT = D / ("panel_v4m" if MID else "panel_v3f" if FUTURES else "panel_v3" if PRINTS else "panel_v2")
 S = {"NFL": (13.0, 14.5), "NBA": (14.5, 19.5), "MLB": (4.0, 4.25)}[LEAGUE]
 SCALE = {"NFL": 14.0, "NBA": 20.0, "MLB": 4.0}[LEAGUE]          # margins and distances
@@ -93,6 +95,8 @@ S_SCALES = {"NFL": (4.0, 10.0, 100.0), "NBA": (1.0, 1.0, 1.0), "MLB": (3.0, 4.0,
 GROUPS = {"NFL": [g for g, _ in R.NFL_GROUPS],
           "NBA": ["made_2", "made_3", "miss", "turnover", "ft_trip", "period_end"],
           "MLB": [g for g, _ in R.MLB_GROUPS] + ["other"]}[LEAGUE]
+if PLAY_UNIT == "pitch":
+    GROUPS = GROUPS + ["p_ball", "p_called_strike", "p_swinging_strike", "p_foul", "p_other"]
 EPOCH = lambda c: pl.col(c).dt.epoch("us").cast(pl.Float64) / 1e6      # noqa: E731
 
 
@@ -249,7 +253,7 @@ def main() -> None:
         league=LEAGUE, version=4 if MID else 3 if PRINTS else 2,
         targets="fresh mid" if MID else "trade prints" if PRINTS else "quotes", futures=FUTURES, fresh_s=FRESH_S if MID else None, games=gids, horizons=hz, play_features=pcols, step_market_features=["p_home", "has_p_home",
         "log_activity"], node_market_features=NODE_FEATS, kinds=list(KIND_CODE) if FUTURES else ["winner", "spread", "total"], baseline_S=S,
-        scale=SCALE, tot_scale=TOT_SCALE, holdout_start=H.isoformat(), holdout_panel=HOLDOUT, built=dt.datetime.now(dt.timezone.utc).isoformat(),
+        scale=SCALE, tot_scale=TOT_SCALE, holdout_start=H.isoformat(), holdout_panel=HOLDOUT, play_unit=PLAY_UNIT, built=dt.datetime.now(dt.timezone.utc).isoformat(),
         rows=n), indent=1))
     mb = sum(f.stat().st_size for f in OUT.glob("*.npy")) / 2**20
     print(f"{LEAGUE}: {len(gids)} games, {len(pt):,} plays, {len(st):,} steps, {n:,} contract rows, horizons {hz} "

@@ -253,8 +253,13 @@ class InGameGraph(nn.Module):
         return 10.0 * self.delta(z), self.outcome(z).squeeze(-1)
 
 
-PANEL_IDENTITY = ("league", "version", "targets", "futures", "horizons", "play_features", "step_market_features",
+PANEL_IDENTITY = ("league", "version", "targets", "futures", "play_unit", "horizons", "play_features", "step_market_features",
                   "node_market_features", "kinds", "baseline_S", "scale", "tot_scale")
+
+
+def panel_identity(manifest: dict) -> dict:
+    """The panel fields a model is tied to (a missing play_unit is the original plate appearance / play)."""
+    return {k: manifest.get(k) for k in PANEL_IDENTITY} | {"play_unit": manifest.get("play_unit") or "pa"}
 
 
 def model_config(pn: Panel, *, hidden: int = 64, memory: str = "gru", n_rounds: int = 2, dropout: float = 0.1,
@@ -267,7 +272,7 @@ def model_config(pn: Panel, *, hidden: int = 64, memory: str = "gru", n_rounds: 
 def save_model(path: str | Path, model: InGameGraph, pn: Panel, config: dict, info: dict) -> None:
     """Weights + model arguments + what the panel looked like (features, scales, horizons), so a later
     panel (the holdout) can be checked to match before predicting."""
-    ident = {k: pn.manifest.get(k) for k in PANEL_IDENTITY} | {"train_horizons": pn.horizons}
+    ident = panel_identity(pn.manifest) | {"train_horizons": pn.horizons}
     torch.save({"state_dict": {k: v.detach().cpu() for k, v in model.state_dict().items()}, "config": config,
                 "panel": ident, "info": info}, path)
 
@@ -275,8 +280,9 @@ def save_model(path: str | Path, model: InGameGraph, pn: Panel, config: dict, in
 def load_model(path: str | Path, pn: Panel, device: torch.device) -> tuple[InGameGraph, dict]:
     """Saved weights for this panel; refuses a panel whose features, scales or horizons differ."""
     ck = torch.load(path, map_location="cpu", weights_only=False)
-    ident = {k: pn.manifest.get(k) for k in PANEL_IDENTITY} | {"train_horizons": pn.horizons}
-    bad = {k: (ck["panel"].get(k), v) for k, v in ident.items() if k != "league" and ck["panel"].get(k) != v}
+    ident = panel_identity(pn.manifest) | {"train_horizons": pn.horizons}
+    saved = ck["panel"] | {"play_unit": ck["panel"].get("play_unit") or "pa"}
+    bad = {k: (saved.get(k), v) for k, v in ident.items() if k != "league" and saved.get(k) != v}
     if bad or ck["panel"]["league"] != ident["league"]:
         raise ValueError(f"{path}: panel differs from the one the model was trained on: {bad or 'league'}")
     model = InGameGraph(**ck["config"])

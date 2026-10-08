@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -73,7 +74,11 @@ KINDS = ["winner", "spread", "total"]
 FUT_KINDS = ["champ", "conference", "division", "playoffs"]   # each team's season-long contracts, as extra nodes
 FUT_AGE_S = 86400       # a futures quote stays current up to a day (a 1-min candle is written only on a change)
 PRINT_W_FUT_S = 120     # futures trade thinly: target window (t + h, t + h + 120 s]
-OUT = derived_dir() / "ingame" / LEAGUE
+# PLAY_UNIT=pitch (MLB only): the model's play is every pitch instead of every plate appearance; written to
+# ingame/MLB_pitch/ so the plate-appearance table stays as it is
+PLAY_UNIT = os.environ.get("PLAY_UNIT", "pa")
+assert PLAY_UNIT in ("pa", "pitch") and (PLAY_UNIT == "pa" or LEAGUE == "MLB"), PLAY_UNIT
+OUT = derived_dir() / "ingame" / (LEAGUE + ("_pitch" if PLAY_UNIT == "pitch" else ""))
 FOLDS = Path(__file__).resolve().parent / "out" / f"b1_folds_{LEAGUE}.parquet"
 HOLDOUT = sports_holdout_unsealed()        # the final test: build from the holdout folder only
 HOLDOUT_FOLD = 99
@@ -180,6 +185,40 @@ def plays_mlb(games: pl.DataFrame) -> pl.DataFrame:
     return _finish_plays(e).with_columns((pl.col("dpoints") > 0).alias("is_scoring"))
 
 
+# MLB pitch-level plays: a pitch that does not end the plate appearance, by its result
+PITCH_GROUPS = [("p_ball", "^(Ball|Ball In Dirt|Pitchout)$"), ("p_called_strike", "^Called Strike$"),
+                ("p_swinging_strike", "^(Swinging Strike|Swinging Strike \\(Blocked\\)|Missed Bunt|Foul Tip)$"),
+                ("p_foul", "^(Foul|Foul Bunt)$")]
+
+
+def plays_mlb_pitch(games: pl.DataFrame) -> pl.DataFrame:
+    """MLB with every pitch as a play. A pitch enters when its result is known (its end, known_at); the last
+    pitch of a plate appearance keeps the plate-appearance rules (outcome group; home run at pitch start +
+    HR_DECIDED_S). Count (balls, strikes) and outs are after the pitch. The win probability exists per plate
+    appearance only: it is kept on the last pitch and blanked elsewhere (forward-filled, so dwp = 0 on other
+    pitches; carrying the plate appearance's value on its first pitch would leak its result)."""
+    pa = pl.lit("other")
+    for name, pat in reversed(R.MLB_GROUPS):
+        pa = pl.when(pl.col("pa_event").str.contains(pat)).then(pl.lit(name)).otherwise(pa)
+    pitch = pl.lit("p_other")
+    for name, pat in reversed(PITCH_GROUPS):
+        pitch = pl.when(pl.col("description").str.contains(pat)).then(pl.lit(name)).otherwise(pitch)
+    last = pl.col("pa_last_event").fill_null(False)
+    e = (load_pbp("MLB").filter(~pl.col("t_outside_window"), pl.col("is_pitch"), pl.col("game_id").is_in(games["game_id"].implode()))
+         .sort("game_id", "seq"))
+    e = e.with_columns(pl.when(last & (pl.col("pa_event") == "home_run"))
+                       .then(pl.min_horizontal(pl.col("t_event") + pl.duration(seconds=HR_DECIDED_S), "known_at"))
+                       .otherwise(pl.max_horizontal("t_event", "known_at")).alias("t_event")).sort("game_id", "t_event", "seq")
+    e = e.with_columns(pl.when(last).then(pa).otherwise(pitch).alias("play_group"),
+                       pl.when(last).then(pl.col("pa_event")).otherwise(pl.col("description")).alias("play_type"),
+                       pl.when(last).then(pl.col("home_wp_post")).alias("wp_post"),
+                       pl.when(pl.col("half") == "top").then(pl.lit("away")).otherwise(pl.lit("home")).alias("offense"),
+                       B.tau_left().alias("tau"), pl.lit(False).alias("is_stoppage"),
+                       pl.col("outs").alias("s1"), pl.col("balls").alias("s2"), pl.col("strikes").alias("s3"),
+                       pl.lit(None, pl.String).alias("home_id"))
+    return _finish_plays(e).with_columns((pl.col("dpoints") > 0).alias("is_scoring"))
+
+
 def print_columns(cs: pl.DataFrame, pr: pl.DataFrame | None, g: dict, window_s: int = PRINT_W_S) -> pl.DataFrame:
     """Trade-print columns on the contract-step grid (cs: one row per ticker per step k, contiguous).
 
@@ -194,7 +233,7 @@ def print_columns(cs: pl.DataFrame, pr: pl.DataFrame | None, g: dict, window_s: 
                                + [pl.lit(0.0).alias("flow_60s"), pl.lit(0.0).alias("vol_60s")])
     fp = g["first_play"]
     b = (pr.with_columns(((pl.col("tp") - fp).dt.total_microseconds() / (STEP * 1e6)).ceil().clip(0).cast(pl.Int64).alias("k"))
-         .sort("tp").group_by("ticker", "k", maintain_order=True)
+         .sort("tp", maintain_order=True).group_by("ticker", "k", maintain_order=True)
          .agg(pl.col("yes_price").last().alias("b_last"), pl.col("tp").last().alias("b_t"),
               pl.col("yes_price").min().alias("b_min"), pl.col("yes_price").max().alias("b_max"),
               pl.col("count").sum().alias("b_v"), (pl.col("count") * pl.col("yes_price")).sum().alias("b_n"),
@@ -251,6 +290,8 @@ def futures_quotes(series: list[str]) -> pl.LazyFrame:
 
 
 def plays_table(games: pl.DataFrame) -> pl.DataFrame:
+    if PLAY_UNIT == "pitch":
+        return plays_mlb_pitch(games)
     return {"NFL": plays_nfl, "NBA": plays_nba, "MLB": plays_mlb}[LEAGUE](games)
 
 
@@ -300,16 +341,20 @@ def main() -> None:
         if c.height == 0:                      # (scan_trades of no series would scan every series)
             return pl.DataFrame(schema={"ticker": pl.String, "tp": pl.Datetime("us", "UTC"), "yes_price": pl.Float32,
                                         "is_yes": pl.Boolean, "count": pl.Float32})
+        # prints with the same timestamp in sweep order (b6_maker_exit.sweep_sorted): a YES taker's fills rising,
+        # a NO taker's falling, then by trade id, so 'the last print' is the sweep's end and every rebuild is identical
         return (scan_trades(c["series_ticker"].unique().to_list()).filter(pl.col("ticker").is_in(c["ticker"].unique().implode()))
                 .select("ticker", pl.col("created_time").cast(pl.Datetime("us", "UTC")).alias("tp"),
                         pl.col("yes_price").cast(pl.Float32), (pl.col("taker_side") == "yes").alias("is_yes"),
-                        pl.col("count").cast(pl.Float32))
-                .collect())
-    gp = (load_prints(con.filter(pl.col("kind").is_in(KINDS))).join(con.select("ticker", "game_id"), on="ticker")
-          .sort("game_id", "tp"))
+                        pl.col("count").cast(pl.Float32), "trade_id")
+                .collect()
+                .sort("ticker", "tp", "is_yes", pl.when(pl.col("is_yes")).then(pl.col("yes_price")).otherwise(-pl.col("yes_price")),
+                      "trade_id", maintain_order=True).drop("trade_id"))
+    gp = (load_prints(con.filter(pl.col("kind").is_in(KINDS))).join(con.select("ticker", "game_id"), on="ticker", maintain_order="left")
+          .sort("game_id", "tp", maintain_order=True))
     span = gp.with_row_index("i").group_by("game_id").agg(pl.col("i").min().alias("a"), pl.len().alias("n"))
     gp_slice = {r["game_id"]: (r["a"], r["n"]) for r in span.iter_rows(named=True)}
-    fp_all = load_prints(fut).sort("tp")
+    fp_all = load_prints(fut).sort("tp", maintain_order=True)
     print(f"prints: {gp.height:,} on game contracts, {fp_all.height:,} on futures", flush=True)
 
     def prints_of(gid: str, g: dict, fut_tickers: pl.Series) -> pl.DataFrame:
