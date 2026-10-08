@@ -46,10 +46,10 @@ The same rules as the test-fold results (`b7_maker_trades.py`, `b9_sizing.py`):
 
 1. **When:** for each contract of the candidate type (section 4) that has a trade print in the last
    60 s. That last print is the **reference price**.
-   - **NBA, NFL:** every 60 s of game time. A contract can hold several orders or positions at once.
-   - **MLB:** every 5 s (every model step), **one order or position per contract at a time** (a contract
-     is busy from its order until the order expires unfilled or the trade is closed), and **no decision
-     while 15–60 s have passed since the last pitch the model knows** (after the 10 s feed delay). In that
+   - **Every league:** every 5 s (every model step), **one order or position per contract at a time** (a
+     contract is busy from its order until the order expires unfilled or the trade is closed).
+   - **MLB also:** **no decision while 15–60 s have passed since the last pitch the model knows** (after
+     the 10 s feed delay). In that
      window a newer pitch has usually been thrown that the model hasn't seen, so its forecast is behind
      the market (`b26_pitch_detect.py`).
 2. **Signal:** the model's forecast price 120 s ahead minus the reference price (cents).
@@ -77,12 +77,12 @@ The same rules as the test-fold results (`b7_maker_trades.py`, `b9_sizing.py`):
 
 | Candidate | Decision rule | Test folds, fixed exit: net c/contract (game-level t) | Hold to settlement (descriptive) |
 |---|---|---|---|
-| NBA spreads, 120 s | every 60 s | 4.95 (t 5.0) | 7.19 (t 3.3) |
-| NBA totals, 120 s | every 60 s | 2.42 (t 2.6) | 4.85 (t 2.6) |
+| NBA spreads, 120 s | every 5 s, one at a time | 7.47 (t 7.7) | 12.40 (t 6.7) |
+| NBA totals, 120 s | every 5 s, one at a time | 3.89 (t 4.3) | 6.79 (t 4.8) |
 | MLB spreads, 120 s | every 5 s, one at a time, skip 15–60 s | 9.83 (t 5.1) | 15.37 (t 5.2) |
 | MLB totals, 120 s | every 5 s, one at a time, skip 15–60 s | 7.02 (t 5.1) | 14.11 (t 5.8) |
-| NFL spreads, 120 s | every 60 s | 3.30 (t 1.7) | 7.62 (t 1.2) |
-| NFL totals, 120 s | every 60 s | 6.90 (t 2.8) | 14.27 (t 3.4) |
+| NFL spreads, 120 s | every 5 s, one at a time | 6.50 (t 3.7) | 9.25 (t 2.1) |
+| NFL totals, 120 s | every 5 s, one at a time | 8.03 (t 4.1) | 13.63 (t 4.0) |
 
 All six are candidates on equal footing (no "main" one). Test-fold numbers from the current models' trade
 logs (`b24_scale_in.py`, `out/b24_scale_in.txt`); they replace the 2026-10-07 numbers, which came from an
@@ -132,8 +132,8 @@ fixed in advance is everything above: the model, the rules, the candidates and t
 3. Laptop, with the holdout unsealed (`STG_SPORTS_UNSEAL=final-test`): build the holdout as-of layer,
    the training table and the panel (MLB with `PLAY_UNIT=pitch`, NFL), then run the integrity checks.
 4. Predict (`b15_holdout_predict.py`, or `cluster/predict_holdout.py` for MLB), run the strategy
-   (`b7_maker_trades.py`: NBA / NFL as before; MLB with `ONE_AT_A_TIME=1 DECIDE_S=5 SKIP_AGE=15,60
-   ROW_KINDS=spread,total`, in parts with `GAME_PART=i/n` if memory runs short), report (`b17_holdout_report.py`).
+   (`b7_maker_trades.py` with `ONE_AT_A_TIME=1 DECIDE_S=5 ROW_KINDS=spread,total`; MLB also
+   `SKIP_AGE=15,60`, in parts with `GAME_PART=i/n` if memory runs short), report (`b17_holdout_report.py`).
 5. NBA, and NFL beyond week 5: rerun steps 3–4 after the season's data are pulled, with the same
    frozen weights. These count as a second holdout part under the same spec.
 
@@ -169,3 +169,4 @@ Code commit: `eb92644` ("Add the holdout test path"). The test runs this code un
 | 2026-10-08 | **The fixed exit is the main result for every candidate;** holding to settlement is descriptive. | The user's choice. Holding earns more per contract on the test folds, but each position carries the game's full risk until it ends. |
 | 2026-10-08 | **Section 4 reference numbers updated** to the current models' test-fold trade logs. | The 2026-10-07 numbers came from an earlier run; the holdout is compared against what the current models did. |
 | 2026-10-08 | **NFL holdout trade logs deleted before anyone read them** and rerun under these rules; the NFL forecasts (same model) are kept. The MLB plate-appearance forecast (`MLB_fold99_..._tp_seed0`) is no longer used. | Logs had been generated under the old rules, but no NFL or MLB holdout number had been looked at (confirmed by the user). |
+| 2026-10-08 | **NBA and NFL decide every 5 s, one order or position per contract at a time** (no skip window), replacing every 60 s. **NFL part 1 had already been run and read under every 60 s** (spreads −2.1c, t −0.5; totals +4.0c, t 1.2), so for NFL part 1 this is a correction made after seeing results, and both are reported (the every-60-s result as descriptive). NBA has no holdout games yet, so for NBA, and for NFL part 2, it is fixed before any result. | The user's intended rule. The written revision kept "the other current rules" (every 60 s) for NBA / NFL, which differed from the user's intent. On the test folds every 5 s, one at a time had the best t for NBA spreads (t 7.7 vs 5.0), NBA totals (4.3 vs 2.6), NFL spreads (3.7 vs 1.7) and NFL totals (4.1 vs 2.8) (`b24_scale_in.txt`). Read NFL part 1 under this rule with care: the rule was confirmed after the every-60-s result was seen. |

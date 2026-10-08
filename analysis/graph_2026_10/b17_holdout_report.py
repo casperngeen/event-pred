@@ -14,8 +14,8 @@ Descriptive: holding to settlement on the same entries; forecast R^2 against "no
 and horizon. Next to each candidate, its test-fold result (spec section 4) for reference. Leagues without
 holdout trade logs are skipped.
 
-Decision rules (spec section 3): NBA / NFL every 60 s; MLB (every-pitch model) every 5 s, one order or
-position per contract at a time, no decision 15-60 s after the last known pitch. The MLB logs may be in
+Decision rules (spec section 3): every 5 s, one order or position per contract at a time; MLB (every-pitch
+model) also makes no decision 15-60 s after the last known pitch. The MLB logs may be in
 parts (GAME_PART=i/n): all parts are read.
 
     STG_SPORTS_UNSEAL=final-test venv/bin/python -W ignore analysis/graph_2026_10/b17_holdout_report.py
@@ -40,12 +40,12 @@ from stg.sports.loaders import derived_dir               # noqa: E402
 from stg.splits import sports_holdout_unsealed           # noqa: E402
 
 NAMES = {"MLB": "gru_d10_h30-60-120-1800_tp_pitch", "NFL": "gru_d10_h30-60-120-1800_tp", "NBA": "gru_d10_h30-60-120-1800_tp"}
-RULE = {"MLB": "_dec5_one_skip15-60", "NFL": "", "NBA": ""}     # b7_maker_trades.py name suffix of each league's decision rule
+RULE = {"MLB": "_dec5_one_skip15-60", "NFL": "_dec5_one", "NBA": "_dec5_one"}   # b7_maker_trades.py name suffix of each league's decision rule
 SEEDS = [0, 1, 2, 3, 4]
 STRATS = [("NBA", "spread"), ("NBA", "total"), ("MLB", "spread"), ("MLB", "total"), ("NFL", "spread"), ("NFL", "total")]
 SIZE = RULES["quadratic signal x linear width (missing 1)"]
-TEST_FOLDS = {("NBA", "spread"): (4.95, 7.19), ("NBA", "total"): (2.42, 4.85), ("MLB", "spread"): (9.83, 15.37),
-              ("MLB", "total"): (7.02, 14.11), ("NFL", "spread"): (3.30, 7.62), ("NFL", "total"): (6.90, 14.27)}
+TEST_FOLDS = {("NBA", "spread"): (7.47, 12.40), ("NBA", "total"): (3.89, 6.79), ("MLB", "spread"): (9.83, 15.37),
+              ("MLB", "total"): (7.02, 14.11), ("NFL", "spread"): (6.50, 9.25), ("NFL", "total"): (8.03, 13.63)}
 # spec section 4: net c/contract on the test folds, fixed exit / hold to settlement (descriptive)
 HZ = ["30s", "60s", "120s", "1800s"]
 KINDS = {0: "winner", 1: "spread", 2: "total"}
@@ -91,9 +91,10 @@ def exits(x: pl.DataFrame) -> dict[str, pl.DataFrame]:
     return {"fixed exit": fixed, "hold to settlement": hold}
 
 
-def load(res: Path, L: str, suffix: str) -> pl.DataFrame | None:
-    """suffix: "_ens5" (average of the seeds), "" (seed 0) or "_seed<s>"."""
-    stem = f"b7_maker_trades_{L}_d10{NAMES[L].removeprefix('gru_d10')}{suffix}{RULE[L]}"
+def load(res: Path, L: str, suffix: str, rule: str | None = None) -> pl.DataFrame | None:
+    """suffix: "_ens5" (average of the seeds), "" (seed 0) or "_seed<s>"; rule: the decision rule's name suffix
+    (default RULE[L])."""
+    stem = f"b7_maker_trades_{L}_d10{NAMES[L].removeprefix('gru_d10')}{suffix}{RULE[L] if rule is None else rule}"
     files = sorted(res.glob(f"{stem}.parquet")) or sorted(res.glob(f"{stem}_part*of*.parquet"))
     if not files:
         return None
@@ -174,6 +175,16 @@ def main() -> None:
     if seed_rows:
         lines += ["", "4. Net c/contract seed by seed (fixed exit)",
                   str(pl.DataFrame(seed_rows).pivot(on="seed", index="strategy", values="NET_c"))]
+    # NFL part 1 was first run and read under every 60 s (the spec as written then; section 9): shown, not the main result
+    old = load(res, "NFL", "_ens5", rule="")
+    if old is not None:
+        rows = []
+        for kind in ("spread", "total"):
+            x = old.filter(pl.col("kind") == kind)
+            g = exits(x)["fixed exit"]
+            rows.append(dict(strategy=f"NFL {kind}", rule="every 60 s") | {k: v for k, v in summary(
+                g, x["game_id"].unique().sort(), x.select("day").unique()).items() if k in ("contracts", "gross_c", "NET_c", "net_usd", "t_game")})
+        lines += ["", "Descriptive: NFL part 1 under every 60 s, the rule it was first run and read with (spec section 9)", str(pl.DataFrame(rows))]
     lines += ["", "5. By game type (fixed exit)", str(pl.DataFrame(type_rows).sort("strategy", "type")),
               "", "Descriptive: holding to settlement on the same entries", str(pl.DataFrame(hold_rows)),
               "", "Descriptive: forecast R^2 (%) against no change (average of 5 seeds)", str(pl.DataFrame(r2))]
