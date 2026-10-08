@@ -71,10 +71,28 @@ runs on the laptop in minutes: `bash cluster/run_ingame_local.sh NFL`.
 ## Final models for the holdout test
 
 The frozen spec is `reports/holdout_spec.md`. Train each league's final model (5 seeds, every training
-game, weights saved) on the same `panels/<league>_v3` copies as the test-fold runs:
+game, weights saved) on the same `panels/<league>_v3` copies as the test-fold runs (MLB: `panels/MLB_pitch_v3`, with
+`LEAGUES="MLB" PANEL_SUFFIX=_pitch_v3 sbatch --array=0-4 cluster/train_final.sbatch`):
 
     sbatch cluster/train_final.sbatch                  # NBA MLB NFL x seeds 0-4 = 15 tasks
     ls results/ingame/final/                           # <league>_final_gru_d10_h30-60-120-1800_tp_seed<s>.json + .pt
 
 Copy the weights back with `rsync -av xlogin:~/event-pred/results/ingame/final/ results/ingame/final/`.
 Holdout data never go to the cluster: the holdout panel, forecasts and backtest run on the laptop.
+
+## Holdout forecasts (the one exception to "holdout data stay on the laptop")
+
+The laptop runs out of memory forecasting the MLB holdout, so the forecasts alone run here, under these rules:
+the holdout panels go to `holdout_panels/` (never `panels/`, which training jobs read), nothing else from the
+holdout comes here (no trades, no tables), and both the panels and the forecasts are deleted once copied back.
+The backtest and the report stay on the laptop.
+
+    # laptop
+    rsync -avz --exclude '__pycache__/' --exclude '*.egg-info/' --exclude '.pytest_cache/' stg_infra cluster xlogin:~/event-pred/
+    rsync -avz data/sports/_HOLDOUT_DO_NOT_USE/derived/ingame/MLB_pitch/panel_v3/ xlogin:~/event-pred/holdout_panels/MLB/   # MLB: every-pitch panel
+    rsync -avz data/sports/_HOLDOUT_DO_NOT_USE/derived/ingame/NFL/panel_v3/ xlogin:~/event-pred/holdout_panels/NFL/
+    # cluster
+    sbatch cluster/predict_holdout.sbatch              # MLB, NFL (one task each)
+    # laptop, when done: forecasts back into the holdout folder, then delete the cluster copies
+    rsync -az xlogin:~/event-pred/results/holdout/ data/sports/_HOLDOUT_DO_NOT_USE/derived/ingame/results/
+    ssh xlogin 'rm -rf ~/event-pred/holdout_panels ~/event-pred/results/holdout'

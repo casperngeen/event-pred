@@ -21,6 +21,9 @@
 #     LEAGUES="NBA MLB" DELAYS="10" HORIZONS=30s,60s,120s,1800s MEMORY=none sbatch --array=0-9 cluster/train_ingame.sbatch
 #     LEAGUES="NBA MLB" DELAYS="10" HORIZONS=30s,60s,120s,1800s SEED=1 sbatch --array=0-9 cluster/train_ingame.sbatch
 # Results: results/ingame/<league>_fold<k>_<memory>_d<delay>_seed<s>.json (+ .npz predictions).
+# GPU: a100-40 by default; another type for one submission (options on the command line override this line):
+#     cluster/submit.sh <this script> [options]: the first modern GPU type with free capacity (never the old nv cards)
+#     sbatch --gres=gpu:a100-80:1 ...     or --gres=gpu:h100-47:1 (half an H100) / --gres=gpu:h100-96:1 / --gres=gpu:h200-141:1
 #SBATCH --job-name=stg-ingame
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:a100-40:1
