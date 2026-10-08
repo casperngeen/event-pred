@@ -26,8 +26,8 @@ import numpy as np
 import polars as pl
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from b5_longshort import LEAGUE, DELAY, MEMORY, PANEL, RUN_TAG, SEED, Panel, attach_tickers, rows   # noqa: E402
-from b6_maker_exit import ENTRY_S, EXIT_S, REF_MAX_S, first_taker                    # noqa: E402
+from b5_longshort import DECIDE_OFFSET_S, DECIDE_S, FOLD, GAME_PART, SKIP_AGE, LEAGUE, DELAY, MEMORY, PANEL, RUN_TAG, SEED, Panel, attach_tickers, rows   # noqa: E402
+from b6_maker_exit import ENTRY_S, EXIT_S, REF_MAX_S, first_taker, sweep_sorted                    # noqa: E402
 from stg.sports.loaders import derived_dir, scan_trades                              # noqa: E402
 from stg.splits import sports_holdout_unsealed                                       # noqa: E402
 
@@ -35,6 +35,11 @@ HOLDS = {"60s": 60, "120s": 120}
 MIN_SIGNAL = float(os.environ.get("MIN_SIGNAL", 5.0))   # smallest |signal| logged (lower for models with smaller forecasts)
 VARIANTS = [(1, 0), (1, 1), (2, 0)]
 SIGNAL_FROM = os.environ.get("SIGNAL_FROM", "ref")     # "ref" (last print) or "anchor" (the model's value now)
+# ONE_AT_A_TIME=1: at most one order or position per contract (per hold and variant): a contract is busy from its
+# order until the order expires unfilled (ENTRY_S) or the trade is closed (exit filled / taken; held to the end:
+# busy for the rest of the game). With DECIDE_S=5 (b5_longshort) this decides at every model step without
+# stacking near-identical orders on one contract.
+ONE_AT_A_TIME = os.environ.get("ONE_AT_A_TIME", "0") == "1"
 
 
 def first_beyond(px, yes, a, b, taker_yes: bool, price, above: bool, through: int):
@@ -58,6 +63,7 @@ def simulate(r: pl.DataFrame, tr: pl.DataFrame) -> pl.DataFrame:
         T, rid, ys, refs = d["t"].to_numpy(), d["row"].to_numpy(), d["y"].to_numpy(), d["ref"].to_numpy()
         sig = {hn: d[f"sig_{hn}"].to_numpy() for hn in HOLDS}
         a0, b0 = np.searchsorted(pt, T, side="right"), np.searchsorted(pt, T + ENTRY_S, side="right")
+        busy = {}                                          # (hold, k, through) -> busy until (ONE_AT_A_TIME)
         for j in range(len(T)):
             ref = refs[j]
             for hn, hs in HOLDS.items():
@@ -65,12 +71,15 @@ def simulate(r: pl.DataFrame, tr: pl.DataFrame) -> pl.DataFrame:
                 if abs(sig[hn][j]) < MIN_SIGNAL:
                     continue
                 for k, thr in VARIANTS:
+                    if ONE_AT_A_TIME and T[j] < busy.get((hn, k, thr), -np.inf):
+                        continue
                     lim = ref - k if side == 1 else ref + k
                     if lim <= 0 or lim >= 100:
                         continue
                     # long: a NO-taker prints below our bid; short: a YES-taker prints above our ask
                     f = first_beyond(px, yes, a0[j], b0[j], taker_yes=(side == -1), price=lim, above=(side == -1), through=thr)
                     if f < 0:
+                        busy[(hn, k, thr)] = T[j] + ENTRY_S        # the order rests, unfilled, until it expires
                         continue
                     te = pt[f] + hs
                     ae, be = np.searchsorted(pt, te, side="right"), np.searchsorted(pt, te + EXIT_S, side="right")
@@ -79,11 +88,12 @@ def simulate(r: pl.DataFrame, tr: pl.DataFrame) -> pl.DataFrame:
                     fx = first_beyond(px, yes, ae, be, taker_yes=(side == 1), price=lx, above=(side == 1), through=thr) \
                         if 0 < lx < 100 else -1
                     if fx >= 0:
-                        ex, how = float(lx), "limit filled"
+                        ex, how, t_out = float(lx), "limit filled", pt[fx]
                     else:
                         b2 = np.searchsorted(pt, te + 2 * EXIT_S, side="right")
                         x2 = first_taker(yes, be, b2, taker_yes=(side == -1))
-                        ex, how = (float(px[x2]), "taken") if x2 >= 0 else (100.0 * ys[j], "settled")
+                        ex, how, t_out = (float(px[x2]), "taken", pt[x2]) if x2 >= 0 else (100.0 * ys[j], "settled", np.inf)
+                    busy[(hn, k, thr)] = t_out
                     out.append((int(rid[j]), hn, k, thr, side, float(sig[hn][j]), float(lim), ex, how, float(pt[f])))
     return pl.DataFrame(out, schema=["row", "hold", "k", "through", "side", "signal", "entry", "exit", "how", "t_fill"],
                         orient="row")
@@ -93,11 +103,13 @@ def main() -> None:
     pn = Panel(PANEL)
     games = json.loads((PANEL / "manifest.json").read_text())["games"]
     r = attach_tickers(rows(pn, games)).filter(pl.col("y").is_finite(), pl.col("kind").is_in(["winner", "spread", "total"])).with_row_index("row")
-    tr = (scan_trades(r["series_ticker"].unique().to_list()).filter(pl.col("ticker").is_in(r["ticker"].unique().implode()))
-          .select("ticker", (pl.col("known_at").dt.epoch("us").cast(pl.Float64) / 1e6).alias("t"), "yes_price", "taker_side")
-          .collect().sort("ticker", "t"))
-    r = (r.sort("t").join_asof(tr.select("ticker", "t", pl.col("yes_price").alias("ref"), pl.col("t").alias("t_ref")).sort("t"),
-                               on="t", by="ticker", strategy="backward")
+    tr = sweep_sorted(scan_trades(r["series_ticker"].unique().to_list()).filter(pl.col("ticker").is_in(r["ticker"].unique().implode()))
+                      .select("ticker", (pl.col("known_at").dt.epoch("us").cast(pl.Float64) / 1e6).alias("t"), "yes_price",
+                              "taker_side", "trade_id").collect())
+    # (stable re-sorts by time keep the sweep order within a timestamp: the reference is the sweep's end)
+    r = (r.sort("t", maintain_order=True)
+         .join_asof(tr.select("ticker", "t", pl.col("yes_price").alias("ref"), pl.col("t").alias("t_ref")).sort("t", maintain_order=True),
+                    on="t", by="ticker", strategy="backward")
          .filter((pl.col("t") - pl.col("t_ref")) <= REF_MAX_S))
     # signal: the predicted level minus the last print (default), or minus the model's own anchor (SIGNAL_FROM=anchor:
     # for models whose anchor is the current mid, so the gap between the last print and the mid is not a signal)
@@ -111,7 +123,8 @@ def main() -> None:
     # the final test's trade logs stay inside the holdout folder (and never overwrite the test folds' logs)
     base_dir = derived_dir() / "ingame" / "results" if sports_holdout_unsealed() else Path(__file__).resolve().parent / "out"
     out = base_dir / (f"b7_maker_trades_{LEAGUE}_d{DELAY:g}{RUN_TAG}{'_sa' if SIGNAL_FROM == 'anchor' else ''}"
-                                                     f"{'' if MEMORY == 'gru' else '_' + MEMORY}{f'_seed{SEED}' if SEED else ''}.parquet")
+                                                     f"{'' if MEMORY == 'gru' else '_' + MEMORY}{f'_seed{SEED}' if SEED else ''}"
+                       f"{f'_dec{DECIDE_S}' if DECIDE_S != 60 else ''}{f'_off{DECIDE_OFFSET_S}' if DECIDE_OFFSET_S else ''}{'_one' if ONE_AT_A_TIME else ''}{f'_min{MIN_SIGNAL:g}' if MIN_SIGNAL != 5 else ''}{f'_skip{SKIP_AGE[0]:g}-{SKIP_AGE[1]:g}' if SKIP_AGE else ''}{f'_fold{FOLD}' if FOLD != '*' else ''}{f'_part{GAME_PART[0]}of{GAME_PART[1]}' if GAME_PART else ''}.parquet")
     f.write_parquet(out)
     print(f"{LEAGUE} d{DELAY:g}: {f.height:,} trades -> {out}")
 

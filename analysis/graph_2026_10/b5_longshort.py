@@ -44,7 +44,16 @@ PANEL = Path(sys.argv[4]) if len(sys.argv) > 4 else TAB / "panel_v2"
 RUN_TAG = os.environ.get("RUN_TAG", "")   # e.g. "_h30-60-120_tp" for runs on the traded-price panel ("..._tpf_r0": no message passing)
 MEMORY = os.environ.get("MEMORY", "gru")  # "none": the no-memory ablation
 SEED = int(os.environ.get("SEED", 0))
-HOLD, H_S, DECIDE_S, STEP = "60s", 60, 60, 5
+HOLD, H_S, STEP = "60s", 60, 5
+DECIDE_S = int(os.environ.get("DECIDE_S", 60))   # seconds between decisions (5 = every model step)
+DECIDE_OFFSET_S = int(os.environ.get("DECIDE_OFFSET_S", 0))   # where in each DECIDE_S window the decision falls (0, 5, ...)
+ROW_KINDS = [k for k in os.environ.get("ROW_KINDS", "").split(",") if k]   # e.g. "spread,total": keep only these (memory)
+# SKIP_AGE="15,60": no decision while the time since the last play known after the feed delay is in [15, 60) s
+# (MLB: a newer pitch has probably been thrown that the model does not know yet; b26_pitch_detect.py)
+SKIP_AGE = tuple(float(v) for v in os.environ["SKIP_AGE"].split(",")) if os.environ.get("SKIP_AGE") else None
+# GAME_PART="i/n": only games whose index in the panel is i mod n (memory: the MLB holdout at DECIDE_S=5 in parts)
+GAME_PART = tuple(int(v) for v in os.environ["GAME_PART"].split("/")) if os.environ.get("GAME_PART") else None
+FOLD = os.environ.get("FOLD", "*")               # one test fold only (memory), e.g. FOLD=3
 W_S, REF_MAX_S = 15, 60
 MARGINS = [0.0, 2.0, 3.0, 5.0, 8.0]
 SIDE = {"home": 1, "away": -1}
@@ -52,7 +61,7 @@ SIDE = {"home": 1, "away": -1}
 
 def rows(pn: Panel, games: list[str]) -> pl.DataFrame:
     prs, hz = [], None
-    for f in sorted(RES.glob(f"{LEAGUE}_fold*_{MEMORY}_d{DELAY:g}{RUN_TAG}_seed{SEED}.npz")):
+    for f in sorted(RES.glob(f"{LEAGUE}_fold{FOLD}_{MEMORY}_d{DELAY:g}{RUN_TAG}_seed{SEED}.npz")):
         hz = json.loads(f.with_suffix(".json").read_text())["horizons"]
         prs.append(dict(np.load(f)))
     pr = {k: np.concatenate([p[k] for p in prs]) for k in prs[0]}
@@ -62,7 +71,20 @@ def rows(pn: Panel, games: list[str]) -> pl.DataFrame:
     first = np.r_[True, step[1:] != step[:-1]]
     start = np.maximum.accumulate(np.where(first, np.arange(len(step)), 0))
     node = pn.step_node_ptr[step] + (np.arange(len(step)) - start)
-    keep = ((step - pn.game_step_ptr[pr["game"]]) % (DECIDE_S // STEP) == 0) & np.isfinite(pr["y"])
+    keep = ((step - pn.game_step_ptr[pr["game"]]) % (DECIDE_S // STEP) == DECIDE_OFFSET_S // STEP) & np.isfinite(pr["y"])
+    if ROW_KINDS:
+        keep &= np.isin(pr["kind"], [KIND_NAMES.index(k) for k in ROW_KINDS])
+    if GAME_PART:
+        keep &= pr["game"] % GAME_PART[1] == GAME_PART[0]
+    if SKIP_AGE:
+        t = pn.steps_t[step].astype(float)
+        age = np.full(len(step), np.inf)
+        for g in np.unique(pr["game"][keep]):
+            m = keep & (pr["game"] == g)
+            pt = pn.plays_t[pn.game_play_ptr[g]:pn.game_play_ptr[g + 1]]
+            k = np.searchsorted(pt, t[m] - DELAY, side="right")
+            age[m] = np.where(k > 0, t[m] - pt[np.maximum(k - 1, 0)], np.inf)
+        keep &= ~((age >= SKIP_AGE[0]) & (age < SKIP_AGE[1]))
     i = np.flatnonzero(keep)
     gap = np.where(pr["has_bid"][i] & pr["has_ask"][i], pr["entry_ask"][i] - pr["entry_bid"][i], 5.0)
     return pl.DataFrame({
