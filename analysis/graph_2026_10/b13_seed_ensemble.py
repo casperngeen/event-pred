@@ -25,6 +25,7 @@ OUT = Path(__file__).resolve().parent / "out"
 SEEDS = [0, 1, 2, 3, 4]
 NAME = os.environ.get("NAME", "gru_d10_h30-60-120-1800_tpf")   # NAME=gru_d10_h30-60-120-1800_tp: the model without futures (panel_v3)
 HZ = ["30s", "60s", "120s", "1800s"]
+LEAGUES = os.environ.get("LEAGUES", "NBA,MLB,NFL").split(",")   # LEAGUES=MLB NAME=..._tp_pitch: the MLB every-pitch model
 KINDS = {0: "winner", 1: "spread", 2: "total"}
 KEEP = {"step", "game", "kind", "value", "delta", "y", "has_bid", "has_ask", "entry_bid", "entry_ask"}   # what b5_longshort.rows reads
 
@@ -36,7 +37,7 @@ def main() -> None:
     pl.Config.set_tbl_width_chars(220)
     pl.Config.set_tbl_rows(60)
     rows = []
-    for L in ("NBA", "MLB", "NFL"):
+    for L in LEAGUES:
         sse = {}                                  # (kind, horizon, version) -> [sse, ss_no_change]
         for k in range(1, 6):
             zs = [np.load(RES / f"{L}_fold{k}_{NAME}_seed{s}.npz") for s in SEEDS]
