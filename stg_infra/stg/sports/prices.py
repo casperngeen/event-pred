@@ -116,8 +116,8 @@ def quotes_at(q: pl.LazyFrame | pl.DataFrame, at: pl.DataFrame, t_col: str = "t"
           .with_columns(pl.col("price").forward_fill().over("ticker").alias("last_trade"),
                         pl.col("known_at").alias("quote_known_at"))
           .select("ticker", "known_at", "quote_known_at", "last_trade", "bid", "bid_at", "ask", "ask_at")
-          .collect().sort("known_at"))
-    left = at.with_row_index("_row").sort(t_col)
+          .collect().sort("known_at", maintain_order=True))   # stable: quotes sharing a time keep their file order
+    left = at.with_row_index("_row").sort(t_col, maintain_order=True)
     j = left.join_asof(qq, left_on=t_col, right_on="known_at", by="ticker", strategy="backward")
     return (j.with_columns(mid_exprs(pl.col(t_col), max_spread, max_age))
             .sort("_row").drop("_row", "known_at"))

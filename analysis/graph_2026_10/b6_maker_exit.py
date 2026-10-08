@@ -49,6 +49,17 @@ def first_through(px, yes, t, a, b, side_taker_yes: bool, price, above: bool):
     return a + int(np.argmax(hit)) if hit.any() else -1
 
 
+def sweep_sorted(tr: pl.DataFrame) -> pl.DataFrame:
+    """Trade prints in time order, prints with the same timestamp in the order a sweep fills them: a YES
+    taker eats the cheapest offers first (yes_price rising), a NO taker the highest bids first (yes_price
+    falling); then by trade id. So 'the last print' at a timestamp is the end of the sweep, the furthest
+    price reached, and the order (hence every result) is the same on every run. Needs ticker, t,
+    yes_price, taker_side, trade_id."""
+    return (tr.with_columns(pl.when(pl.col("taker_side") == "yes").then(pl.col("yes_price")).otherwise(-pl.col("yes_price"))
+                            .alias("_sweep"))
+            .sort("ticker", "t", "taker_side", "_sweep", "trade_id", maintain_order=True).drop("_sweep"))
+
+
 def first_taker(yes, a, b, taker_yes: bool):
     if b <= a:
         return -1

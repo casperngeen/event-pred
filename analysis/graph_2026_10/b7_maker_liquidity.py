@@ -23,6 +23,7 @@ import polars as pl
 
 sys.argv = sys.argv[:1] + ["10"]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from b6_maker_exit import sweep_sorted                               # noqa: E402
 from b7_maker_robust import with_net, summ, OUT                     # noqa: E402
 from stg.sports.loaders import scan_trades                          # noqa: E402
 
@@ -38,18 +39,19 @@ def liquidity(f: pl.DataFrame) -> pl.DataFrame:
     tk = f["ticker"].unique()
     series = f.select(pl.col("ticker").str.extract(r"^([^-]+)")).to_series().unique().to_list()
     tr = (scan_trades(series).filter(pl.col("ticker").is_in(tk.implode()))
-          .select("ticker", (pl.col("known_at").dt.epoch("us").cast(pl.Float64) / 1e6).alias("t"), "yes_price", "count", "taker_side")
-          .collect().sort("ticker", "t", "yes_price", "count")   # fixed order for prints with the same timestamp
+          .select("ticker", (pl.col("known_at").dt.epoch("us").cast(pl.Float64) / 1e6).alias("t"), "yes_price", "count", "taker_side",
+                  "trade_id")
+          .collect().pipe(sweep_sorted)   # same-timestamp prints in sweep order: the last one per side is the sweep's end
           .with_columns(pl.int_range(1, pl.len() + 1).over("ticker").alias("ci"), pl.col("count").cum_sum().over("ticker").alias("cv")))
     now = tr.select("ticker", "t", "ci", "cv", pl.col("t").alias("t_last"))
     ago = tr.select("ticker", (pl.col("t") + 300).alias("t"), pl.col("ci").alias("ci5"), pl.col("cv").alias("cv5"))
     yes = tr.filter(pl.col("taker_side") == "yes").select("ticker", "t", pl.col("yes_price").alias("p_yes"))
     no = tr.filter(pl.col("taker_side") == "no").select("ticker", "t", pl.col("yes_price").alias("p_no"))
-    f = f.sort("t")
-    f = f.join_asof(now.sort("t"), on="t", by="ticker", strategy="backward")
-    f = f.join_asof(ago.sort("t"), on="t", by="ticker", strategy="backward")
-    f = f.join_asof(yes.sort("t", "p_yes"), on="t", by="ticker", strategy="backward", tolerance=120.0)
-    f = f.join_asof(no.sort("t", "p_no"), on="t", by="ticker", strategy="backward", tolerance=120.0)
+    f = f.sort("t", maintain_order=True)
+    f = f.join_asof(now.sort("t", maintain_order=True), on="t", by="ticker", strategy="backward")
+    f = f.join_asof(ago.sort("t", maintain_order=True), on="t", by="ticker", strategy="backward")
+    f = f.join_asof(yes.sort("t", maintain_order=True), on="t", by="ticker", strategy="backward", tolerance=120.0)
+    f = f.join_asof(no.sort("t", maintain_order=True), on="t", by="ticker", strategy="backward", tolerance=120.0)
     return f.with_columns((pl.col("ci").fill_null(0) - pl.col("ci5").fill_null(0)).alias("n_5m"),
                           (pl.col("cv").fill_null(0) - pl.col("cv5").fill_null(0)).alias("vol_5m"),
                           (pl.col("t") - pl.col("t_last")).alias("age_s"),
