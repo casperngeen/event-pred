@@ -4,7 +4,7 @@ Written 2026-10-07, **before** any holdout data has been read. Everything below 
 runs once. If a bug is found after seeing results, fix it, log it in `ingame_journal.md`, and report
 both the before-fix and after-fix numbers.
 
-**Status: FROZEN on 2026-10-07** at code commit `eb92644`.
+**Status: FROZEN on 2026-10-07** at code commit `eb92644`; the holdout runs code commit `c4711df`, which adds only the pre-result fixes in section 9.
 
 ## 1. What is being tested
 
