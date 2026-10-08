@@ -86,7 +86,9 @@ def known_state(pn: Panel, g: int, step_t: np.ndarray, delay_s: float) -> tuple[
     """For steps of game g: plays known (count), the raw state after the last known play
     [tau, margin, total, offense], and the derived step features."""
     a, b = pn.game_play_ptr[g], pn.game_play_ptr[g + 1]
-    pt = pn.plays_t[a:b]
+    # a play counts as known only once it and every play before it have happened (b4_export sorts plays by
+    # time, so this is a no-op there; it keeps an unsorted panel from leaking a later play into the prefix)
+    pt = np.maximum.accumulate(pn.plays_t[a:b]) if b > a else pn.plays_t[a:b]
     known = np.searchsorted(pt, step_t - delay_s, side="right")
     before = np.searchsorted(pt, step_t - 5.0 - delay_s, side="right")
     st = np.tile(np.array([1.0, 0.0, 0.0, 0.0], np.float32), (len(step_t), 1))

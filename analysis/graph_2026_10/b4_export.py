@@ -13,7 +13,7 @@ are stored as they were.
 
     plays_x [P, Fp]     per play: group, win-prob change, score change, offense, time left, score,
                         three league-specific situation fields, stoppage / scoring, gap to the last play
-    plays_t [P]         when the play happened (epoch s)       game_play_ptr [G+1]
+    plays_t [P]         when the play happened (epoch s), increasing within each game   game_play_ptr [G+1]
     plays_state [P, 4]  raw state after the play: tau, home margin, total, offense (+1 home, -1 away, 0)
     steps_t [S]         step time (epoch s)                     game_step_ptr [G+1]
     steps_x [S, Fs]     market features: home winner mid, whether it exists, recent winner activity
@@ -159,7 +159,10 @@ def main() -> None:
     gids = games["game_id"].to_list()
     gidx = {g: i for i, g in enumerate(gids)}
 
-    plays = plays.with_columns(pl.col("game_id").replace_strict(gidx).alias("g")).sort("g", "seq")
+    # plays in the order they became known (t_event; ties in game order): the model reads a prefix of each
+    # game's plays, so a play logged earlier than the one before it (NFL stoppages, NBA free-throw trips)
+    # must not sit behind it, or the prefix can include a play that has not happened yet
+    plays = plays.with_columns(pl.col("game_id").replace_strict(gidx).alias("g")).sort("g", "t_event", "seq")
     px, pt, pstate, pcols = play_arrays(plays)
     game_play_ptr = np.r_[0, np.cumsum(np.bincount(plays["g"].to_numpy(), minlength=len(gids)))]
     k_end = dict(steps.filter(~pl.col("after_end")).group_by("game_id").agg(pl.col("k").max()).iter_rows())   # last in-game step
