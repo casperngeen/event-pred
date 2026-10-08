@@ -201,6 +201,13 @@ def schedule_espn(cl: Client, lg: str, dates: list[dt.date], workers: int) -> li
     return rows
 
 
+# Events the rules above match wrongly, checked by hand against the trades and settlement times.
+# KXMLBGAME-26SEP261915BALNYY: the Saturday game was moved into a Friday doubleheader as game 1 (statsapi
+# 823491, 17:08-22:54 UTC, BAL 10-2); the event's last trade was 22:54:49 and it settled BAL at 22:55. Both
+# games' placeholder starts (20:05 / 20:10) pass the "a day either side" rule, which took game 2.
+MANUAL_MATCH = {"KXMLBGAME-26SEP261915BALNYY": "823491"}
+
+
 def match(kal: pl.DataFrame, src: pl.DataFrame, league: str) -> pl.DataFrame:
     """Kalshi event -> source game on (local date, team pair).
 
@@ -216,12 +223,15 @@ def match(kal: pl.DataFrame, src: pl.DataFrame, league: str) -> pl.DataFrame:
     a makeup as above."""
     src = src.with_columns(pl.concat_list("home", "away").list.sort().list.join("-").alias("teams"))
     kal = kal.with_columns(pl.len().over("series_ticker", "date_local", "teams").alias("n_same"))
+    by_id = {r["game_id"]: r for r in src.iter_rows(named=True)}
     pairs = {k[0]: g.sort("start_utc") for k, g in src.group_by("teams")}
     window = dt.timedelta(hours=12)
     out = []
     for r in kal.iter_rows(named=True):
         hit, how = None, "none"
         c = pairs.get(r["teams"]) if r["teams"] and r["date_local"] else None
+        if r["event_ticker"] in MANUAL_MATCH and MANUAL_MATCH[r["event_ticker"]] in by_id:
+            hit, how, c = by_id[MANUAL_MATCH[r["event_ticker"]]], "manual", None
         if c is not None:
             close = r["close_time"]
             ok = lambda row: row["start_utc"] <= close <= row["start_utc"] + window  # noqa: E731

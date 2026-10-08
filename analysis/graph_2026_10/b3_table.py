@@ -87,7 +87,22 @@ def holdout_folds(d: SportsData) -> pl.DataFrame:
     g = (d.results.filter(pl.col("league") == LEAGUE).select("game_id", "first_play")
          .filter(pl.col("game_id").is_in(has("winner")), pl.col("game_id").is_in(has("spread")), pl.col("game_id").is_in(has("total")))
          .join(game_meta(), on="game_id").filter(pl.col("type") != "spring training"))
-    assert g["first_play"].min() >= SPORTS_HOLDOUT_START, "a holdout-folder game starts before the holdout"
+    # the holdout is the games whose first play is on or after its start (spec section 1); a game late on
+    # the evening before can sit in the holdout folder (its markets close after midnight UTC) yet belongs to
+    # neither set (it is not in the training panel either)
+    early = g.filter(pl.col("first_play") < SPORTS_HOLDOUT_START)
+    print(f"final test: {early.height} games start before {SPORTS_HOLDOUT_START.date()} (boundary), left out")
+    g = g.filter(pl.col("first_play") >= SPORTS_HOLDOUT_START)
+    # a source game matched to more than one Kalshi event (a postponement / doubleheader mix-up) carries
+    # contracts of different real games under one id: left out
+    # (never-traded contracts are ignored: Kalshi split a rescheduled doubleheader's games across two listings
+    # each, winner on the original, spreads / totals on a new G1 / G2 listing whose winner legs never traded)
+    traded = d.finals.filter(pl.col("volume") > 0).select("ticker")
+    dup = (con.filter(pl.col("kind").is_in(KINDS)).join(traded, on="ticker").group_by("game_id", "kind", "side", "strike").len()
+           .filter(pl.col("len") > 1)["game_id"].unique())
+    print(f"final test: {g.filter(pl.col('game_id').is_in(dup.implode())).height} games with contracts of more than one "
+          f"Kalshi event, left out: {sorted(set(dup.to_list()) & set(g['game_id'].to_list()))}")
+    g = g.filter(~pl.col("game_id").is_in(dup.implode()))
     print(f"final test: {g.height} {LEAGUE} games, {g['first_play'].min()} .. {g['first_play'].max()}, by type "
           f"{dict(g.group_by('type').len().iter_rows())}")
     return g.select("game_id", pl.lit(HOLDOUT_FOLD).alias("fold"))
