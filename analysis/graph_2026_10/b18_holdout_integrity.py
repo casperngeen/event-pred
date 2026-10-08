@@ -112,8 +112,9 @@ def main() -> None:
     rng = np.random.default_rng(0)
     lines = [__doc__.split("\n\n")[0]]
     for L in sys.argv[1:] or ["MLB", "NFL"]:
-        hd = derived_dir() / "ingame" / L
-        ho, tr = Panel(hd / "panel_v3"), Panel(TRAIN / L / "panel_v3")
+        D = L + ("_pitch" if L == "MLB" else "")          # MLB: the every-pitch panel (spec section 9)
+        hd = derived_dir() / "ingame" / D
+        ho, tr = Panel(hd / "panel_v3"), Panel(TRAIN / D / "panel_v3")
         lines += [f"\n######## {L}", "1. per game (medians)", str(pl.DataFrame([dict(panel="training") | per_game(tr), dict(panel="holdout") | per_game(ho)]))]
         g = pl.read_parquet(hd / "games.parquet")
         lines += ["   holdout games by month", str(g.group_by(pl.col("first_play").dt.strftime("%Y-%m").alias("month")).len().sort("month"))]
