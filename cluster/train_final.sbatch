@@ -5,6 +5,10 @@
 #     sbatch cluster/train_final.sbatch                       # NBA MLB NFL x seeds 0-4 = 15 tasks
 #     LEAGUES="MLB" sbatch --array=0-4 cluster/train_final.sbatch
 #     LEAGUES="MLB" PANEL_SUFFIX=_pitch_v3 sbatch --array=0-4 cluster/train_final.sbatch   # MLB every-pitch model (spec section 9)
+#     LEAGUES="NFL" DELAY=0 sbatch --array=0-4 cluster/train_final.sbatch     # another feed delay (descriptive; frozen: 10)
+#     LEAGUES="MLB" PANEL_SUFFIX=_pitch_deploy_v3 OUT=results/ingame/deploy sbatch --array=0-4 cluster/train_final.sbatch
+#         deployment models on every game so far (analysis/graph_2026_10/b32_deploy_panel.py); OUT keeps them apart
+#         from the frozen holdout models in results/ingame/final, which have the same file names
 # Run r -> league = LEAGUES[r / n_seeds], seed = SEEDS[r % n_seeds]; PACK runs per task as in train_ingame.sbatch.
 # Results: results/ingame/final/<league>_final_gru_d10_h30-60-120-1800_tp[_pitch]_seed<s>.json + .pt (weights)
 # GPU: a100-40 by default; another type for one submission (options on the command line override this line):
@@ -33,6 +37,6 @@ for (( i = 0; i < PACK; i++ )); do
   LEAGUE=${LG[$(( R / ${#SD[@]} ))]}
   SEED=${SD[$(( R % ${#SD[@]} ))]}
   echo "task $T run $R: league $LEAGUE, seed $SEED (final model)"
-  python cluster/train_ingame.py --panel "panels/${LEAGUE}${PANEL_SUFFIX:-_v3}" --final --save-model --memory gru --delay 10 \
-      --horizons 30s,60s,120s,1800s --seed "$SEED" --games-per-batch 16 --steps-per-game 256 --out results/ingame/final
+  python cluster/train_ingame.py --panel "panels/${LEAGUE}${PANEL_SUFFIX:-_v3}" --final --save-model --memory gru --delay "${DELAY:-10}" \
+      --horizons 30s,60s,120s,1800s --seed "$SEED" --games-per-batch 16 --steps-per-game 256 --out "${OUT:-results/ingame/final}"
 done
