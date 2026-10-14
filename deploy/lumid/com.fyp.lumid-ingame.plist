@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.fyp.lumid-ingame</string>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>/Users/caspe2/NUS/FYP/event-pred/deploy/lumid/daily.sh</string></array>
+  <!-- 20:30 Singapore = 12:30 UTC = 08:30 ET: before the earliest games (NFL London 09:30 ET); a run missed while
+       the laptop sleeps fires on wake -->
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
+  <key>StandardOutPath</key><string>/Users/caspe2/NUS/FYP/event-pred/data/sports_live/logs/daily.log</string>
+  <key>StandardErrorPath</key><string>/Users/caspe2/NUS/FYP/event-pred/data/sports_live/logs/daily.log</string>
+</dict>
+</plist>

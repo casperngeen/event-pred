@@ -1,0 +1,41 @@
+# NOT USABLE FOR A WHOLE GAME: Lumid caps a FlowMesh Python step at timeoutSeconds 3600 (1 h; checked 2026-10-12),
+# and a game runs 3-4 h. Kept for short checks; games run in a sandbox instead (deploy/lumid/README).
+# FlowMesh job: paper trading for one league's games today (scripts/live_trade.py), dry run (nothing sent to Lumid).
+# The runner waits until 20 min before each game and stops 10 min after the last one is final.
+# Logs go to the job's output folder ($FLOWMESH_OUTPUT); the job's result carries each game's summary, the paper
+# orders and the end of the console output.
+# Set env LEAGUE (MLB / NFL); to publish, add "--publish" to ARGS and LUMID_PAT (a PAT with only lqt:strategy).
+# Submit: Studio -> Research Fleet -> Jobs -> Advanced: run YAML (site home), or POST /api/v1/me/fleet/jobs.
+apiVersion: flowmesh/v1
+kind: PythonTask
+metadata: {name: fyp-ingame-live}
+spec:
+  taskType: python
+  entrypoint: main
+  image: harbor.lum.id/casper-fyp/fyp-ingame:live1
+  network: bridge
+  timeoutSeconds: 3600
+  env: {LEAGUE: MLB, ARGS: ""}
+  code: |
+    def main():
+        import glob, json, os, subprocess
+        out = os.environ.get("FLOWMESH_OUTPUT") or "/tmp/out"
+        cmd = ["python", "-u", "-W", "ignore", "/app/scripts/live_trade.py", "--league", os.environ["LEAGUE"],
+               "--out", out] + os.environ.get("ARGS", "").split()
+        os.chdir("/tmp")
+        with open(os.path.join(out, "console.log"), "w") as f:
+            p = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT)
+        console = open(os.path.join(out, "console.log")).read()
+        games = {}
+        for d in sorted(glob.glob(os.path.join(out, "*", "*_*"))):
+            g = {}
+            for name in ("summary.json", "game.json"):
+                if os.path.exists(os.path.join(d, name)):
+                    j = json.load(open(os.path.join(d, name)))
+                    g[name] = j if name == "summary.json" else {k: j.get(k) for k in ("league", "game_id", "away", "home", "start")}
+            if os.path.exists(os.path.join(d, "orders.jsonl")):
+                g["orders"] = [json.loads(l) for l in open(os.path.join(d, "orders.jsonl"))]
+            games[os.path.basename(d)] = g
+        n = sum(len(g.get("orders", [])) for g in games.values())
+        return {"games": games, "console_tail": console[-6000:],
+                "metrics": {"exit": p.returncode, "games": len(games), "order_events": n}}

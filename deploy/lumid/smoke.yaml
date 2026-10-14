@@ -1,0 +1,58 @@
+# FlowMesh smoke test: does the image pull, and can a bridge-network job reach statsapi, Kalshi and lum.id?
+# One round of every recorder poll for today's games (live_record.py --once), then counts what it saved.
+# Submit: Studio -> Research Fleet -> Jobs -> Advanced: run YAML (site home).
+apiVersion: flowmesh/v1
+kind: PythonTask
+metadata: {name: fyp-ingame-smoke}
+spec:
+  taskType: python
+  entrypoint: main
+  image: harbor.lum.id/casper-fyp/fyp-ingame:smoke
+  network: bridge
+  timeoutSeconds: 600
+  env: {}
+  code: |
+    def main():
+        import glob, os, subprocess, time, urllib.request
+
+        def reach(url):
+            try:
+                return urllib.request.urlopen(url, timeout=15).status
+            except Exception as e:
+                print(url, repr(e))
+                return getattr(e, "code", 0) or 0
+
+        def writable(d):
+            try:
+                os.makedirs(d, exist_ok=True)
+                open(os.path.join(d, ".w"), "w").write("x")
+                return 1
+            except Exception:
+                return 0
+
+        dirs = {d: writable(d) for d in [os.getcwd(), "/tmp", os.path.expanduser("~"), "/app"]
+                + [v for k, v in os.environ.items() if any(s in k for s in ("DIR", "OUT", "ART", "RESULT"))]}
+        work = next((d for d, ok in dirs.items() if ok), "/tmp")
+        os.chdir(work)
+        t0 = time.time()
+        p = subprocess.run(["python", "-u", "-W", "ignore", "/app/scripts/live_record.py", "--once"],
+                           capture_output=True, text=True, timeout=480)
+        print(p.stdout[-3000:], p.stderr[-3000:])
+
+        def rows(name):
+            return sum(sum(1 for _ in open(f)) for f in glob.glob(f"data/sports_live/*/*/{name}"))
+
+        info = {"cwd": work, "writable": dirs, "uid": os.getuid(), "env_keys": sorted(os.environ),
+                "stdout": p.stdout[-2000:], "stderr": p.stderr[-4000:]}
+        return {"info": info, "metrics": {
+            "recorder_exit": p.returncode,
+            "seconds": round(time.time() - t0, 1),
+            "games": len(glob.glob("data/sports_live/*/*/game.json")),
+            "feed_files": len(glob.glob("data/sports_live/*/*/feed/*.json.gz")),
+            "trades": rows("trades.jsonl"),
+            "books": rows("books.jsonl"),
+            "candles": rows("candles.jsonl"),
+            "http_statsapi": reach("https://statsapi.mlb.com/api/v1/sports"),
+            "http_kalshi": reach("https://api.elections.kalshi.com/trade-api/v2/exchange/status"),
+            "http_lumid": reach("https://lum.id/lqt-data/openapi.json"),
+        }}

@@ -1,0 +1,23 @@
+# Lumid paper strategy on the in-game model's published signals (scripts/live_trade.py --publish).
+# ingame_target = our own paper book's position on the contract (side x size, 1.0 = 10,000): set when the frozen
+# rule places an order, back to 0 when that trade is closed or the game ends. Lumid's paper engine takes the
+# market, so this is a taker copy of our maker trades: in at the ask / bid when our book goes long / short,
+# out when it is flat again. Our rows carry confidence 9999; a contract with no row of ours reads a fallback
+# value and must never trade, so entries require the mark.
+strategy fyp_ingame_totals_v1 {
+  params { size_lots: 10 }
+  when signal_conf("ingame_target") == 9999 && signal("ingame_target") > 0 && position.net_lots == 0
+       && market.ask > 0 && market.spread <= 500 {
+    buy params.size_lots lots @ market.ask
+  }
+  when signal_conf("ingame_target") == 9999 && signal("ingame_target") < 0 && position.net_lots == 0
+       && market.bid > 0 && market.spread <= 500 {
+    sell params.size_lots lots @ market.bid
+  }
+  when position.net_lots > 0 && signal("ingame_target") <= 0 {
+    sell position.net_lots lots @ market.bid
+  }
+  when position.net_lots < 0 && signal("ingame_target") >= 0 {
+    buy 0 - position.net_lots lots @ market.ask
+  }
+}
