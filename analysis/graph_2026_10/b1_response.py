@@ -30,6 +30,7 @@ Tables, per league:
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -59,6 +60,14 @@ BINS = {"NFL": [-14, -7, -3, 0, 3, 7, 14], "NBA": [-20, -10, -5, 0, 5, 10, 20], 
 MLB_GROUPS = [("home_run", "home_run"), ("extra_base_hit", "double|triple"), ("single", "single"),
               ("walk_hbp", "walk|hit_by_pitch|intent"), ("strikeout", "strikeout"),
               ("double_play", "double_play|triple_play"), ("error", "error"), ("out_in_play", "out|sac|fielders_choice")]
+# The first matching group wins, so the unanchored "double|triple" codes every double / triple play
+# (grounded_into_double_play, ...) as an extra-base hit and double_play is never set. The frozen models were
+# trained that way. MLB_GROUPS_FIX=1 matches a double, triple or strikeout exactly, so every double / triple play
+# (strikeout_double_play included) is a double_play (a table built with it goes to its own folder).
+MLB_GROUPS_FIX = os.environ.get("MLB_GROUPS_FIX") == "1"
+if MLB_GROUPS_FIX:
+    MLB_GROUPS[1] = ("extra_base_hit", "^(double|triple)$")
+    MLB_GROUPS[4] = ("strikeout", "^strikeout$")
 OUT = Path(__file__).resolve().parent / "out"
 
 

@@ -85,7 +85,7 @@ KIND_CODE = {"winner": 0, "spread": 1, "total": 2, "champ": 3, "conference": 4, 
 PRINT_MAX_AGE_S = 120        # prints mode: the anchor is the last print if at most this old, else the quote value
 
 PLAY_UNIT = os.environ.get("PLAY_UNIT", "pa")      # "pitch": MLB with every pitch as a play (b3_table, same switch)
-D = derived_dir() / "ingame" / (LEAGUE + ("_pitch" if PLAY_UNIT == "pitch" else ""))
+D = derived_dir() / "ingame" / (LEAGUE + ("_pitch" if PLAY_UNIT == "pitch" else "") + ("_dpfix" if R.MLB_GROUPS_FIX else ""))
 OUT = D / ("panel_v4m" if MID else "panel_v3f" if FUTURES else "panel_v3" if PRINTS else "panel_v2")
 S = {"NFL": (13.0, 14.5), "NBA": (14.5, 19.5), "MLB": (4.0, 4.25)}[LEAGUE]
 SCALE = {"NFL": 14.0, "NBA": 20.0, "MLB": 4.0}[LEAGUE]          # margins and distances
@@ -254,7 +254,7 @@ def main() -> None:
         targets="fresh mid" if MID else "trade prints" if PRINTS else "quotes", futures=FUTURES, fresh_s=FRESH_S if MID else None, games=gids, horizons=hz, play_features=pcols, step_market_features=["p_home", "has_p_home",
         "log_activity"], node_market_features=NODE_FEATS, kinds=list(KIND_CODE) if FUTURES else ["winner", "spread", "total"], baseline_S=S,
         scale=SCALE, tot_scale=TOT_SCALE, holdout_start=H.isoformat(), holdout_panel=HOLDOUT, play_unit=PLAY_UNIT, built=dt.datetime.now(dt.timezone.utc).isoformat(),
-        rows=n), indent=1))
+        rows=n) | ({"mlb_groups": "dpfix"} if R.MLB_GROUPS_FIX else {}), indent=1))
     mb = sum(f.stat().st_size for f in OUT.glob("*.npy")) / 2**20
     print(f"{LEAGUE}: {len(gids)} games, {len(pt):,} plays, {len(st):,} steps, {n:,} contract rows, horizons {hz} "
           f"({mb:.0f} MB) -> {OUT}")

@@ -86,6 +86,7 @@ def main() -> None:
     tag += (f"_hub{a.huber:g}" if a.huber != 5.0 else "") + (f"_ly{a.lambda_y:g}" if a.lambda_y != 0.1 else "")
     tag += f"_r{a.rounds}" if a.rounds != 2 else ""          # _r0: no message passing (graph ablation)
     tag += "_pitch" if pn.manifest.get("play_unit") == "pitch" else ""   # MLB with every pitch as a play
+    tag += "_dpfix" if pn.manifest.get("mlb_groups") == "dpfix" else ""  # double / triple plays coded as such
     res["targets"] = pn.manifest.get("targets", "quotes")
     mem = a.memory + (f"w{a.tf_window}" if a.memory == "transformer" and a.tf_window else "")
     split = "final" if a.final else f"fold{a.test_fold}"

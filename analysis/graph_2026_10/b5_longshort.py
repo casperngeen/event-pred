@@ -41,6 +41,7 @@ LEAGUE = sys.argv[2] if len(sys.argv) > 2 else "NFL"
 DELAY = float(sys.argv[3]) if len(sys.argv) > 3 else 10.0
 TAB = derived_dir() / "ingame" / LEAGUE
 PANEL = Path(sys.argv[4]) if len(sys.argv) > 4 else TAB / "panel_v2"
+TAB = PANEL.parent          # the tables the panel was built from (MLB_pitch for the every-pitch panel)
 RUN_TAG = os.environ.get("RUN_TAG", "")   # e.g. "_h30-60-120_tp" for runs on the traded-price panel ("..._tpf_r0": no message passing)
 MEMORY = os.environ.get("MEMORY", "gru")  # "none": the no-memory ablation
 SEED = int(os.environ.get("SEED", 0))

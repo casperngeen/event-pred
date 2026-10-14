@@ -78,7 +78,8 @@ PRINT_W_FUT_S = 120     # futures trade thinly: target window (t + h, t + h + 12
 # ingame/MLB_pitch/ so the plate-appearance table stays as it is
 PLAY_UNIT = os.environ.get("PLAY_UNIT", "pa")
 assert PLAY_UNIT in ("pa", "pitch") and (PLAY_UNIT == "pa" or LEAGUE == "MLB"), PLAY_UNIT
-OUT = derived_dir() / "ingame" / (LEAGUE + ("_pitch" if PLAY_UNIT == "pitch" else ""))
+# MLB_GROUPS_FIX=1 (b1_response): double / triple plays coded as such; written to ingame/<..>_dpfix/
+OUT = derived_dir() / "ingame" / (LEAGUE + ("_pitch" if PLAY_UNIT == "pitch" else "") + ("_dpfix" if R.MLB_GROUPS_FIX else ""))
 FOLDS = Path(__file__).resolve().parent / "out" / f"b1_folds_{LEAGUE}.parquet"
 HOLDOUT = sports_holdout_unsealed()        # the final test: build from the holdout folder only
 HOLDOUT_FOLD = 99
