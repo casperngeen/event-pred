@@ -254,7 +254,7 @@ class InGameGraph(nn.Module):
 
 
 PANEL_IDENTITY = ("league", "version", "targets", "futures", "play_unit", "horizons", "play_features", "step_market_features",
-                  "node_market_features", "kinds", "baseline_S", "scale", "tot_scale")
+                  "node_market_features", "kinds", "baseline_S", "scale", "tot_scale", "mlb_groups")
 
 
 def panel_identity(manifest: dict) -> dict:
