@@ -20,6 +20,9 @@
 #     LEAGUES="NBA MLB" DELAYS="10" HORIZONS=30s,60s,120s,1800s EXTRA_ARGS="--rounds 0" sbatch --array=0-9 cluster/train_ingame.sbatch
 #     LEAGUES="NBA MLB" DELAYS="10" HORIZONS=30s,60s,120s,1800s MEMORY=none sbatch --array=0-9 cluster/train_ingame.sbatch
 #     LEAGUES="NBA MLB" DELAYS="10" HORIZONS=30s,60s,120s,1800s SEED=1 sbatch --array=0-9 cluster/train_ingame.sbatch
+# SEEDS="0 1 2 3 4" runs every seed in one array (run r -> seed = SEEDS[r / (5 n_delays n_leagues)]); SEED=s, one seed.
+#     LEAGUES="NBA" DELAYS="10" SEEDS="0 1 2 3 4" PACK=5 HORIZONS=30s,60s,120s,1800s EXTRA_ARGS="--rounds 0" \
+#         cluster/submit.sh cluster/train_ingame.sbatch --array=0-4          # 25 runs, 5 per task
 # Results: results/ingame/<league>_fold<k>_<memory>_d<delay>_seed<s>.json (+ .npz predictions).
 # GPU: a100-40 by default; another type for one submission (options on the command line override this line):
 #     cluster/submit.sh <this script> [options]: the first modern GPU type with free capacity (never the old nv cards)
@@ -36,21 +39,22 @@ set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
 source "${VENV:-.venv-cluster}/bin/activate"
 MEMORY=${MEMORY:-gru}
-SEED=${SEED:-0}
 read -r -a D <<< "${DELAYS:-0 2 5 10 15 20}"
 read -r -a LG <<< "${LEAGUES:-${LEAGUE:-NFL}}"
+read -r -a SD <<< "${SEEDS:-${SEED:-0}}"
 T=${SLURM_ARRAY_TASK_ID:-0}
 PACK=${PACK:-1}
-NRUNS=$(( 5 * ${#D[@]} * ${#LG[@]} ))
+NRUNS=$(( 5 * ${#D[@]} * ${#LG[@]} * ${#SD[@]} ))
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 for (( i = 0; i < PACK; i++ )); do
   R=$(( T * PACK + i ))
   (( R < NRUNS )) || break
   FOLD=$(( 1 + R % 5 ))
   DELAY=${D[$(( (R / 5) % ${#D[@]} ))]}
-  LEAGUE=${LG[$(( R / (5 * ${#D[@]}) ))]}
-  echo "task $T run $R: league $LEAGUE, fold $FOLD, delay $DELAY s, memory $MEMORY"
+  LEAGUE=${LG[$(( (R / (5 * ${#D[@]})) % ${#LG[@]} ))]}
+  SEED=${SD[$(( R / (5 * ${#D[@]} * ${#LG[@]}) ))]}
+  echo "task $T run $R: league $LEAGUE, fold $FOLD, delay $DELAY s, memory $MEMORY, seed $SEED"
   python cluster/train_ingame.py --panel "panels/${LEAGUE}${PANEL_SUFFIX:-}" --test-fold "$FOLD" --memory "$MEMORY" --delay "$DELAY" \
-      --seed "$SEED" --games-per-batch 16 --steps-per-game 256 --save-preds \
+      --seed "$SEED" --games-per-batch 16 --steps-per-game 256 --save-preds --skip-existing \
       ${HORIZONS:+--horizons "$HORIZONS"} ${EXTRA_ARGS:-}
 done

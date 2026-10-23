@@ -45,9 +45,10 @@ class Panel:
     ARRAYS = ("plays_x", "plays_t", "plays_state", "game_play_ptr", "steps_t", "steps_x", "game_step_ptr", "step_node_ptr",
               "nodes_x", "nodes_kind", "node_strike", "node_side", "value", "lo", "hi", "value_h", "y", "game_L", "game_fold")
 
-    def __init__(self, path: str | Path, horizons: list[str] | None = None) -> None:
+    def __init__(self, path: str | Path, horizons: list[str] | None = None, drop: list[str] | None = None) -> None:
         """horizons: train and evaluate on these only (names from the manifest, e.g. ["30s", "60s",
-        "120s"]); default all."""
+        "120s"]); default all. drop: input groups (DROP_GROUPS) or single feature names set to zero in
+        every batch, for the feature-group ablations; default none."""
         p = Path(path)
         self.manifest = json.loads((p / "manifest.json").read_text())
         for k in self.ARRAYS:
@@ -71,6 +72,7 @@ class Panel:
         self.step_has_nodes = np.diff(self.step_node_ptr) > 0
         self.s_m, self.s_t = self.manifest["baseline_S"]
         self.scale, self.tot_scale = self.manifest["scale"], self.manifest["tot_scale"]
+        self.drop = drop_columns(self, drop or [])
 
     def game_steps(self, g: int) -> np.ndarray:
         a, b = self.game_step_ptr[g], self.game_step_ptr[g + 1]
@@ -80,6 +82,28 @@ class Panel:
 
 STEP_DERIVED = ["tau", "margin", "total", "off_home", "off_away", "new_plays", "log_since_play"]
 NODE_DERIVED = ["dist", "base", "base_gap", "has_base"]
+# input groups for the feature ablations (--drop); "wp" takes the structural baseline too, which is built from it
+DROP_GROUPS = {
+    "play_type": lambda f: f.startswith("g_"),
+    "wp": lambda f: f in ("wp", "dwp", "p_home", "has_p_home", "base", "base_gap", "has_base"),
+    "baseline": lambda f: f in ("dist", "base", "base_gap", "has_base"),
+    "prints": lambda f: f in ("has_print", "print_px", "log_print_age", "flow", "log_vol"),
+    "quotes": lambda f: f in ("has_bid", "has_ask", "bid", "ask", "log_age"),
+}
+
+
+def drop_columns(pn: "Panel", drop: list[str]) -> dict[str, np.ndarray]:
+    """Column indices to zero in the plays / steps / nodes inputs for the named groups or features."""
+    names = {"plays": list(pn.manifest["play_features"]),
+             "steps": list(pn.manifest["step_market_features"]) + STEP_DERIVED,
+             "nodes": list(pn.market_node_features) + NODE_DERIVED}
+    assert len(names["plays"]) == pn.fp and len(names["steps"]) == pn.fs and len(names["nodes"]) == pn.fc
+    hit = {k: [i for i, f in enumerate(v) if any(DROP_GROUPS[d](f) if d in DROP_GROUPS else f == d for d in drop)]
+           for k, v in names.items()}
+    unknown = [d for d in drop if d not in DROP_GROUPS and not any(d in v for v in names.values())]
+    if unknown:
+        raise ValueError(f"--drop: no group or feature named {unknown}")
+    return {k: np.array(v, np.int64) for k, v in hit.items()}
 
 
 def known_state(pn: Panel, g: int, step_t: np.ndarray, delay_s: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -128,6 +152,7 @@ class Batch:
     base: torch.Tensor           # [Ns, C]
     game_of_node: torch.Tensor   # [Ns, C] global game index
     step_of_node: torch.Tensor   # [Ns, C] global step index
+    nodes_raw: torch.Tensor | None = None   # [Ns, C, Fc] the contract inputs before a --drop zeroed some (else None)
 
 
 def make_batch(pn: Panel, games: list[int], steps_per_game: int | None, rng: np.random.Generator | None,
@@ -180,6 +205,12 @@ def make_batch(pn: Panel, games: list[int], steps_per_game: int | None, rng: np.
     nodes = np.nan_to_num(np.concatenate([take(pn.nodes_x, 0.0, (pn.nodes_x.shape[1],)), nderived], -1))
     nodes[~m] = 0
     steps = np.concatenate([pn.steps_x[sid].astype(np.float32), sfeat], 1)
+    nodes_raw = None
+    if any(len(v) for v in pn.drop.values()):                # feature-group ablation: those inputs are zero
+        nodes_raw = nodes.copy()                             # predict() still records the real entry quotes
+        plays[..., pn.drop["plays"]] = 0
+        steps[:, pn.drop["steps"]] = 0
+        nodes[..., pn.drop["nodes"]] = 0
     gon = np.repeat(np.asarray(games)[sg][:, None], cmax, 1)
     son = np.repeat(sid[:, None], cmax, 1)
     t = lambda x: torch.as_tensor(x, device=device)           # noqa: E731
@@ -187,7 +218,8 @@ def make_batch(pn: Panel, games: list[int], steps_per_game: int | None, rng: np.
                  nodes=t(nodes), mask=t(m), kind=t(kind), value=t(value), lo=t(take(pn.lo, np.nan, (pn.n_h,), cols=pn.h_idx)),
                  hi=t(take(pn.hi, np.nan, (pn.n_h,), cols=pn.h_idx)),
                  value_h=t(take(pn.value_h, np.nan, (pn.n_h,), cols=pn.h_idx)), y=t(take(pn.y, np.nan)),
-                 base=t(np.where(has_base, base, np.nan).astype(np.float32)), game_of_node=t(gon), step_of_node=t(son))
+                 base=t(np.where(has_base, base, np.nan).astype(np.float32)), game_of_node=t(gon), step_of_node=t(son),
+                 nodes_raw=None if nodes_raw is None else t(nodes_raw))
 
 
 # ----------------------------------------------------------------------------- model
@@ -355,7 +387,7 @@ def predict(model: InGameGraph, pn: Panel, games: list[int], device: torch.devic
         m = b.mask
         for k, v in (("delta", d), ("corr", c), ("kind", b.kind), ("value", b.value), ("lo", b.lo), ("hi", b.hi),
                      ("value_h", b.value_h), ("y", b.y), ("base", b.base), ("game", b.game_of_node),
-                     ("step", b.step_of_node), ("nodes", b.nodes[..., [fi[x] for x in fi]])):
+                     ("step", b.step_of_node), ("nodes", (b.nodes if b.nodes_raw is None else b.nodes_raw)[..., [fi[x] for x in fi]])):
             out[k].append(v[m].float().cpu().numpy() if v.dtype.is_floating_point else v[m].cpu().numpy())
     model.train()
     r = {k: np.concatenate(v) for k, v in out.items()}

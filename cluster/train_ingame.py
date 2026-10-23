@@ -9,6 +9,7 @@ data that may be copied to the cluster.
     python cluster/train_ingame.py --panel ... --test-fold 1 --memory transformer [--tf-window 30]   # v2 memory
     python cluster/train_ingame.py --panel ... --test-fold 1 --delay 15         # plays reach the model 15 s late
     python cluster/train_ingame.py --panel ... --test-fold 1 --horizons 30s,60s,120s   # train on 30 s - 2 min only
+    python cluster/train_ingame.py --panel ... --test-fold 1 --drop play_type   # inputs zeroed (groups: ingame.DROP_GROUPS)
     python cluster/train_ingame.py --panel .../panel_v4m --test-fold 3 --huber 1000 --lambda-y 0   # mid target, ~squared error
 
 Writes <out>/<league>_fold<k>_<memory>_d<delay>[_h<horizons>]_seed<s>.json (settings, epochs, and the test metrics) and
@@ -62,20 +63,17 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--delay", type=float, default=0.0, help="live-feed delay in seconds applied to the play-by-play")
     ap.add_argument("--horizons", default="", help="comma list to train / evaluate on, e.g. 30s,60s,120s (default: all)")
+    ap.add_argument("--drop", default="", help="comma list of input groups (play_type, wp, baseline, prints, quotes) or features set to zero (ablation)")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--out", default="results/ingame")
     ap.add_argument("--save-preds", action="store_true", help="also write the test predictions (npz) for backtests")
     ap.add_argument("--save-model", action="store_true", help="also write the trained weights (.pt)")
+    ap.add_argument("--skip-existing", action="store_true", help="do nothing if this run's .json exists (resubmitting a part-done job)")
     a = ap.parse_args()
     t0 = time.time()
     hz = [h for h in a.horizons.split(",") if h]
-    pn = Panel(a.panel, horizons=hz or None)
-    got = train(pn, None if a.final else a.test_fold, memory=a.memory, hidden=a.hidden, n_rounds=a.rounds, dropout=a.dropout, lr=a.lr,
-                   epochs=a.epochs, patience=a.patience, games_per_batch=a.games_per_batch,
-                   steps_per_game=a.steps_per_game, lambda_y=a.lambda_y, eval_stride=a.eval_stride, seed=a.seed, delay_s=a.delay, tf_window=a.tf_window, huber=a.huber,
-                   device=a.device, log=lambda s: print(s, flush=True), return_preds=a.save_preds and not a.final)
-    res = got[0]
-    res["seconds"] = round(time.time() - t0, 1)
+    drop = [d for d in a.drop.split(",") if d]
+    pn = Panel(a.panel, horizons=hz or None, drop=drop)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     tag = "" if not hz else "_h" + "-".join(h.rstrip("s") for h in hz)
@@ -87,12 +85,21 @@ def main() -> None:
     tag += f"_r{a.rounds}" if a.rounds != 2 else ""          # _r0: no message passing (graph ablation)
     tag += "_pitch" if pn.manifest.get("play_unit") == "pitch" else ""   # MLB with every pitch as a play
     tag += "_dpfix" if pn.manifest.get("mlb_groups") == "dpfix" else ""  # double / triple plays coded as such
-    res["targets"] = pn.manifest.get("targets", "quotes")
+    tag += "".join(f"_no-{d}" for d in drop)                 # feature-group ablation: those inputs zeroed
     mem = a.memory + (f"w{a.tf_window}" if a.memory == "transformer" and a.tf_window else "")
     split = "final" if a.final else f"fold{a.test_fold}"
-    f = out / f"{res['league']}_{split}_{mem}_d{a.delay:g}{tag}_seed{a.seed}.json"
+    f = out / f"{pn.manifest['league']}_{split}_{mem}_d{a.delay:g}{tag}_seed{a.seed}.json"
+    if a.skip_existing and f.exists():                       # the .json is written last, so it marks a finished run
+        print(f"{f} exists, skipped")
+        return
+    got = train(pn, None if a.final else a.test_fold, memory=a.memory, hidden=a.hidden, n_rounds=a.rounds, dropout=a.dropout, lr=a.lr,
+                   epochs=a.epochs, patience=a.patience, games_per_batch=a.games_per_batch,
+                   steps_per_game=a.steps_per_game, lambda_y=a.lambda_y, eval_stride=a.eval_stride, seed=a.seed, delay_s=a.delay, tf_window=a.tf_window, huber=a.huber,
+                   device=a.device, log=lambda s: print(s, flush=True), return_preds=a.save_preds and not a.final)
+    res = got[0]
+    res["seconds"] = round(time.time() - t0, 1)
+    res["targets"] = pn.manifest.get("targets", "quotes")
     res["args"] = vars(a)
-    f.write_text(json.dumps(res, indent=1))
     if a.save_model:
         _ingame.save_model(f.with_suffix(".pt"), got[1], pn,
                            _ingame.model_config(pn, hidden=a.hidden, memory=a.memory, n_rounds=a.rounds, dropout=a.dropout,
@@ -100,6 +107,7 @@ def main() -> None:
     if a.save_preds and not a.final:
         import numpy as np
         np.savez_compressed(f.with_suffix(".npz"), **got[2])
+    f.write_text(json.dumps(res, indent=1))
     print(f"\nwrote {f} ({res['seconds']} s)")
     for kind, r in res["metrics"].items():
         for h, m in r.items():
