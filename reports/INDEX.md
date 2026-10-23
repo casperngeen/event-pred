@@ -36,6 +36,7 @@ Submission target November 2026; analysis freeze early October.
 |---|---|
 | [ingame_journal.md](ingame_journal.md) | **Decisions and design journal for the in-game (play-by-play → Kalshi prices) model**, started 2026-10-04: goal and trading focus, data facts, event timing, inputs, preliminary findings, splits, the GRU graph model, NFL results by feed delay, infrastructure and cluster rules, open items. Kept up to date as the work moves. |
 | [holdout_spec.md](holdout_spec.md) | **Frozen spec for the in-game holdout test** (frozen 2026-10-07): the final model (panel_v3, GRU, 10 s delay, 5-seed average), the maker strategy with both exits (fixed, hold to settlement) and the sizing rule, the four candidates, what is reported (no pre-set pass rule), and the order of work. |
+| [ablation_results.md](ablation_results.md) | **In-game model ablations, results (2026-10-23)**, report-ready. 5-seed versions, test folds, frozen rule. The graph is the most valuable part (R² −1.4 to −3.4 without it; profit down in 5 of 6 contract types). The structural fair-price baseline drives the model; play types add nothing. NBA/NFL stay profitable at ESPN's 45 s delay; MLB is delay-sensitive. Method, tables, key insights, limitations, captions. Run sheet: `ablation_runsheet.md`. |
 
 ## Findings and measurement
 
