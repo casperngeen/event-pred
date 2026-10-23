@@ -124,6 +124,7 @@ def schedule(league: str, day: dt.date) -> list[dict]:
                       timeout=30).json()
         games = [{"game_id": str(g["gamePk"]), "start": g["gameDate"], "game_type": g["gameType"],
                   "away": g["teams"]["away"]["team"]["abbreviation"], "home": g["teams"]["home"]["team"]["abbreviation"]}
+                 | ({"series_game": g["seriesGameNumber"]} if g["gameType"] in ("F", "D", "L", "W") and g.get("seriesGameNumber") else {})
                  for dd in d["dates"] for g in dd["games"]]
     else:
         d = httpx.get(f"{ESPN_LEAGUE[league]}/scoreboard", params={"dates": day.strftime("%Y%m%d"), "limit": 100}, timeout=30).json()
@@ -144,9 +145,19 @@ def spellings(league: str, code: str) -> set[str]:
 
 def contracts(api: Api, g: dict, day: dt.date, params: dict | None = None) -> list[dict]:
     """The game's open Kalshi contracts (or those params select, e.g. a close-time window for a past game). Event tickers carry the ET date and away + home Kalshi codes, but
-    not always the same start time across series. Sets g["away_k"] / g["home_k"], the codes Kalshi used."""
+    not always the same start time across series. Sets g["away_k"] / g["home_k"], the codes Kalshi used.
+    Postseason (statsapi seriesGameNumber): Kalshi titles each game-winner event "Game N: ..." and after a postponement
+    re-points its events by game number, not by MLB's game id (16 Oct 2026: TB @ CLE Game 4 rained out; Kalshi's
+    26OCT16 contracts settled on Saturday's Game 4, its 26OCT17 ones on Sunday's Game 5), so the open event titled
+    with the game's number decides the tag; otherwise the day's date does."""
     tag = day.strftime("%y%b%d").upper()
     pairs = [(a, h) for a in spellings(g["league"], g["away"]) for h in spellings(g["league"], g["home"])]
+    if g.get("series_game") and params is None:
+        for e in api.paged("/events", "events", {"series_ticker": SERIES[g["league"]][0], "status": "open"}, 200):
+            ev = e["event_ticker"].split("-", 1)[1]
+            if (e.get("title") or "").startswith(f"Game {g['series_game']}:") and any(ev.endswith(a + h) for a, h in pairs):
+                tag = ev[:7]
+                break
     out = []
     for s in SERIES[g["league"]]:
         for m in api.paged("/markets", "markets", {"series_ticker": s} | (params or {"status": "open"}), 200):
