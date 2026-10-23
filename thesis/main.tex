@@ -1,0 +1,493 @@
+% =============================================================================
+% B.Comp. Dissertation (CP4101) -- Machine Learning in Prediction Markets
+% Format follows "CP4101 B.Comp. Dissertation Format" (May 2008):
+%   - A4, Times 12pt, 1.5 line spacing for the main report
+%   - Main report <= 55 pages (Introduction -> Conclusion), numbered 1,2,3,...
+%   - Front matter numbered i, ii, ...; references continue main numbering
+%   - Order: cover, title page, abstract, acknowledgement, contents, lists,
+%            main report, references, appendices
+%   - Citations: author-year (APA style); references sorted by first author
+%   - Optional: <=10 page conference paper in the appendix (on top of 55)
+% Everything marked \todo{...} is a placeholder to be replaced.
+% Build: pdflatex main && pdflatex main   (no BibTeX needed; refs are inline)
+% =============================================================================
+\documentclass[12pt,a4paper,oneside]{report}
+
+\usepackage[T1]{fontenc}
+\usepackage{mathptmx}                 % Times Roman text and math
+\usepackage[margin=2.54cm]{geometry}
+\usepackage{setspace}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage[authoryear,round]{natbib}
+\usepackage[hidelinks]{hyperref}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+
+\onehalfspacing
+\setlength{\parskip}{4pt}
+\setlist{nosep}
+\captionsetup{font=small}
+
+% Keep heading depth shallow (format asks for minimal sub-heading depth)
+\setcounter{secnumdepth}{2}
+\setcounter{tocdepth}{2}
+
+% ---- Draft helpers ----------------------------------------------------------
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\newcommand{\figplaceholder}[2]{%
+  \begin{figure}[t]\centering
+    \fbox{\parbox{0.8\textwidth}{\centering\vspace{2em}\todo{#1}\vspace{2em}}}
+    \caption{#2}
+  \end{figure}}
+
+% ---- Project metadata (edit here) -------------------------------------------
+\newcommand{\ProjTitle}{Machine Learning in Prediction Markets}
+\newcommand{\ProjAuthor}{Casper Ng}          % \todo: full name as on matriculation
+\newcommand{\ProjYear}{2026/2027}
+\newcommand{\ProjNo}{\todo{Project No, e.g. H123456}}
+\newcommand{\ProjAdvisor}{\todo{rank, e.g. Assoc Prof} Lu Yao}
+
+\begin{document}
+
+% =============================================================================
+% FRONT COVER (hard cover)
+% =============================================================================
+\pagestyle{empty}
+\begin{titlepage}
+\centering
+\vspace*{3cm}
+{\large B.Comp. Dissertation}\\[3.5cm]
+{\LARGE\bfseries \ProjTitle}\\[3.5cm]
+{\large By}\\[0.6cm]
+{\large \ProjAuthor}\\[4cm]
+{\large Department of Computer Science}\\[0.3cm]
+{\large School of Computing}\\[0.3cm]
+{\large National University of Singapore}\\[0.6cm]
+{\large \ProjYear}
+\end{titlepage}
+
+% =============================================================================
+% TITLE PAGE (adds project number, advisor, deliverables)
+% =============================================================================
+\begin{titlepage}
+\centering
+\vspace*{1.5cm}
+{\large B.Comp. Dissertation}\\[1.5cm]
+{\LARGE\bfseries \ProjTitle}\\[2cm]
+{\large By}\\[0.5cm]
+{\large \ProjAuthor}\\[2cm]
+{\large Department of Computer Science}\\[0.3cm]
+{\large School of Computing}\\[0.3cm]
+{\large National University of Singapore}\\[0.5cm]
+{\large \ProjYear}\\[2cm]
+\begin{flushleft}
+\hspace{1.5cm}Project No: \ProjNo\\
+\hspace{1.5cm}Advisor: \ProjAdvisor\\[0.6cm]
+\hspace{1.5cm}Deliverables:\\
+\hspace{3cm}Report: 1 Volume\\
+\hspace{3cm}Source code and data pipeline: \todo{repository / archive}\\
+\end{flushleft}
+\end{titlepage}
+
+% =============================================================================
+% FRONT MATTER (roman numerals)
+% =============================================================================
+\pagestyle{plain}
+\pagenumbering{roman}
+\setcounter{page}{1}
+
+% ---- Abstract (<= 200 words; <= 5 subject descriptors; <= 5 keywords) --------
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+\singlespacing
+\todo{Keep to $\le$ 200 words. Draft below; rewrite once results are final.}
+
+Prediction markets such as Kalshi let people trade contracts that pay out if a
+real-world event happens, so their prices can be read as probabilities. This
+project asks whether machine learning can forecast short-term price movements
+in these markets better than the market itself, after realistic trading costs.
+We study two settings. First, we test whether the outcome of one scheduled
+economic release (for example inflation or jobs data) predicts the repricing of
+other related contracts, using a spatial-temporal graph model with a learned
+graph structure. Second, we build a forecaster for live sports markets that
+turns play-by-play data into a price prediction for the moment a play happens,
+and evaluate it with a strict as-of protocol, a frozen holdout, and a live
+paper-trading deployment. \todo{One sentence on headline result, e.g. what
+worked, what did not, and the net-of-cost conclusion.}
+
+\vspace{0.6em}
+\noindent\textbf{Subject Descriptors:}\\[2pt]
+\hspace*{1.2cm}I.2.6 Learning\\
+\hspace*{1.2cm}I.5.1 Models\\
+\hspace*{1.2cm}G.3 Probability and Statistics\\
+\hspace*{1.2cm}J.4 Social and Behavioral Sciences (Economics)\\
+\hspace*{1.2cm}\todo{verify codes against the current ACM CCS / Computing Reviews scheme with advisor}
+
+\vspace{0.6em}
+\noindent\textbf{Keywords:}\\[2pt]
+\hspace*{1.2cm}prediction markets, graph neural networks, time series forecasting,
+market efficiency, sequential decision making
+
+\vspace{0.6em}
+\noindent\textbf{Implementation Software and Hardware:}\\[2pt]
+\hspace*{1.2cm}Python 3, PyTorch, pandas, Slurm GPU cluster (NVIDIA A100),
+\todo{OS, cloud sandbox, library versions}
+\onehalfspacing
+
+% ---- Acknowledgement (one double-spaced page) --------------------------------
+\chapter*{Acknowledgement}
+\addcontentsline{toc}{chapter}{Acknowledgement}
+\doublespacing
+\todo{One page. Thank advisor Lu Yao, the evaluator, the School of Computing for GPU cluster access, family and friends.}
+\onehalfspacing
+
+% ---- Contents and lists ------------------------------------------------------
+\singlespacing
+\tableofcontents
+\clearpage
+\addcontentsline{toc}{chapter}{List of Figures}
+\listoffigures
+\clearpage
+\addcontentsline{toc}{chapter}{List of Tables}
+\listoftables
+\clearpage
+\chapter*{List of Abbreviations}
+\addcontentsline{toc}{chapter}{List of Abbreviations}
+\begin{tabular}{@{}ll@{}}
+AGCRN & Adaptive Graph Convolutional Recurrent Network\\
+GRU   & Gated Recurrent Unit\\
+STG   & Spatial-Temporal Graph\\
+GNN   & Graph Neural Network\\
+OOS   & Out of sample\\
+PBP   & Play-by-play (event feed of a game)\\
+\todo{add as needed} &
+\end{tabular}
+\onehalfspacing
+
+% =============================================================================
+% MAIN REPORT (arabic numerals, starts at 1; max 55 pages through Conclusion)
+% =============================================================================
+\clearpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% -----------------------------------------------------------------------------
+\chapter{Introduction}
+\label{ch:intro}
+% -----------------------------------------------------------------------------
+
+\section{Motivation}
+Prediction markets are exchanges where each contract pays \$1 if a stated event
+occurs and \$0 otherwise, so a price of 63 cents is read as a 63\% chance
+\citep{wolfers2004prediction,arrow2008promise}. Regulated venues such as Kalshi
+now list thousands of contracts on economic data, policy decisions and sports.
+\todo{Why this matters for ML: high-frequency, labelled, binary-outcome data with an observable ground truth; a clean testbed for forecasting under distribution shift and transaction costs.}
+
+\section{Problem Statement}
+\todo{State the central question in plain words, e.g.: ``Can a learned model
+predict short-horizon price changes in prediction markets well enough to beat
+the market after trading costs, and how should such a claim be tested honestly?''}
+Sub-questions:
+\begin{enumerate}
+  \item Does information released in one market (a macro data release) move the
+        prices of related markets in a predictable way (Chapter~\ref{ch:macro})?
+  \item Can a sequence/graph model of live game events forecast sports-contract
+        prices ahead of the market (Chapter~\ref{ch:ingame})?
+  \item Do such forecasts survive realistic execution, fees and a live
+        forward test (Chapter~\ref{ch:trading})?
+\end{enumerate}
+
+\section{Contributions}
+\todo{3--5 bullets. Candidate list based on the repo:}
+\begin{itemize}
+  \item A strategy-pattern framework for building spatial-temporal graph
+        datasets from event-driven market data.
+  \item A negative-result study showing when learned graph structure
+        (AGCRN) does not beat imposed economic structure or linear baselines,
+        including a semi-synthetic structure-recovery test.
+  \item A strict as-of evaluation protocol that avoids look-ahead in features,
+        baselines and instrument selection.
+  \item An in-game forecasting model with a frozen holdout specification and
+        a live paper-trading system.
+  \item An analysis of execution cost, adverse selection and feed latency.
+\end{itemize}
+
+\section{Report Outline}
+\todo{One short paragraph mapping chapters to the questions above.}
+
+% -----------------------------------------------------------------------------
+\chapter{Background and Related Work}
+\label{ch:background}
+% -----------------------------------------------------------------------------
+\section{Prediction Markets and Kalshi}
+Contract structure, order book, taker/maker, fee schedule (fee grows with
+$p(1-p)$), settlement. \todo{Cite Kalshi documentation; keep to what the
+models need.}
+
+\section{Market Efficiency and Underreaction}
+Efficient-markets framing; evidence for slow information absorption
+\citep{hong2000bad}; microstructure and signed order flow \citep{lee1991inferring}.
+\todo{Add prediction-market-specific efficiency / favourite--longshot bias
+literature; add the sports-market paper discussed in the research summary.}
+
+\section{Learning on Time Series and Graphs}
+\begin{itemize}
+  \item Recurrent models: GRU \citep{cho2014learning}.
+  \item Spatial-temporal graph networks and adaptive graph learning:
+        AGCRN \citep{bai2020adaptive}. \todo{Add Graph WaveNet, DCRNN, STGCN.}
+  \item Gradient-boosted trees and linear baselines as strong references.
+\end{itemize}
+
+\section{Evaluating ML Forecasts in Finance}
+Look-ahead bias, overlapping labels, multiple testing, and why published gains
+often disappear out of sample \citep{bailey2014pseudo,lopezdeprado2018advances}.
+\todo{Link to literature notes in reports/literature\_stg\_finance.md.}
+
+\section{Machine Learning for Sports Betting}
+Surveys cover the algorithms and evaluation practices used
+\citep{bunker2019machine,galekwa2024systematic}. Two results shape our design:
+choosing models by calibration rather than accuracy gives better betting returns
+\citep{walsh2024machine}, and a model should be rewarded for differing from the
+bookmaker's odds rather than for matching them \citep{hubacek2019exploiting}.
+For in-game forecasting, simple calibrated models are a strong baseline
+\citep{pelechrinis2017iwinrnfl}. \todo{Add the NBA recurrent-model thesis (Poole)
+and discuss that prior work targets bookmaker odds, whereas we target
+prediction-market prices with an explicit execution model.}
+
+\section{Positioning of This Work}
+\todo{Short comparison table: prior work vs.\ this project (data, task, evaluation, costs).}
+
+% -----------------------------------------------------------------------------
+\chapter{Data and Problem Formulation}
+\label{ch:data}
+% -----------------------------------------------------------------------------
+\section{Data Sources}
+\begin{itemize}
+  \item Kalshi trade archive (tens of millions of trades; labelled taker side)
+        and market metadata. \todo{final counts and date range}
+  \item Macro release calendar with consensus forecasts, and macro indicators.
+  \item Play-by-play feeds for MLB, NBA, NFL. \todo{sources, latency table}
+\end{itemize}
+\todo{Table: dataset, size, period, source, known gaps (e.g.\ no historical quotes, archive concentrated in 2025).}
+
+\section{Strict As-Of Principle}
+Every feature and every normaliser is computed only from information available
+at the decision time; baselines are rolling or expanding, never full-history.
+\todo{Describe the as-of layer and the integrity checks.}
+
+\section{Task Definitions}
+\todo{Formalise both tasks: inputs, target (price change over horizon $h$ or
+settlement value), decision time, metrics (R$^2$, AUC, gross and net P\&L per
+contract).}
+
+\section{Splits and Evaluation Protocol}
+Walk-forward / time-ordered splits, block permutation tests, frozen holdout.
+\todo{Describe split dates and what is frozen before looking at results.}
+
+% -----------------------------------------------------------------------------
+\chapter{Study I: Cross-Market Propagation in Macro Markets}
+\label{ch:macro}
+% -----------------------------------------------------------------------------
+\section{Spatial-Temporal Graph Framework}
+Nodes, edges, snapshots and labels as interchangeable strategies; resolution-triggered
+graph snapshots. \todo{Figure: pipeline diagram.}
+
+\section{Models}
+\subsection{Imposed-Structure Baselines}
+Zero-parameter economic sign rule; per-pair regression; linear ladder.
+\subsection{Learned Graph Models}
+Inductive AGCRN with adaptive adjacency $\tilde A=\mathrm{softmax}(\mathrm{ReLU}(EE^\top))$
+and node-adaptive weights \citep{bai2020adaptive}. \todo{Equations, hyper-parameters.}
+\subsection{Other Learners}
+Tree ensembles, MLP, Bayesian hierarchical model.
+
+\section{Results}
+\todo{Tables: model comparison on R$^2$/AUC; structure estimation (edges surviving
+multiple-testing correction); gross edge versus cost.}
+
+\section{Can a Graph Be Learned From This Data?}
+Semi-synthetic recovery test: plant a known graph in data built from the real
+release calendar, and measure whether each learner recovers it
+(Section: \todo{numbers from reports/recovery\_test.md}).
+
+\section{Lessons}
+Why the learned graph did not help (too few co-firing events, signal dilution,
+implementation pitfalls found by checklist), and why this motivated moving to a
+data-rich setting.
+
+% -----------------------------------------------------------------------------
+\chapter{Study II: In-Game Sports Forecasting}
+\label{ch:ingame}
+% -----------------------------------------------------------------------------
+\section{Problem Setting}
+Given the live feed of a game, predict the price of related Kalshi contracts a
+short time after each play. \todo{Plain-language definition of a play, a
+contract leg, and the decision time.}
+
+\section{Data Pipeline}
+Play-by-play alignment to market time, feed latency and revisions, as-of
+feature construction. \todo{Figure: timeline of event $\to$ feed $\to$ price.}
+
+\section{Model Architecture}
+GRU sequence encoder over plays with a graph over related contracts within a game.
+\todo{Architecture figure, input features, loss, training on GPU cluster, seeds
+(5-seed average).}
+
+\section{Ablations}
+Feed delay, graph vs.\ no graph, feature groups, per-sport differences.
+\todo{Ablation table.}
+
+\section{Frozen Holdout Results}
+Report what the frozen specification (candidates, exit rules, sizing) produced,
+with no post-hoc pass rule. \todo{Gross P\&L per contract with confidence intervals.}
+
+% -----------------------------------------------------------------------------
+\chapter{Trading System and Live Evaluation}
+\label{ch:trading}
+% -----------------------------------------------------------------------------
+\section{Execution Model}
+Maker vs.\ taker, fee model, fill assumptions, order-management variants.
+\todo{Gross first, then fees.}
+
+\section{Why Signals Shrink: Stale Prices and Adverse Selection}
+Stale last print versus true move; settled losers as post-event pick-offs.
+\todo{Tables from reports/ingame\_journal.md and stale-reference analysis.}
+
+\section{Live Paper-Trading System}
+Runners, recorder, replay tool, watchdog, sandbox deployment.
+\todo{System diagram.} \todo{Live vs.\ backtest parity results from forward\_test\_log.md.}
+
+\section{Forward-Test Results}
+\todo{Games traded, P\&L, divergences from backtest (feed latency, postponements).}
+
+% -----------------------------------------------------------------------------
+\chapter{Discussion}
+\label{ch:discussion}
+% -----------------------------------------------------------------------------
+\section{What Worked and What Did Not}
+\todo{Honest critique: where ML helped, where simple structure won, data limits.}
+
+\section{Threats to Validity}
+Look-ahead leakage risks, multiple testing, regime change, archive selection,
+feed latency in live deployment.
+
+\section{Limitations}
+\todo{Scope: MLB/NBA/NFL only, paper trading, capacity and market impact.}
+
+% -----------------------------------------------------------------------------
+\chapter{Conclusion and Future Work}
+\label{ch:conclusion}
+% -----------------------------------------------------------------------------
+\section{Summary}
+\todo{Answer each sub-question from Section 1.2 in one paragraph.}
+
+\section{Recommendations for Further Work}
+\todo{Deep-book/quote data, lower-latency feeds, additional sports, calibration
+of probabilities, online learning.}
+
+% =============================================================================
+% REFERENCES (page numbering continues; alphabetical by first author)
+% =============================================================================
+\singlespacing
+\renewcommand{\bibname}{References}
+\begin{thebibliography}{99}
+\addcontentsline{toc}{chapter}{References}
+\setlength{\itemsep}{4pt}
+
+\bibitem[Arrow et al.(2008)]{arrow2008promise}
+Arrow, K.J., Forsythe, R., Gorham, M., Hahn, R., Hanson, R., Ledyard, J.O.,
+Levmore, S., Litan, R., Milgrom, P., Nelson, F.D., Neumann, G.R., Ottaviani, M.,
+Schelling, T.C., Shiller, R.J., Smith, V.L., Snowberg, E., Sunstein, C.R.,
+Tetlock, P.C., Tetlock, P.E., Varian, H.R., Wolfers, J. and Zitzewitz, E. (2008).
+The promise of prediction markets. \textit{Science}, Vol.~320, No.~5878,
+May 2008, pp.~877--878.
+
+\bibitem[Bai et al.(2020)]{bai2020adaptive}
+Bai, L., Yao, L., Li, C., Wang, X. and Wang, C. (2020). Adaptive graph
+convolutional recurrent network for traffic forecasting. In
+\textit{Advances in Neural Information Processing Systems 33 (NeurIPS 2020)}.
+
+\bibitem[Bailey et al.(2014)]{bailey2014pseudo}
+Bailey, D.H., Borwein, J.M., L\'opez de Prado, M. and Zhu, Q.J. (2014).
+Pseudo-mathematics and financial charlatanism: the effects of backtest
+overfitting on out-of-sample performance. \textit{Notices of the American
+Mathematical Society}, Vol.~61, No.~5, May 2014, pp.~458--471.
+
+\bibitem[Bunker and Susnjak(2019)]{bunker2019machine}
+Bunker, R.P. and Susnjak, T. (2019). The application of machine learning
+techniques for predicting results in team sport: a review. arXiv:1912.11762.
+\todo{check final published venue and year}
+
+\bibitem[Cho et al.(2014)]{cho2014learning}
+Cho, K., van Merri\"enboer, B., G\"ul\c{c}ehre, \c{C}., Bahdanau, D.,
+Bougares, F., Schwenk, H. and Bengio, Y. (2014). Learning phrase representations
+using RNN encoder--decoder for statistical machine translation. In
+\textit{Proceedings of EMNLP 2014}, pp.~1724--1734.
+
+\bibitem[Galekwa et al.(2024)]{galekwa2024systematic}
+Galekwa, R.M., Tshimula, J.M., Tajeuna, E.G. and Kyamakya, K. (2024).
+A systematic review of machine learning in sports betting: techniques,
+challenges, and future directions. arXiv:2410.21484.
+\todo{verify author list and venue}
+
+\bibitem[Hong et al.(2000)]{hong2000bad}
+Hong, H., Lim, T. and Stein, J.C. (2000). Bad news travels slowly: size,
+analyst coverage, and the profitability of momentum strategies.
+\textit{The Journal of Finance}, Vol.~55, No.~1, February 2000, pp.~265--295.
+
+\bibitem[Hubáček et al.(2019)]{hubacek2019exploiting}
+Hub\'a\v{c}ek, O., \v{S}ourek, G. and \v{Z}elezn\'y, F. (2019). Exploiting
+sports-betting market using machine learning. \textit{International Journal
+of Forecasting}, Vol.~35, No.~2, 2019, pp.~783--796. \todo{verify volume/pages}
+
+\bibitem[Lee and Ready(1991)]{lee1991inferring}
+Lee, C.M.C. and Ready, M.J. (1991). Inferring trade direction from intraday
+data. \textit{The Journal of Finance}, Vol.~46, No.~2, June 1991, pp.~733--746.
+
+\bibitem[L\'opez de Prado(2018)]{lopezdeprado2018advances}
+L\'opez de Prado, M. (2018). \textit{Advances in Financial Machine Learning}.
+Wiley, Hoboken, NJ, 2018.
+
+\bibitem[Pelechrinis(2017)]{pelechrinis2017iwinrnfl}
+Pelechrinis, K. (2017). iWinRNFL: a simple, interpretable and well-calibrated
+in-game win probability model for NFL. arXiv:1704.00197.
+
+\bibitem[Walsh and Joshi(2024)]{walsh2024machine}
+Walsh, C. and Joshi, A. (2024). Machine learning for sports betting: should
+model selection be based on accuracy or calibration? \textit{Machine Learning
+with Applications}, Vol.~16, 2024. \todo{verify article number}
+
+\bibitem[Wolfers and Zitzewitz(2004)]{wolfers2004prediction}
+Wolfers, J. and Zitzewitz, E. (2004). Prediction markets. \textit{Journal of
+Economic Perspectives}, Vol.~18, No.~2, Spring 2004, pp.~107--126.
+
+% \todo{Add: Kalshi documentation (organisation as author), Graph WaveNet,
+% DCRNN, STGCN, the sports-market efficiency paper, the five papers in papers/.
+% Verify every entry above before submission.}
+\end{thebibliography}
+
+% =============================================================================
+% APPENDICES (single spacing, may use smaller font)
+% =============================================================================
+\appendix
+\small
+\singlespacing
+
+\chapter{Implementation Details}
+\todo{Repository layout, key modules, hyper-parameters, cluster job settings.}
+
+\chapter{Additional Results}
+\todo{Extra tables and plots that would break the flow of the main report.}
+
+\chapter{Conference Paper (optional, $\le$10 pages)}
+\todo{Delete this appendix if not submitting a paper. Allowed on top of the 55-page limit.}
+
+\chapter{Reproducibility and Data Dictionary}
+\todo{Data schemas, as-of layer definitions, how to rerun experiments.}
+
+\end{document}
