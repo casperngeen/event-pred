@@ -377,6 +377,24 @@ class Engine:
         if self.first_seen or self.book.orders:
             print(f"{self.g['game_id']}: resumed {len(self.first_seen)} plays seen, {len(self.book.orders)} orders", flush=True)
 
+    def use_exchange_sim(self, root: Path, latency: float) -> None:
+        """Replace the print-fill paper book by the exchange simulator (live_exec.LiveExecution) fed from the recorder's
+        books_ws.jsonl. The older book stays as `shadow` and gets the same orders (orders.jsonl as before; the simulator
+        writes execution.jsonl)."""
+        import live_exec as LE
+        prior = list(R.rows(root / "execution.jsonl")) if (root / "execution.jsonl").exists() else []
+        ex = LE.LiveExecution(self.log, root / "books_ws.jsonl", [c["ticker"] for c in self.contracts], latency,
+                              shadow=self.book, id0=LE.LiveExecution.resume_point(prior))
+        ex.ref = self._last_print
+        ex.resume(prior)
+        self.book = ex
+
+    def _last_print(self, ticker: str, t: float) -> float | None:
+        self.mk.build()
+        p = self.mk.p[ticker]
+        i = int(np.searchsorted(p["t"], t, side="right"))
+        return float(p["px"][i - 1]) if i else None
+
     # ------------------------------------------------------------------ data in
     def on_feed(self, doc: dict, got: dt.datetime) -> None:
         with self.lock:
@@ -626,11 +644,19 @@ class Engine:
         self.pub.send(sig, int(now * 1e9))
 
     def summary(self) -> dict:
-        o = self.book.orders
+        if hasattr(self.book, "summary"):                 # exchange simulator; the older book's numbers are kept as `print_fill_rule`
+            lag = np.array(self.lags) if self.lags else np.array([np.nan])
+            return dict(game=self.g["game_id"], league=self.L_, plays_seen=len(self.lags), late_block=self.late_block,
+                        feed_delay_s={q: float(np.nanquantile(lag, q)) for q in (0.1, 0.5, 0.9)},
+                        **self.book.summary(), print_fill_rule=self._paper_summary(self.book.shadow.orders))
+        return self._paper_summary(self.book.orders, full=True)
+
+    def _paper_summary(self, o: list, full: bool = False) -> dict:
         closed = [x for x in o if x["stage"] == "closed"]
         lag = np.array(self.lags) if self.lags else np.array([np.nan])
-        return dict(game=self.g["game_id"], league=self.L_, plays_seen=len(self.lags), late_block=self.late_block,
-                    feed_delay_s={q: float(np.nanquantile(lag, q)) for q in (0.1, 0.5, 0.9)},
+        head = (dict(game=self.g["game_id"], league=self.L_, plays_seen=len(self.lags), late_block=self.late_block,
+                     feed_delay_s={q: float(np.nanquantile(lag, q)) for q in (0.1, 0.5, 0.9)}) if full else {})
+        return dict(**head,
                     orders=len(o), filled=sum(x["stage"] in ("hold", "exit", "closed", "settle") for x in o),
                     closed=len(closed), to_settlement=sum(x["stage"] == "settle" for x in o),
                     pnl_closed_c=float(sum(x["net"] * x["size"] for x in closed)),
@@ -658,6 +684,8 @@ def run_live(g: dict, eng: Engine, rec: R.Recorder) -> None:
     stop.set()
     eng.final = True
     eng.step(time.time() + LM.STEP)                    # publish the zeros
+    if hasattr(eng.book, "close"):
+        eng.book.close()
     (eng.log.root / "summary.json").write_text(json.dumps(eng.summary(), indent=1))
 
 
@@ -676,6 +704,8 @@ def main() -> None:
     ap.add_argument("--publish", action="store_true", help="send to Lumid (default: dry run, payloads only logged)")
     ap.add_argument("--contracts", type=int, default=CONTRACTS_K, help="whole contracts per order at full weight (K): round(K x weight); default: the backtest weight to the nearest 0.01")
     ap.add_argument("--rate", type=float, default=8.0, help="Kalshi requests/s for this runner (all runners together: <= 20)")
+    ap.add_argument("--exchange-sim", action="store_true", help="paper fills from the exchange simulator (live_exec.py) fed by the recorder's books_ws.jsonl; the print-fill book keeps running on the same orders (default: print-fill rule only)")
+    ap.add_argument("--sim-latency", type=float, default=float(os.environ.get("SIM_LATENCY", .09)), help="decision -> exchange acceptance, s: 0.015 on the VM, 0.09 on the Lumid sandbox")
     ap.add_argument("--late-block", action="store_true", help="NBA: no new entries in the late-game window (LATE_RULE); without it the window is only logged ('late' on decision rows)")
     a = ap.parse_args()
     fc = LM.Forecaster(a.league, a.weights, name=a.model)
@@ -689,6 +719,8 @@ def main() -> None:
                      tuple(a.publish_kinds.split(",")) if a.publish_kinds else None, resume=True)
         eng.k = a.contracts
         eng.late_block = a.late_block
+        if a.exchange_sim:
+            eng.use_exchange_sim(root, a.sim_latency)
         hooks = R.Hooks(on_feed=eng.on_feed, on_trades=eng.on_trades, on_candles=eng.on_candles)
         rec = R.Recorder(api, g, g["contracts"], root, hooks)
         if a.no_books:

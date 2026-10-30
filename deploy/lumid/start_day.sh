@@ -24,10 +24,12 @@ start() {   # name, command: run it with up to 5 tries; mark it done only if it 
 }
 : > $LOG/${D}.runners
 P="python3 -u -W ignore scripts"
+# exchange-simulator paper fills (live_exec.py) on every runner while the file $H/EXCHANGE_SIM exists (off otherwise)
+SIM=""; [ -e $H/EXCHANGE_SIM ] && SIM="--exchange-sim --sim-latency 0.09"
 # --delay 10: decide on the timing the models and the skip rule were validated on (a pitch counts at its archive-style
 # end + 10 s, or when it arrives if later) until the 5-s models are tested; the faster feed then only removes late arrivals
 # Kalshi requests/s per runner (--rate): together at most 10, as the backup server (deploy/vm) shares the 20-a-second key
-start MLB $P/live_trade.py --league MLB --date $D --out $H/sports_live --publish --publish-kinds total --no-books --delay 10 --rate 3
+start MLB $P/live_trade.py --league MLB --date $D --out $H/sports_live --publish --publish-kinds total --no-books --delay 10 --rate 3 $SIM
 # NFL / NBA: ESPN delivers plays ~45 s late, so models trained at a 60-s feed delay, run at --delay 60 (journal 2026-10-23);
 # NBA also skips decisions during reviews and while placeholder plays show; both skip while the feed is > 2 min behind;
 # --late-block (NBA, 27 Oct): no new TOTAL entries in Q4 / overtime inside live_trade.LATE_RULE's window (spreads only tagged 'late')
@@ -39,8 +41,8 @@ for L in NFL NBA; do
   n=$(ls $W60/${L}_final_${M60}_seed*.pt 2>/dev/null | wc -l)
   [ "$n" -ge 5 ] || echo "WARNING: only $n $L $M60 weights in $W60"
 done
-start NFL $P/live_trade.py --league NFL --date $D --out $H/sports_live --no-books --weights $W60 --model $M60 --delay 60 --rate 3
-start NBA $P/live_trade.py --league NBA --date $D --out $H/sports_live --no-books --weights $W60 --model $M60 --delay 60 --rate 4 --late-block
+start NFL $P/live_trade.py --league NFL --date $D --out $H/sports_live --no-books --weights $W60 --model $M60 --delay 60 --rate 3 $SIM
+start NBA $P/live_trade.py --league NBA --date $D --out $H/sports_live --no-books --weights $W60 --model $M60 --delay 60 --rate 4 --late-block $SIM
 # every order-book change and trade over Kalshi's WebSocket (analysis only), if the Kalshi key has been copied in
 if [ -s $H/.kalshi_key.pem ] && [ -s $H/.kalshi_key_id ]; then
   start books_ws $P/live_books_ws.py --leagues MLB NFL NBA --date $D --out $H/sports_live

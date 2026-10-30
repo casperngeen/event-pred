@@ -22,11 +22,13 @@ start() {   # name, command: up to 5 tries; logs/<date>_<name>.done once it fini
     touch $LOG/${D}_$N.done # $N" >> $LOG/${D}_$N.log 2>&1 < /dev/null &
 }
 P="$F/venv/bin/python -u -W ignore scripts"
+# exchange-simulator paper fills (live_exec.py) on every runner while the file $F/EXCHANGE_SIM exists (off otherwise)
+SIM=""; [ -e $F/EXCHANGE_SIM ] && SIM="--exchange-sim --sim-latency 0.015"
 O="--date $D --out $F/sports_live --no-books"
 M60=gru_d60_h30-60-120-1800_tp
-start MLB $P/live_trade.py --league MLB $O --delay 10 --rate 3
-start NFL $P/live_trade.py --league NFL $O --model $M60 --delay 60 --rate 3
-start NBA $P/live_trade.py --league NBA $O --model $M60 --delay 60 --rate 4 --late-block
+start MLB $P/live_trade.py --league MLB $O --delay 10 --rate 3 $SIM
+start NFL $P/live_trade.py --league NFL $O --model $M60 --delay 60 --rate 3 $SIM
+start NBA $P/live_trade.py --league NBA $O --model $M60 --delay 60 --rate 4 --late-block $SIM
 [ -n "${KALSHI_KEY_ID:-}" ] && start books_ws $P/live_books_ws.py --leagues MLB NFL NBA --date $D --out $F/sports_live
 sleep 30
 tail -n 3 $LOG/${D}_*.log

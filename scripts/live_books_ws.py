@@ -34,6 +34,7 @@ WS_URL = "wss://api.elections.kalshi.com/trade-api/ws/v2"
 WS_PATH = "/trade-api/ws/v2"
 LEAD, TAIL = dt.timedelta(minutes=30), dt.timedelta(hours=1)
 IDLE, MIN_RUN = dt.timedelta(minutes=30), dt.timedelta(hours=2)
+FLUSH_S = 0.25                  # live_exec.py tails these files: it advances the book 1 s behind the clock
 
 
 def login_headers(key_id: str, key) -> dict:
@@ -59,7 +60,7 @@ class Sink:
         (self.by_ticker.get(t) or self.other).write(json.dumps({"received_at": got, **m}, separators=(",", ":")) + "\n")
         self.n += 1
         self.last_msg = R.now()
-        if time.monotonic() - self.last_flush > 5:
+        if time.monotonic() - self.last_flush > FLUSH_S:
             for f in self.f.values():
                 f.flush()
             self.last_flush = time.monotonic()
