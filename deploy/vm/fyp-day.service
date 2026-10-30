@@ -1,0 +1,11 @@
+[Unit]
+Description=FYP live paper-trading runners for today's games (backup copy of the Lumid sandbox)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash %h/fyp/app/start_day_vm.sh
+# the script starts the runners in the background and exits: without this, systemd kills them as the unit stops
+KillMode=process
+TimeoutStartSec=10min

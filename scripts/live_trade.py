@@ -12,8 +12,10 @@ Per game, every 5-s step of the game (first play + 5k s):
                 15-60 s have passed since the last pitch the model knows, nor while the feed shows a ball
                 in play whose result it doesn't have yet (live only: the live feed lists the pitch "In play,
                 run(s)" seconds after contact, with the old score, and its result ~20 s later; finished-game
-                feeds, which the models learn from, never show that state); size ((|signal| - 5) / 10)^2
-                x width / 10 (each capped at 1; width 1 when a side is missing)
+                feeds, which the models learn from, never show that state); weight ((|signal| - 5) / 10)^2
+                x width / 10 (each capped at 1; width 1 when a side is missing), placed as round(K x weight)
+                whole contracts (--contracts K, default 5; no order if that is 0: b34_integer_sizing, journal
+                2026-10-24)
     paper book  buy limit at reference - 1c / sell at + 1c, resting 60 s, filled by a later print strictly
                 through it; exit 120 s after the fill: rest 1c past the last print for 120 s, else take
                 the next opposite-side print within 120 s, else hold to settlement. Fees: maker 1.75 p(1-p)
@@ -21,7 +23,7 @@ Per game, every 5-s step of the game (first play + 5k s):
                 prints still on their way (polled every 5 s) are counted
     publish     to Lumid (lqt_inbox, signal.publish), every step, per candidate contract:
                     ingame_edge     the signal of an order placed at this step, else 0 (cents x 100)
-                    ingame_target   our paper position incl. a resting entry: side x size (x 10,000)
+                    ingame_target   our paper position incl. a resting entry: side x contracts (x 10,000)
                     ingame_limit    the resting order's limit price (cents x 100), 0 if none
                 zeros for every contract once the game is final. --publish sends; without it, the
                 payloads are only logged (dry run). The PAT is read from LUMID_PAT.
@@ -46,6 +48,7 @@ import datetime as dt
 import json
 import math
 import os
+import re
 import threading
 import time
 import uuid
@@ -59,8 +62,29 @@ import live_record as R
 KINDS_DEFAULT = ("spread", "total")
 HORIZON = "120s"
 MIN_SIGNAL, REF_MAX_S, WIDTH_S = 5.0, 60.0, 120.0
+CONTRACTS_K = None             # contracts per order at full weight: None = the backtest weight (0-1) to the nearest 0.01; K = whole contracts, round(K x weight)
 ENTRY_S, HOLD_S, EXIT_S, OFFSET = 60.0, 120.0, 120.0, 1.0
-SKIP_AGE = {"MLB": (15.0, 60.0), "NFL": None}
+SKIP_AGE = {"MLB": (15.0, 60.0), "NFL": None, "NBA": None}
+# NBA calls not final yet. The model learnt from finished games' feeds, which show only the final version of a play:
+#   placeholder rows ESPN fills in later ("No Shot (Default Shot)", "No Turnover": 945 / 129 rows in 25 recorded
+#   games, replaced within ~20 s at p90): no decisions while one is old enough for the model to count (time + delay),
+#   for at most REVIEW_MAX_S (finished games' feeds keep a few)
+#   reviews ("Challenge", "Coach's Challenge (replaycenter)": the call may be overturned, ~3 a game, ~90 s): no
+#   decisions while one is pending (at most REVIEW_MAX_S), nor until its outcome is delay + REVIEW_SETTLE_S old, so
+#   the corrected possessions have reached the model
+NBA_PLACEHOLDER = re.compile(r"^No |Default")
+NBA_REVIEW = re.compile(r"Challenge|Review|replaycenter")
+NBA_REVIEW_PENDING = re.compile(r"^Challenge$|replaycenter")
+REVIEW_SETTLE_S, REVIEW_MAX_S = 30.0, 600.0
+STALE_S, STALE_N = 120.0, 5    # NFL / NBA: no decisions while any of the last STALE_N new plays reached us > STALE_S late
+# NBA, 4th quarter / overtime: a position needs ~5 min of real time to close (60 s to fill, 120 s hold, 120 s exit), and the
+# last game minutes run long or short with the lead (fouls and timeouts when it is close; a running clock in a blowout). Over
+# 43 recorded games, the share of Q4 plays with < 6.7 real min left (5 min + the ~100 s the model's clock is stale) was 24-83%
+# at 1-2 min of game clock for leads <= 10, 85-100% for leads > 10, and under 12% at 3-5 min for leads <= 20. Cut-offs, in game
+# seconds left, by the lead (points) the model's latest known play shows: (max lead, seconds)
+LATE_RULE = ((5, 120.0), (10, 180.0), (20, 240.0), (math.inf, 300.0))
+LATE_KINDS = ("total",)       # the contract kinds the window blocks: spreads made +1.6c inside it and -5.5c outside (61 / 25 fills, 40 games), so they are only tagged
+NBA_REG_S = 48 * 60.0          # live_model's NBA tau = game clock left / 48 min (overtime: the period's clock / 48 min)
 MAKER, TAKER = 1.75, 7.0
 GRACE_S = 15.0                 # a stage closes this long after its deadline (prints arrive up to ~10 s late)
 SHADOW_DELAY = 10.0            # the frozen feed delay, logged alongside
@@ -78,6 +102,11 @@ def size_of(signal: float, width: float | None) -> float:
     s = min(1.0, ((abs(signal) - MIN_SIGNAL) / 10) ** 2) if abs(signal) >= MIN_SIGNAL else 0.0
     w = 1.0 if width is None else min(1.0, max(0.0, width / 10))
     return s * w
+
+
+def contracts_of(weight: float, k: int | None) -> float:
+    """Contracts for a 0-1 weight, half up (0 = no order): k None: the weight to the nearest 0.01; else round(k x weight) whole contracts."""
+    return float(np.floor(weight * 100 + 0.5)) / 100 if k is None else float(np.floor(k * weight + 0.5))
 
 
 class Log:
@@ -168,6 +197,38 @@ class PaperBook:
         hit = through | (at & (np.cumsum(np.where(at, p["n"][i:j], 0.0)) > ahead))
         return i + int(np.argmax(hit)) if hit.any() else -1
 
+    def resume(self, events: list[dict]) -> None:
+        """Rebuild the orders from orders.jsonl after a restart, so the runner carries on from where it was: an order
+        in the book keeps its stage, its contract stays busy, and nothing is placed twice. What the log lacks (the
+        queue position ahead of a posted exit) is taken as 0, as when there is no order book."""
+        by_id: dict[int, dict] = {}
+        for e in events:
+            o = by_id.get(e.get("id"))
+            kind = e["event"]
+            if kind == "placed":
+                o = {k: v for k, v in e.items() if k != "event"}
+                o.setdefault("ahead", 0.0)
+                by_id[o["id"]] = o
+            elif o is None:
+                continue
+            elif kind == "filled":
+                crossed = e.get("how") == "crossed"
+                o.update(stage="hold", t_fill=e["t"], entry_fee=fee(TAKER if crossed else MAKER, e["price"] if crossed else o["limit"]))
+                if crossed:
+                    o["entry"] = e["price"]
+            elif kind in ("expired", "cancelled"):
+                o["stage"] = "expired"
+            elif kind == "exit posted":
+                o.update(stage="exit", te=e["t"], exit_limit=e["price"], exit_ahead=0.0, exit_took=None)
+            elif kind == "closed":
+                o.update(stage="closed", exit=e["price"], how=e["how"], t_exit=e["t"], net=e["net"])
+            elif kind == "to settlement":
+                o["stage"] = "settle"
+        self.orders = [by_id[i] for i in sorted(by_id)]
+        self.busy = {}
+        for o in self.orders:
+            self.busy[o["ticker"]] = None if o["stage"] in ("closed", "expired") else o
+
     def is_busy(self, ticker: str) -> bool:
         return self.busy.get(ticker) is not None
 
@@ -210,7 +271,7 @@ class PaperBook:
                 te = o["t_fill"] + HOLD_S
                 n = int(np.searchsorted(p["t"], te, side="right"))
                 ref_e = float(p["px"][n - 1]) if n else o["limit"]
-                o.update(stage="exit", te=te, exit_limit=ref_e + OFFSET * s)
+                o.update(stage="exit", te=te, exit_limit=min(99.0, max(1.0, ref_e + OFFSET * s)))   # a 0c or 100c limit cannot be posted
                 o["exit_ahead"], o["exit_took"] = self._post(o["ticker"], -s, o["exit_limit"], te) if 0 < o["exit_limit"] < 100 else (0.0, None)
                 self.log("orders.jsonl", dict(event="exit posted", id=o["id"], t=te, price=o["exit_limit"]))
             if o["stage"] == "exit":
@@ -253,7 +314,7 @@ class Engine:
     forecasts, decides, updates the paper book and publishes. step(now) is driven by the caller's clock."""
 
     def __init__(self, g: dict, fc: LM.Forecaster, root: Path, kinds: tuple[str, ...], delay: float, pub_live: bool,
-                 pub_kinds: tuple[str, ...] | None = None) -> None:
+                 pub_kinds: tuple[str, ...] | None = None, resume: bool = False) -> None:
         self.g, self.fc, self.L_ = g, fc, g["league"]
         self.kinds, self.delay = kinds, delay
         self.pub_kinds = pub_kinds or kinds
@@ -268,18 +329,53 @@ class Engine:
         self.first_seen: dict[str, float] = {}
         self.plays = None
         self.px = self.pt = self.pstate = None
+        self.px_t = self.pt_t = self.pstate_t = None   # NBA: the same plays stamped at their real end times (see shadow_true)
         self.first_play, self.L, self.p_home = None, math.nan, None
+        self.first_play_logged = False
         self.in_play: str | None = None                # MLB: the pitch description of a ball in play awaiting its result
         self.skip_in_play = True                       # no decisions while it awaits its result (reruns: switchable)
         self.live_clock = True                         # MLB: pitch times as the archive gives them (LM.mlb_plays)
         self.last_k, self.final = -1, False
         self.lags: list[float] = []
+        self.review_type: dict[str, str] = {}          # NBA: ESPN play id -> its review type as last seen
+        self.review_pending: dict[str, float] = {}     # NBA: reviews without an outcome yet -> when first seen
+        self.review_hold = 0.0                         # NBA: no decisions before this time (a review's outcome settling)
+        self.placeholders: list[float] = []            # NBA: times (ESPN) of rows still showing a placeholder
         self.n_dec, self.placed = 0, {}
         # resting entries off the book while a pitch is likely: "window" = once the last pitch we know of is
         # SKIP_AGE old (as for decisions); a callable(t0) -> cancel time = given (e.g. the next pitch's start, hindsight)
         self.cancel_rule: str | None = None
         self.no_short_over = False                     # True: never sell a total ("over") contract
+        self.late_block = False                        # NBA: True = no new entries in the late-game window (LATE_RULE); False = only logged
+        self.k = CONTRACTS_K                           # contracts per order at full weight (None: fractional)
         self.shadow = True                             # also forecast at the frozen 10 s delay, for the log (reruns: off)
+        # NBA: a play counts at max(end + delay, arrival); a late play is stamped with its arrival, so a clump of late plays
+        # is bunched in the model's history (training never sees that). shadow_true also forecasts with every arrived play
+        # stamped at its real end time, which is the state the backtest would have; gate_true skips a decision unless that
+        # forecast gives the same side and at least MIN_SIGNAL
+        self.shadow_true = self.L_ == "NBA"
+        self.gate_true = self.shadow_true               # on for NBA; reruns set it from --gate-true
+        self.rows_true: dict[str, dict] = {}
+        self.resumed: set[str] = set()                 # plays seen before a restart
+        if resume:
+            self._resume(root)
+
+    def _resume(self, root: Path) -> None:
+        """Carry on from the files an earlier run of this game left in root: each play keeps the time it first reached
+        us (so the plays a restart re-reads do not look hours late), and the paper orders are rebuilt. The files are
+        appended to, never rewritten."""
+        if (root / "plays_seen.jsonl").exists():
+            for r in R.rows(root / "plays_seen.jsonl"):
+                if r["key"] not in self.first_seen:
+                    self.first_seen[r["key"]] = r["received"]
+                    self.lags.append(r["delay_s"])
+            self.resumed = set(self.first_seen)
+        if (root / "orders.jsonl").exists():
+            self.book.resume(list(R.rows(root / "orders.jsonl")))
+        if (root / "decisions.jsonl").exists():
+            self.first_play_logged = any(r.get("event") == "first play" for r in R.rows(root / "decisions.jsonl"))
+        if self.first_seen or self.book.orders:
+            print(f"{self.g['game_id']}: resumed {len(self.first_seen)} plays seen, {len(self.book.orders)} orders", flush=True)
 
     # ------------------------------------------------------------------ data in
     def on_feed(self, doc: dict, got: dt.datetime) -> None:
@@ -289,7 +385,7 @@ class Engine:
 
     def _seen(self, doc: dict, got: float) -> None:
         """First time each play reached us; the delay against when it happened (MLB: the pitch's end, as
-        the model times it; NFL: the snap, ESPN's only time)."""
+        the model times it; NFL: the snap, ESPN's only time; NBA: ESPN's time of the row)."""
         new = []
         if self.L_ == "MLB":
             for p in doc["feed"]["liveData"]["plays"]["allPlays"]:
@@ -303,7 +399,10 @@ class Engine:
                         new.append(dict(key=key, happened=happened, received=got, delay_s=got - happened))
             final = doc["feed"]["gameData"]["status"]["detailedState"] in R.FINAL
         else:
-            for r in LM.espn_rows(doc):
+            rows = LM.espn_rows(doc, self.L_)
+            if self.L_ == "NBA":
+                self._calls(rows, got)
+            for r in rows:
                 if r["espn_play_id"] not in self.first_seen and r["t"] is not None:
                     self.first_seen[r["espn_play_id"]] = got
                     new.append(dict(key=r["espn_play_id"], happened=LM.epoch(r["t"]), received=got,
@@ -313,6 +412,36 @@ class Engine:
         self.final = self.final or final
         self.lags += [n["delay_s"] for n in new]
         self.log("plays_seen.jsonl", new)
+
+    def _calls(self, rows: list[dict], got: float) -> None:
+        """NBA: track placeholder rows and reviews (see NBA_PLACEHOLDER)."""
+        self.placeholders = [LM.epoch(r["t"]) for r in rows if r["t"] is not None and NBA_PLACEHOLDER.search(r["event_type"] or "")]
+        for r in rows:
+            e, k = r["event_type"] or "", r["espn_play_id"]
+            if not NBA_REVIEW.search(e) or self.review_type.get(k) == e:
+                continue
+            self.review_type[k] = e
+            if NBA_REVIEW_PENDING.search(e):
+                self.review_pending.setdefault(k, got)
+            else:                                      # an outcome: overturned / stands / supported
+                self.review_pending.pop(k, None)
+                if k not in self.resumed:              # one already settled before a restart holds nothing now
+                    self.review_hold = max(self.review_hold, got + self.delay + REVIEW_SETTLE_S)
+        if self.review_pending or self.placeholders:
+            self.log("calls.jsonl", dict(t=got, pending=sorted(self.review_pending), hold_until=self.review_hold,
+                                         placeholders=len(self.placeholders)))
+
+    def _unsettled(self, t: float) -> str | None:
+        """NBA: why the plays the model would see at t may not be final yet, else None."""
+        if self.L_ != "NBA":
+            return None
+        if any(t - t0 < REVIEW_MAX_S for t0 in self.review_pending.values()):
+            return "review pending"
+        if t < self.review_hold:
+            return "review outcome settling"
+        if any(p + self.delay <= t < p + REVIEW_MAX_S for p in self.placeholders):      # a few are never filled in
+            return "placeholder play"
+        return None
 
     def on_trades(self, rows: list[dict]) -> None:
         out = []
@@ -343,14 +472,22 @@ class Engine:
         if self.L_ == "MLB":
             self.plays = LM.mlb_plays(self.doc, self.start, self.live_clock)
             self.in_play = in_play_pending(self.doc)
+        elif self.L_ == "NBA":
+            self.plays, first_row = LM.nba_live_plays(self.doc, self.start, self.first_seen, self.delay)
+            if self.shadow_true:
+                pt_ = LM.nba_live_plays(self.doc, self.start, None, self.delay)[0]
+                if pt_.height:
+                    self.px_t, self.pt_t, self.pstate_t = LM.play_arrays(pt_, self.L_)
         else:
-            self.plays, _ = LM.nfl_live_plays(self.doc, self.start, self.first_seen)
+            self.plays, _ = LM.nfl_live_plays(self.doc, self.start, self.first_seen, self.delay)
         if self.plays.height:
             self.px, self.pt, self.pstate = LM.play_arrays(self.plays, self.L_)
             if self.first_play is None:
-                self.first_play = LM.epoch(self.plays["t"].min())
+                self.first_play = first_row if self.L_ == "NBA" else LM.epoch(self.plays["t"].min())
                 self.L = LM.pregame_total(self.contracts, self.mk, self.first_play - 60)
-                self.log("decisions.jsonl", dict(event="first play", t=self.first_play, L=self.L))
+                if not self.first_play_logged:
+                    self.log("decisions.jsonl", dict(event="first play", t=self.first_play, L=self.L, late_block=self.late_block,
+                                                     late_kinds=list(LATE_KINDS) if self.late_block else []))
         self.doc_new = False
 
     def step(self, now: float) -> None:
@@ -372,10 +509,14 @@ class Engine:
             rows = self.fc.forecast([st], self.px, self.pt, self.pstate, self.L, self.delay)
             shadow = ({r["ticker"]: r["delta"] for r in self.fc.forecast([st], self.px, self.pt, self.pstate, self.L, SHADOW_DELAY)}
                       if self.shadow else None)
+            self.rows_true = {}
+            if self.shadow_true and self.px_t is not None:
+                self.rows_true = {r["ticker"]: r for r in self.fc.forecast([st], self.px_t, self.pt_t, self.pstate_t, self.L, self.delay)}
             h = self.fc.horizons
             self.log("forecasts.jsonl", [dict(t=t, ticker=r["ticker"], anchor=r["anchor"], plays_known=r["plays_known"],
                                               delta=dict(zip(h, np.round(r["delta"], 3).tolist())),
-                                              delta_d10=dict(zip(h, np.round(shadow[r["ticker"]], 3).tolist())) if shadow else None)
+                                              delta_d10=dict(zip(h, np.round(shadow[r["ticker"]], 3).tolist())) if shadow else None,
+                                              delta_true=dict(zip(h, np.round(self.rows_true[r["ticker"]]["delta"], 3).tolist())) if r["ticker"] in self.rows_true else None)
                                          for r in rows])
             self.book.update(self.mk, now)
             self._decide(t, now, rows)
@@ -390,8 +531,31 @@ class Engine:
         age = t - self.pt[n - 1] if n else math.inf
         return age if win[0] <= age < win[1] else None
 
+    def _stale(self) -> float | None:
+        """ESPN feeds: the longest delay among the last STALE_N new plays, if above STALE_S (a stuck feed:
+        5 of 26 recorded NBA preseason games ran 10-50 min behind; a stall's plays arrive in a clump whose median can
+        be back under STALE_S while the clump is still among the last STALE_N: 24 Oct, BKN @ CLE), else None. MLB: never."""
+        if self.L_ == "MLB" or len(self.lags) < STALE_N:
+            return None
+        m = float(np.max(self.lags[-STALE_N:]))
+        return m if m > STALE_S else None
+
+    def _late(self, t: float) -> str | None:
+        """NBA: why a new entry at t falls in the late-game window (LATE_RULE), else None. Read from the latest play the model
+        knows (its end + delay has passed), so the clock and the lead are as stale as the model's own."""
+        if self.L_ != "NBA" or self.pt is None:
+            return None
+        n = int(np.searchsorted(self.pt, t - self.delay, side="right"))
+        if not n:
+            return None
+        tau, margin = float(self.pstate[n - 1][0]), abs(float(self.pstate[n - 1][1]))
+        left = tau * NBA_REG_S
+        cut = next(s for lead, s in LATE_RULE if margin <= lead)
+        return f"{int(left // 60)}:{int(left % 60):02d} left, lead {margin:.0f}, cut-off {int(cut // 60)}:{int(cut % 60):02d}" if left < cut else None
+
     def _decide(self, t: float, now: float, rows: list[dict]) -> None:
-        skip = self._skip(t)
+        skip, stale, unsettled = self._skip(t), self._stale(), self._unsettled(t)
+        late = self._late(t)
         out = []
         self.placed = {}
         for r in rows:
@@ -409,22 +573,38 @@ class Engine:
             no_i = [i for i in range(n - 1, -1, -1) if not p["yes"][i] and t - p["t"][i] <= WIDTH_S][:1]
             width = float(p["px"][yes_i[0]] - p["px"][no_i[0]]) if yes_i and no_i else None
             d |= dict(ref=ref, signal=round(sig, 3), width=width)
+            if late is not None:
+                d["late"] = late                           # logged whether or not it blocks, so a night can be split by the rule
+            rt = self.rows_true.get(r["ticker"])
+            sig_t = rt["level"][HORIZON] - ref if rt is not None else None
+            if sig_t is not None:
+                d["signal_true"] = round(sig_t, 3)
             side = 1 if sig > 0 else -1
             lim = ref - OFFSET if side == 1 else ref + OFFSET
-            if self.skip_in_play and self.in_play is not None:
+            if stale is not None:
+                d["action"] = f"skip: feed {stale:.0f} s behind"
+            elif unsettled is not None:
+                d["action"] = f"skip: {unsettled}"
+            elif self.late_block and late is not None and r["kind"] in LATE_KINDS and abs(sig) >= MIN_SIGNAL:
+                d["action"] = f"skip: late game ({late})"
+            elif self.skip_in_play and self.in_play is not None:
                 d["action"] = f"skip: ball in play, result pending ({self.in_play})"
             elif skip is not None:
                 d["action"] = f"skip: {skip:.0f} s since the last known pitch"
             elif abs(sig) < MIN_SIGNAL:
                 d["action"] = "signal < 5c"
+            elif self.gate_true and sig_t is not None and not (sig_t * sig > 0 and abs(sig_t) >= MIN_SIGNAL):
+                d["action"] = "skip: signal differs on real-time stamps"
             elif self.book.is_busy(r["ticker"]):
                 d["action"] = "busy"
             elif not 0 < lim < 100:
                 d["action"] = "limit outside 1-99c"
             elif self.no_short_over and r["kind"] == "total" and side == -1:
                 d["action"] = "no short over"
+            elif (n := contracts_of(size_of(sig, width), self.k)) <= 0:
+                d |= dict(action="size rounds to 0", weight=round(size_of(sig, width), 4))
             else:
-                d |= dict(action="order", side=side, limit=lim, size=round(size_of(sig, width), 4))
+                d |= dict(action="order", side=side, limit=lim, size=round(n, 4), weight=round(size_of(sig, width), 4))
                 self.book.place(d)
                 if callable(self.cancel_rule):
                     self.book.orders[-1]["cancel_at"] = self.cancel_rule(t)
@@ -449,7 +629,7 @@ class Engine:
         o = self.book.orders
         closed = [x for x in o if x["stage"] == "closed"]
         lag = np.array(self.lags) if self.lags else np.array([np.nan])
-        return dict(game=self.g["game_id"], league=self.L_, plays_seen=len(self.lags),
+        return dict(game=self.g["game_id"], league=self.L_, plays_seen=len(self.lags), late_block=self.late_block,
                     feed_delay_s={q: float(np.nanquantile(lag, q)) for q in (0.1, 0.5, 0.9)},
                     orders=len(o), filled=sum(x["stage"] in ("hold", "exit", "closed", "settle") for x in o),
                     closed=len(closed), to_settlement=sum(x["stage"] == "settle" for x in o),
@@ -483,26 +663,32 @@ def run_live(g: dict, eng: Engine, rec: R.Recorder) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--league", choices=["MLB", "NFL"], default="MLB")
+    ap.add_argument("--league", choices=["MLB", "NFL", "NBA"], default="MLB")
     ap.add_argument("--date", type=dt.date.fromisoformat, default=R.now().astimezone(R.ET).date())
     ap.add_argument("--games", nargs="*")
     ap.add_argument("--out", type=Path, default=R.OUT)
     ap.add_argument("--weights", default=str(LM.ROOT / "results" / "ingame" / "deploy"))
     ap.add_argument("--kinds", default=",".join(KINDS_DEFAULT))
     ap.add_argument("--delay", type=float, default=0.0, help="a play counts once it has arrived and its end + delay has passed, whichever is later (frozen: 10)")
+    ap.add_argument("--model", help="run name of the weights, e.g. gru_d60_h30-60-120-1800_tp (default: the league's 10-s model)")
     ap.add_argument("--no-books", action="store_true", help="no 15-s order-book polling (live_books_ws.py streams them)")
     ap.add_argument("--publish-kinds", help="kinds whose signals are sent (default: --kinds)")
     ap.add_argument("--publish", action="store_true", help="send to Lumid (default: dry run, payloads only logged)")
+    ap.add_argument("--contracts", type=int, default=CONTRACTS_K, help="whole contracts per order at full weight (K): round(K x weight); default: the backtest weight to the nearest 0.01")
+    ap.add_argument("--rate", type=float, default=8.0, help="Kalshi requests/s for this runner (all runners together: <= 20)")
+    ap.add_argument("--late-block", action="store_true", help="NBA: no new entries in the late-game window (LATE_RULE); without it the window is only logged ('late' on decision rows)")
     a = ap.parse_args()
-    fc = LM.Forecaster(a.league, a.weights)
-    api = R.Api(rate=8.0)                            # MLB and NFL runners share one Kalshi key (signed: 20 req/s)
+    fc = LM.Forecaster(a.league, a.weights, name=a.model)
+    api = R.Api(rate=a.rate)                         # the runners share one Kalshi key (signed: 20 req/s in all)
     games = [g for g in R.schedule(a.league, a.date) if not a.games or g["game_id"] in a.games]
     threads = []
     for g in games:
         g["contracts"] = R.contracts(api, g, a.date)
         root = R.game_root(a.out, a.date, g)
         eng = Engine(g, fc, root, tuple(a.kinds.split(",")), a.delay, a.publish,
-                     tuple(a.publish_kinds.split(",")) if a.publish_kinds else None)
+                     tuple(a.publish_kinds.split(",")) if a.publish_kinds else None, resume=True)
+        eng.k = a.contracts
+        eng.late_block = a.late_block
         hooks = R.Hooks(on_feed=eng.on_feed, on_trades=eng.on_trades, on_candles=eng.on_candles)
         rec = R.Recorder(api, g, g["contracts"], root, hooks)
         if a.no_books:
