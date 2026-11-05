@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -51,6 +51,15 @@ class V:
     rule_mlb: str = "_dec5_one_skip15-60"
     leagues: tuple[str, ...] = LEAGUES
     note: str = field(default="")
+
+    def at(self, L: str) -> "V":
+        """The version as trained for league L: the component and input ablations of NBA and NFL use the 60 s feed delay
+        the live runners use (thesis Section 3.4); MLB and the explicit delay sweeps keep their own delay."""
+        if L not in ("NBA", "NFL") or self.group not in ("A. components", "B. inputs"):
+            return self
+        d60 = replace(self, delay=60)
+        # the full model always at 60 s; an ablation at 60 s once its logs exist, else at the old 10 s (draft fallback: compared with the 10 s full model)
+        return d60 if self.name == "full model (frozen)" or any(OUT.glob(f"{d60.log_stem(L)}_fold*.parquet")) else self
 
     def tag(self, L: str) -> str:
         t = "_h30-60-120-1800_tp" + (f"_r{self.rounds}" if self.rounds != 2 else "")
@@ -135,27 +144,37 @@ def main() -> None:
     pl.Config.set_fmt_str_lengths(45)
     rows, cache = [], {}
     for L in LEAGUES:
-        full = trades(FULL, L)
-        for v in VERSIONS:
-            if L not in v.leagues:
+        full = trades(FULL.at(L), L)
+        ref10 = trades(FULL, L) if L in ("NBA", "NFL") else None            # the 10 s full model: the comparison for ablations not yet trained at 60 s
+        if ref10 is not None:
+            for kind in KINDS:
+                r_seed, r_ens, n_seeds = r2(FULL, L, kind)
+                g = ref10.filter(pl.col("kind") == kind)
+                rows.append(dict(contract=f"{L} {kind}", group="A. components", version="full model (10 s reference)", seeds=n_seeds,
+                                 r2_120s=None if r_seed is None else round(r_seed, 2), r2_ens=None if r_ens is None else round(r_ens, 2), status="ok",
+                                 contracts=round(g["size"].sum()), net_c=round(g["pnl"].sum() / g["size"].sum(), 2)))
+        for v0 in VERSIONS:
+            if L not in v0.leagues:
                 continue
-            t = full if v is FULL else trades(v, L)
+            v = v0.at(L)
+            t = full if v0 is FULL else trades(v, L)
             for kind in KINDS:
                 r_seed, r_ens, n_seeds = r2(v, L, kind)
-                row = dict(contract=f"{L} {kind}", group=v.group, version=v.name, seeds=n_seeds,
+                row = dict(contract=f"{L} {kind}", group=v0.group, version=v0.name, seeds=n_seeds,
                            r2_120s=None if r_seed is None else round(r_seed, 2), r2_ens=None if r_ens is None else round(r_ens, 2))
                 if t is None:
                     rows.append(row | dict(status="no trade logs yet"))
                     continue
                 g = t.filter(pl.col("kind") == kind)
-                fg = full.filter(pl.col("kind") == kind) if full is not None else None
+                base = ref10 if ref10 is not None and v.delay != FULL.at(L).delay and v0.group in ("A. components", "B. inputs") else full
+                fg = base.filter(pl.col("kind") == kind) if base is not None else None
                 games = g["game_id"].unique() if fg is None else pl.concat([g["game_id"], fg["game_id"]]).unique()
                 pg = per_game(g, games)
                 c = g["size"].sum()
                 folds = g.group_by("fold").agg(pl.col("pnl").sum()) if "fold" in g.columns else None
                 row |= dict(status="ok", contracts=round(c), net_c=round(g["pnl"].sum() / c, 2) if c else None, t_game=tstat(pg),
                             folds_up=f"{(folds['pnl'] > 0).sum()}/{folds.height}" if folds is not None else None)
-                if fg is not None and v is not FULL:
+                if fg is not None and v0 is not FULL:
                     d = pg - per_game(fg, games)
                     row |= dict(vs_full_usd=round(d.sum() / 100, 1), vs_full_t=tstat(d))
                 rows.append(row)

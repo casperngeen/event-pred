@@ -53,7 +53,7 @@ def status(state,**kw):
 # arm -> (latency key, Execution options). vol = fills limited to print volume; strict = invalid until snapshot after any book inconsistency.
 ARM_SPECS={'host':('host',{}),'slow':('slow',{}),'stress':('stress',{}),'vol':('host',dict(through='volume')),'strict':('host',dict(repair='strict'))}
 ARMS=tuple(os.environ.get('ARMS','host,slow,stress').split(','))
-SIZING=os.environ.get('SIZING','5x')       # 5x = round(5*weight,.01) (user rule); 1x = round(weight,.01) (b37 'latest' arm)
+SIZING=os.environ.get('SIZING','20x')      # 20x = round(20*weight,.01) (final rule, X.SIZE_X); 1x = round(weight,.01) (b37 'latest' arm)
 
 
 def raw_rows(path,diagnostics):
@@ -184,7 +184,7 @@ def run(e,rule_hash):
     result['initial_feed_plays']=n;result['coverage']='starts_midgame' if n>5 else 'recorded_from_start'
     if e['league'] not in B.FORECASTERS:B.FORECASTERS[e['league']]=B.SharedForecaster(e['league'])
     # Explicit user rule: round(5 * normalized existing weight, .01), half up.
-    sizer=(lambda weight,k:X.size_contracts(weight)) if SIZING=='5x' else (lambda weight,k:math.floor(weight*100+.5)/100)
+    sizer=(lambda weight,k:X.size_contracts(weight)) if SIZING=='20x' else (lambda weight,k:math.floor(weight*100+.5)/100)
     # b37_replay_lookup replaces Engine._decide with an exec'd copy that holds a snapshot of the module globals, so patching
     # live_trade.contracts_of alone never reaches it (every earlier replay silently ran 1x sizing): patch both.
     B.T.contracts_of=sizer;B.T.Engine._decide.__globals__['contracts_of']=sizer
@@ -319,7 +319,7 @@ def summarize(errors,remote_errors):
 def batch(fetch):
     entries,remote_errors=inventory(fetch)
     if os.environ.get('GAMES'):entries=[e for e in entries if e['game'] in os.environ['GAMES'].split(',')]
-    rule=dict(arms=ARMS,sizing_mode=SIZING,sizing='round_half_up(5 * live_trade.size_of(signal,width),0.01)',models=B.MODELS,latency_seconds=LATENCY,
+    rule=dict(arms=ARMS,sizing_mode=SIZING,sizing='round_half_up(20 * live_trade.size_of(signal,width),0.01)',models=B.MODELS,latency_seconds=LATENCY,
               queue='exchange-time book; no advancement from cancellations; through prints fill in full; prints at limit consumed once; whole-cent snap; Kalshi fee ledger',
               sources={str(p.relative_to(B.ROOT)):B.digest(p) for p in [Path(__file__),B.ROOT/'scripts/event_execution.py',B.ROOT/'scripts/live_trade.py',B.ROOT/'scripts/live_model.py']})
     rule['model_weights']={str(p.relative_to(B.ROOT)):B.digest(p) for p in (B.ROOT/'results/ingame/deploy').glob('*.pt') if any(name in p.name for name in B.MODELS.values())}

@@ -9,6 +9,8 @@ ref - k or sell limit at ref + k, resting ENTRY_S seconds. Exit at fill + hold: 
 A fill needs a print beyond our price by more than `through` cents: through = 0 is the usual rule
 (strictly through); through = 1 is stricter (at least 2c through), a check on queue-position luck.
 Variants: (k, through) in VARIANTS.
+BACKTEST_HOLDS=30s selects a different forecast/holding horizon and adds
+_holds30s to output names; the default remains 60s and 120s.
 
     RUN_TAG=_h30-60-120-1800_tpf venv/bin/python -W ignore analysis/graph_2026_10/b7_maker_trades.py \
         results/ingame NBA 10 data/sports/derived/ingame/NBA/panel_v3f
@@ -32,6 +34,13 @@ from stg.sports.loaders import derived_dir, scan_trades                         
 from stg.splits import sports_holdout_unsealed                                       # noqa: E402
 
 HOLDS = {"60s": 60, "120s": 120}
+# Explicit horizon experiments get distinct output names, preserving reference logs.
+if os.environ.get("BACKTEST_HOLDS"):
+    names = os.environ["BACKTEST_HOLDS"].split(",")
+    if any(not h.endswith("s") or not h[:-1].isdigit() or int(h[:-1]) <= 0 for h in names):
+        raise ValueError("BACKTEST_HOLDS must contain positive second horizons, e.g. 30s")
+    HOLDS = {h: int(h[:-1]) for h in names}
+HOLD_TAG = "_holds" + "-".join(HOLDS) if os.environ.get("BACKTEST_HOLDS") else ""
 MIN_SIGNAL = float(os.environ.get("MIN_SIGNAL", 5.0))   # smallest |signal| logged (lower for models with smaller forecasts)
 VARIANTS = [(1, 0), (1, 1), (2, 0)]
 SIGNAL_FROM = os.environ.get("SIGNAL_FROM", "ref")     # "ref" (last print) or "anchor" (the model's value now)
@@ -124,7 +133,7 @@ def main() -> None:
     base_dir = derived_dir() / "ingame" / "results" if sports_holdout_unsealed() else Path(__file__).resolve().parent / "out"
     out = base_dir / (f"b7_maker_trades_{LEAGUE}_d{DELAY:g}{RUN_TAG}{'_sa' if SIGNAL_FROM == 'anchor' else ''}"
                                                      f"{'' if MEMORY == 'gru' else '_' + MEMORY}{f'_seed{SEED}' if SEED else ''}"
-                       f"{f'_dec{DECIDE_S}' if DECIDE_S != 60 else ''}{f'_off{DECIDE_OFFSET_S}' if DECIDE_OFFSET_S else ''}{'_one' if ONE_AT_A_TIME else ''}{f'_min{MIN_SIGNAL:g}' if MIN_SIGNAL != 5 else ''}{f'_skip{SKIP_AGE[0]:g}-{SKIP_AGE[1]:g}' if SKIP_AGE else ''}{f'_fold{FOLD}' if FOLD != '*' else ''}{f'_part{GAME_PART[0]}of{GAME_PART[1]}' if GAME_PART else ''}.parquet")
+                       f"{f'_dec{DECIDE_S}' if DECIDE_S != 60 else ''}{f'_off{DECIDE_OFFSET_S}' if DECIDE_OFFSET_S else ''}{'_one' if ONE_AT_A_TIME else ''}{f'_min{MIN_SIGNAL:g}' if MIN_SIGNAL != 5 else ''}{f'_skip{SKIP_AGE[0]:g}-{SKIP_AGE[1]:g}' if SKIP_AGE else ''}{HOLD_TAG}{f'_fold{FOLD}' if FOLD != '*' else ''}{f'_part{GAME_PART[0]}of{GAME_PART[1]}' if GAME_PART else ''}.parquet")
     f.write_parquet(out)
     print(f"{LEAGUE} d{DELAY:g}: {f.height:,} trades -> {out}")
 
