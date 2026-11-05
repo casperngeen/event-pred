@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.fyp.lumid-watchdog</string>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>/Users/caspe2/NUS/FYP/event-pred/deploy/lumid/watchdog.sh</string></array>
+  <!-- every hour: recreate the sandbox and restart the day if a runner died (silent when all is well) -->
+  <key>StartInterval</key><integer>3600</integer>
+  <key>StandardOutPath</key><string>/Users/caspe2/NUS/FYP/event-pred/data/sports_live/logs/watchdog.log</string>
+  <key>StandardErrorPath</key><string>/Users/caspe2/NUS/FYP/event-pred/data/sports_live/logs/watchdog.log</string>
+</dict>
+</plist>

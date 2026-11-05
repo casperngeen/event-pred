@@ -1,0 +1,29 @@
+# Option 1 of 3 (posting results to Research Fleet): a FlowMesh job that returns our live paper-trading results as metrics.
+# The numbers are each game's summary.json from the sandbox runs (live MLB paper trades 12-15 Oct 2026), embedded in env
+# because a job cannot read the sandbox disk. No network needed.
+# Submit: Studio -> Research Fleet -> Jobs -> Advanced: run YAML (site home).
+apiVersion: flowmesh/v1
+kind: PythonTask
+metadata: {name: fyp-ingame-results}
+spec:
+  taskType: python
+  entrypoint: main
+  image: harbor.lum.id/casper-fyp/fyp-ingame:smoke
+  network: none
+  timeoutSeconds: 120
+  env:
+    SUMMARIES: '[{"date":"2026-10-12","game":"849812","plays_seen":298,"orders":13,"filled":1,"closed":1,"to_settlement":0,"pnl_closed_c":-0.00027203000000000004,"net_per_contract_c":-2.7203000000000004},{"date":"2026-10-13","game":"849813","plays_seen":264,"orders":40,"filled":4,"closed":4,"to_settlement":0,"pnl_closed_c":7.786540202499998,"net_per_contract_c":17.23031875},{"date":"2026-10-14","game":"849811","plays_seen":295,"orders":19,"filled":3,"closed":2,"to_settlement":1,"pnl_closed_c":11.0681229,"net_per_contract_c":20.9182125},{"date":"2026-10-15","game":"849810","plays_seen":296,"orders":15,"filled":7,"closed":6,"to_settlement":1,"pnl_closed_c":1.12355077,"net_per_contract_c":15.287941666666663}]'
+  code: |
+    def main():
+        import json, os
+        rows = json.loads(os.environ["SUMMARIES"])
+        n = lambda k: sum(r[k] for r in rows)
+        return {"games": rows, "metrics": {
+            "games": len(rows),
+            "orders": n("orders"),
+            "filled": n("filled"),
+            "closed": n("closed"),
+            "to_settlement": n("to_settlement"),
+            "pnl_closed_c": round(n("pnl_closed_c"), 4),
+            "mean_net_per_contract_c": round(sum(r["net_per_contract_c"] for r in rows) / len(rows), 3),
+        }}
