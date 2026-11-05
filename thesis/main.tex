@@ -8,7 +8,7 @@
 %            main report, references, appendices
 %   - Citations: author-year (APA style); references sorted by first author
 %   - Optional: <=10 page conference paper in the appendix (on top of 55)
-% Everything marked \todo{...} is a placeholder to be replaced.
+% Future data-dependent editorial updates are tracked in editorial_notes.tex.
 % Build: pdflatex main && pdflatex main   (no BibTeX needed; refs are inline)
 % =============================================================================
 \documentclass[12pt,a4paper,oneside]{report}
@@ -20,7 +20,9 @@
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{float}
 \usepackage{xcolor}
+\usepackage{tikz}
 \usepackage{enumitem}
 \usepackage{caption}
 \usepackage[authoryear,round]{natbib}
@@ -32,6 +34,7 @@
 \setlength{\parskip}{4pt}
 \setlist{nosep}
 \captionsetup{font=small}
+\newcommand{\tablenote}[1]{\par\smallskip{\footnotesize\raggedright #1\par}}
 
 % Keep heading depth shallow (format asks for minimal sub-heading depth)
 \setcounter{secnumdepth}{2}
@@ -39,6 +42,7 @@
 
 % ---- Draft helpers ----------------------------------------------------------
 \newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\InputIfFileExists{generated/results_macros.tex}{}{}
 \newcommand{\figplaceholder}[2]{%
   \begin{figure}[t]\centering
     \fbox{\parbox{0.8\textwidth}{\centering\vspace{2em}\todo{#1}\vspace{2em}}}
@@ -47,10 +51,10 @@
 
 % ---- Project metadata (edit here) -------------------------------------------
 \newcommand{\ProjTitle}{Machine Learning in Prediction Markets}
-\newcommand{\ProjAuthor}{Casper Ng}          % \todo: full name as on matriculation
+\newcommand{\ProjAuthor}{Ng E En Casper}
 \newcommand{\ProjYear}{2026/2027}
-\newcommand{\ProjNo}{\todo{Project No, e.g. H123456}}
-\newcommand{\ProjAdvisor}{\todo{rank, e.g. Assoc Prof} Lu Yao}
+\newcommand{\ProjNo}{H398260}
+\newcommand{\ProjAdvisor}{Assistant Professor Lu Yao}   % as in the 2025/26 reports H398120 / H398140; confirm rank
 
 \begin{document}
 
@@ -61,8 +65,8 @@
 \begin{titlepage}
 \centering
 \vspace*{3cm}
-{\large B.Comp. Dissertation}\\[3.5cm]
-{\LARGE\bfseries \ProjTitle}\\[3.5cm]
+{\large CP4101 -- B.Comp. Dissertation}\\[3.5cm]
+{\LARGE\bfseries \ProjTitle}\\[1cm]{\large Final Report}\\[2.5cm]
 {\large By}\\[0.6cm]
 {\large \ProjAuthor}\\[4cm]
 {\large Department of Computer Science}\\[0.3cm]
@@ -77,8 +81,8 @@
 \begin{titlepage}
 \centering
 \vspace*{1.5cm}
-{\large B.Comp. Dissertation}\\[1.5cm]
-{\LARGE\bfseries \ProjTitle}\\[2cm]
+{\large CP4101 -- B.Comp. Dissertation}\\[1.5cm]
+{\LARGE\bfseries \ProjTitle}\\[0.8cm]{\large Final Report}\\[1.2cm]
 {\large By}\\[0.5cm]
 {\large \ProjAuthor}\\[2cm]
 {\large Department of Computer Science}\\[0.3cm]
@@ -90,7 +94,7 @@
 \hspace{1.5cm}Advisor: \ProjAdvisor\\[0.6cm]
 \hspace{1.5cm}Deliverables:\\
 \hspace{3cm}Report: 1 Volume\\
-\hspace{3cm}Source code and data pipeline: \todo{repository / archive}\\
+\hspace{3cm}Source code and data pipeline: 1 Git repository (link in Appendix~\ref{sec:code-availability})\\
 \end{flushleft}
 \end{titlepage}
 
@@ -105,45 +109,51 @@
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
 \singlespacing
-\todo{Keep to $\le$ 200 words. Draft below; rewrite once results are final.}
-
-Prediction markets such as Kalshi let people trade contracts that pay out if a
-real-world event happens, so their prices can be read as probabilities. This
-project asks whether machine learning can forecast short-term price movements
-in these markets better than the market itself, after realistic trading costs.
-We study two settings. First, we test whether the outcome of one scheduled
-economic release (for example inflation or jobs data) predicts the repricing of
-other related contracts, using a spatial-temporal graph model with a learned
-graph structure. Second, we build a forecaster for live sports markets that
-turns play-by-play data into a price prediction for the moment a play happens,
-and evaluate it with a strict as-of protocol, a frozen holdout, and a live
-paper-trading deployment. \todo{One sentence on headline result, e.g. what
-worked, what did not, and the net-of-cost conclusion.}
+This thesis investigates short-horizon price forecasting in Kalshi sports
+prediction markets across Major League Baseball, the National Basketball
+Association and the National Football League. A neural model combines
+recurrent play-by-play representations with message passing among winner,
+spread and total contracts to forecast price changes over 30--120 seconds.
+Evaluation separates forecast accuracy from trading performance through
+chronological development folds, a later out-of-sample period and live paper trading with
+recorded order-book replay. Spread and total forecasts improve on a no-change
+benchmark, while winner-contract skill is limited. Ablations
+identify structural price inputs and cross-contract message passing as useful
+sources of predictive information. Simulated development returns are positive across the six traded
+market groups, but later out-of-sample performance is less uniform. The forward
+evaluation records positive net returns in four of six groups, with losses on
+MLB and NBA totals. Live observations show how stale reference prices, delayed
+game feeds and adverse selection can limit executable returns. The
+study supports relational price forecasting while showing that
+historical forecast skill and simulated returns do not establish reliable
+live profitability.
 
 \vspace{0.6em}
 \noindent\textbf{Subject Descriptors:}\\[2pt]
-\hspace*{1.2cm}I.2.6 Learning\\
-\hspace*{1.2cm}I.5.1 Models\\
-\hspace*{1.2cm}G.3 Probability and Statistics\\
-\hspace*{1.2cm}J.4 Social and Behavioral Sciences (Economics)\\
-\hspace*{1.2cm}\todo{verify codes against the current ACM CCS / Computing Reviews scheme with advisor}
+\hspace*{1.2cm}Computing methodologies---Machine learning\\
+\hspace*{1.2cm}Computing methodologies---Neural networks\\
+\hspace*{1.2cm}Information systems---Data mining
 
 \vspace{0.6em}
 \noindent\textbf{Keywords:}\\[2pt]
-\hspace*{1.2cm}prediction markets, graph neural networks, time series forecasting,
-market efficiency, sequential decision making
+\hspace*{1.2cm}Artificial Intelligence, Machine Learning, Data Mining, Prediction Markets,
+Time Series Forecasting
 
 \vspace{0.6em}
 \noindent\textbf{Implementation Software and Hardware:}\\[2pt]
-\hspace*{1.2cm}Python 3, PyTorch, pandas, Slurm GPU cluster (NVIDIA A100),
-\todo{OS, cloud sandbox, library versions}
+\hspace*{1.2cm}Python 3, PyTorch, NumPy, Polars, pandas, Matplotlib;\\
+\hspace*{1.2cm}SOC GPU cluster (NVIDIA A100) and lum.id live deployment.
 \onehalfspacing
 
 % ---- Acknowledgement (one double-spaced page) --------------------------------
 \chapter*{Acknowledgement}
 \addcontentsline{toc}{chapter}{Acknowledgement}
 \doublespacing
-\todo{One page. Thank advisor Lu Yao, the evaluator, the School of Computing for GPU cluster access, family and friends.}
+I would like to thank my advisor, Asst. Professor Lu Yao, for guiding this 
+project and providing the lum.id platform for backtesting and live trading experiments. 
+I would also like to thank the other students supervised by Asst. Professor Lu Yao for sharing ideas, 
+discussing challenges and learning together throughout the project. Finally, I am grateful to 
+the School of Computing for access to the GPU cluster on which the models were trained.
 \onehalfspacing
 
 % ---- Contents and lists ------------------------------------------------------
@@ -155,23 +165,58 @@ market efficiency, sequential decision making
 \clearpage
 \addcontentsline{toc}{chapter}{List of Tables}
 \listoftables
-\clearpage
-\chapter*{List of Abbreviations}
-\addcontentsline{toc}{chapter}{List of Abbreviations}
-\begin{tabular}{@{}ll@{}}
-AGCRN & Adaptive Graph Convolutional Recurrent Network\\
-GRU   & Gated Recurrent Unit\\
-STG   & Spatial-Temporal Graph\\
-GNN   & Graph Neural Network\\
-OOS   & Out of sample\\
-PBP   & Play-by-play (event feed of a game)\\
-\todo{add as needed} &
-\end{tabular}
 \onehalfspacing
 
 % =============================================================================
 % MAIN REPORT (arabic numerals, starts at 1; max 55 pages through Conclusion)
 % =============================================================================
+\clearpage
+\chapter*{Key Terminology}\label{sec:terms}
+\addcontentsline{toc}{chapter}{Key Terminology}
+The following Kalshi and trading terms are provided for readers without a
+financial background.
+
+\begin{description}
+  \item[Contract and price.] A contract pays \$1 if its event happens, else \$0.
+        Prices are quoted in cents. A price of 63 cents is commonly interpreted
+        as an implied probability of approximately 63\%, subject to trading
+        costs and other qualifications discussed in Chapter~\ref{ch:background}.
+  \item[Winner, spread and total.] A \emph{winner} contract concerns which
+        team wins. A \emph{spread} contract concerns the winning margin,
+        such as whether a team wins by more than 3.5 points. A \emph{total}
+        contract concerns the combined score, such as whether it exceeds
+        8.5 runs. A game can have many spread and total thresholds.
+  \item[Order book, bid and ask.] The \emph{bid} is the highest price a buyer is
+        currently willing to pay; the \emph{ask} is the lowest price a seller
+        will accept. The gap between them is the \emph{spread} of the book
+        (not to be confused with a spread contract).
+  \item[Limit order and fill.] A limit order specifies the highest price a
+        buyer will pay or the lowest price a seller will accept. A \emph{fill}
+        is an execution of some or all of that order. An order that remains
+        available for others to trade against is a \emph{resting order}.
+  \item[Last trade (last print).] The price of the most recent completed trade.
+        It can be old: if nobody has traded for a minute, the last trade may no
+        longer reflect where the bid and ask are.
+  \item[Maker and taker.] A \emph{maker} supplies a resting quote; a
+        \emph{taker} executes against one. A limit order can act in either
+        role, depending on whether it trades immediately or rests first.
+  \item[Long and short positions.] A \emph{long} position benefits from a
+        price increase; a \emph{short} position benefits from a decrease.
+        In this thesis, buying YES opens a long position and selling YES
+        opens a short position. Closing a position reverses that trade.
+  \item[Settlement.] The exchange resolves the event and pays the contract's
+        final value. A YES contract settles at 100 cents if its condition is
+        met and zero otherwise.
+  \item[Profit factor.] Total profit from profitable trades divided by the
+        absolute total loss from losing trades. A value above one indicates
+        that aggregate profits exceed aggregate losses.
+  \item[Sharpe ratio and maximum drawdown.] The Sharpe ratio compares average
+        profit or return with its variability; the observation interval and
+        annualisation assumptions must be specified. Maximum drawdown is the
+        largest decline in cumulative profit or portfolio value from a
+        preceding peak.
+\end{description}
+
 \clearpage
 \pagenumbering{arabic}
 \setcounter{page}{1}
@@ -181,214 +226,2095 @@ PBP   & Play-by-play (event feed of a game)\\
 \label{ch:intro}
 % -----------------------------------------------------------------------------
 
-\section{Motivation}
+\section{Background}
 Prediction markets are exchanges where each contract pays \$1 if a stated event
 occurs and \$0 otherwise, so a price of 63 cents is read as a 63\% chance
-\citep{wolfers2004prediction,arrow2008promise}. Regulated venues such as Kalshi
-now list thousands of contracts on economic data, policy decisions and sports.
-\todo{Why this matters for ML: high-frequency, labelled, binary-outcome data with an observable ground truth; a clean testbed for forecasting under distribution shift and transaction costs.}
+\citep{wolfers2004prediction,arrow2008promise}. Regulated and crypto-based venues
+such as Kalshi and Polymarket now list thousands of contracts on economic data,
+weather, politics, sports and many other events. Sports account for a large share
+of the activity. Pew Research counts sports as 80\% of all trading volume on Kalshi
+and 39\% on Polymarket between July 2024 and April 2026 \citep{radde2026trading}.
+During the 2026 FIFA World Cup, the combined monthly volume of the two venues rose
+from \$26 billion in May to \$53 billion in July, and sports trading in June and
+July alone reached \$58 billion on Kalshi and \$22 billion on Polymarket
+\citep{radde2026doubled}.
+These figures measure notional taker volume, counting each traded contract at its
+\$1 payout value rather than its transaction price.
+
+Machine learning is now widely applied to financial markets. Models trained on
+firm characteristics and past prices are used to forecast asset returns and
+outperform linear benchmarks \citep{gu2020empirical}, and recurrent networks built
+on the long short-term memory and gated recurrent unit designs read sequences of
+prices to predict the direction of the next move
+\citep{fischer2018deep,cho2014learning}. The same tools have reached betting and
+prediction markets, where models forecast the outcome of sports games and are
+compared with bookmaker odds \citep{bunker2019machine,galekwa2024systematic}.
+Sports prediction markets have a structure that is useful for forecasting.
+A game is traded through several
+contracts that settle on the same final result, with one contract for each team to
+win and ladders of contracts for the margin of victory (spreads) and the combined
+score (totals). The contracts are also tied to an event that is played out in front
+of the market. While the game goes on, its score, the time left and the field
+position change play after play, and the prices of its contracts change with them.
+
+These markets therefore offer two sources of predictive information: the sequence
+of plays within a game and the relationships among contracts on its final score.
+This motivates a model that combines a recurrent representation of play-by-play
+data with message passing between contracts, allowing each contract's forecast to
+use information from the others.
+
+\section{Motivation}
+Prediction-market prices are widely regarded as among the best available measures
+of the probability of an event, because they combine the information and beliefs of
+many traders who stand to lose money if they are wrong
+\citep{wolfers2004prediction,arrow2008promise}. Evidence of slow information
+diffusion in equity markets motivates asking whether similar delays occur in
+sports prediction markets \citep{hong2000bad}.
+
+Live sports provide a setting in which observable events repeatedly update the
+information available to traders. A scoring play, for example, can change the
+probabilities of several related contract outcomes. This makes it possible to
+examine whether game-state information and related contract prices predict
+subsequent price changes beyond a forecast of no change. Whether such
+predictability exists, and how long it persists, bears on how promptly these
+markets incorporate information.
+
+Predictability alone does not establish a trading opportunity. A contract's last
+trade can remain stale after its bid and ask have already adjusted, so predicting
+the next traded price need not identify a price at which a trader can transact.
+Any apparent advantage must also survive fees, feed delay and the possibility
+that a limit order is never filled. This study therefore examines both forecasting
+performance and the execution conditions under which a forecast could be traded.
 
 \section{Problem Statement}
-\todo{State the central question in plain words, e.g.: ``Can a learned model
-predict short-horizon price changes in prediction markets well enough to beat
-the market after trading costs, and how should such a claim be tested honestly?''}
-Sub-questions:
-\begin{enumerate}
-  \item Does information released in one market (a macro data release) move the
-        prices of related markets in a predictable way (Chapter~\ref{ch:macro})?
-  \item Can a sequence/graph model of live game events forecast sports-contract
-        prices ahead of the market (Chapter~\ref{ch:ingame})?
-  \item Do such forecasts survive realistic execution, fees and a live
-        forward test (Chapter~\ref{ch:trading})?
-\end{enumerate}
+This study asks whether a learned model can predict short-horizon price
+changes in sports prediction markets well enough to earn a profit after trading
+costs. Addressing this question requires a forecasting target, a way to combine
+the available information, and an evaluation that separates predictive skill
+from simulated trading gains.
 
-\section{Contributions}
-\todo{3--5 bullets. Candidate list based on the repo:}
+First, the task differs from final-outcome prediction. Much of the reviewed
+machine-learning literature on sports betting forecasts game results and compares
+them with bookmaker odds
+\citep{bunker2019machine,galekwa2024systematic,hubacek2019exploiting}.
+Studies of prediction-market calibration instead ask whether observed outcome
+frequencies agree with price levels \citep{burgi2025makers,moshrefi2026prices}.
+Both inform betting decisions, but neither directly measures the ability to
+forecast a contract's price change over the next 30 to 120 seconds. Work on live
+betting also examines how stakes respond to match events
+\citep{otting2022reaction}; the question here concerns subsequent traded prices
+and returns after execution costs.
+
+Second, the information has both temporal and relational structure. A forecast
+can use the plays observed so far, the current game state and the prices of other
+contracts that depend on the same final score. Whether recurrent play memory and
+explicit information sharing between contracts improve forecasts is a modeling
+question to be tested through ablation, rather than assumed from the market's
+structure.
+
+Third, forecast evaluation and trading evaluation face different sources of
+optimism. Repeated strategy selection can inflate reported returns
+\citep{bailey2014pseudo,lopezdeprado2018advances}. In these markets, stale
+reference prices and uncertain limit-order fills create additional difficulties.
+Historical inputs must respect their assumed availability times, and profitability
+must be assessed separately from accuracy under stated fee and fill assumptions.
+
+The task is therefore to forecast short-horizon changes in traded prices using
+in-game information and related contract prices, and to assess whether these
+forecasts support profitable trading under explicit execution assumptions.
+
+\section{Research Objectives}
+The aim is to build a forecaster of short-horizon price changes in sports
+prediction markets and to evaluate it under explicit information-availability and
+execution assumptions. This breaks down
+into four objectives:
 \begin{itemize}
-  \item A strategy-pattern framework for building spatial-temporal graph
-        datasets from event-driven market data.
-  \item A negative-result study showing when learned graph structure
-        (AGCRN) does not beat imposed economic structure or linear baselines,
-        including a semi-synthetic structure-recovery test.
-  \item A strict as-of evaluation protocol that avoids look-ahead in features,
-        baselines and instrument selection.
-  \item An in-game forecasting model with a frozen holdout specification and
-        a live paper-trading system.
-  \item An analysis of execution cost, adverse selection and feed latency.
+  \item Develop an in-game forecaster that combines play-by-play data with market
+        prices to predict contract-price changes at 30, 60 and 120 seconds
+        (Chapter~\ref{ch:ingame});
+  \item Quantify the contribution of model components and inputs through ablation,
+        and assess sensitivity to feed delay and trading rules
+        (Chapter~\ref{ch:experiments});
+  \item Evaluate forecasting and trading performance using an as-of protocol,
+        walk-forward folds, a later out-of-sample period with documented protocol revisions,
+        and explicit fee and fill assumptions
+        (Chapters~\ref{ch:data} and~\ref{ch:experiments});
+  \item Compare historical simulation with live paper trading to identify
+        differences associated with feed availability and execution
+        (Chapter~\ref{ch:trading}).
 \end{itemize}
 
-\section{Report Outline}
-\todo{One short paragraph mapping chapters to the questions above.}
+The study uses Kalshi as its only trading venue. Its accessible trade history,
+order book and fee schedule support historical analysis and live paper trading,
+subject to assumptions about historical quote availability and execution. It covers
+Major League Baseball (MLB), the National Basketball Association (NBA) and the
+National Football League (NFL). The model forecasts winner, spread and total
+contracts, while the trading evaluation is restricted to spreads and totals.
+Evaluation consists of historical simulation and live paper trading, with no real
+orders submitted.
+
+\section{Research Approach}\label{sec:approach}
+The study asks two questions in turn. Does the forecaster predict short-horizon
+price changes better than assuming no change? And, if it does, does that forecast
+survive fees, order fills and the delay with which live feeds report plays? The
+first is a question about forecasting accuracy, the second about trading, and
+they are evaluated separately because an accurate forecast need not be tradable.
+
+The evidence is built in three stages (Table~\ref{tab:approach}). Walk-forward
+forecasts use games later than each model's training sample, but their results
+also inform model and strategy selection. A later out-of-sample period tests
+transfer beyond development, subject to the protocol changes disclosed in
+Section~\ref{sec:data-splits}. Live paper trading and order-book simulation
+then examine the strategy under observed feed arrivals and liquidity. Each
+stage applies the as-of rule: a forecast uses only information available at
+the decision time. Chapter~\ref{ch:data} gives the full protocol.
+
+\begin{table}[htbp]
+\centering
+\caption{Evaluation Stages}
+\label{tab:approach}
+\small
+\begin{tabular}{@{}p{2.6cm}p{3.6cm}p{4.2cm}p{3.6cm}@{}}
+\toprule
+Stage & Data & Fixed beforehand & What it can support\\
+\midrule
+Walk-forward folds & Games before 1 July 2026, all three sports &
+  Chronological training; results used to choose the model and trading rule &
+  Forecast skill and component contributions, as development evidence\\
+Later out-of-sample & Games from 1 July 2026 (baseball and football only) &
+  Entry and exit rules, except the revised football decision interval &
+  Whether the findings carry over to unseen games\\
+Forward evaluation & Live-recorded feeds and order books; no exchange orders submitted &
+  Trained models; feed safeguards examined separately &
+  Feed and execution effects; sample too small for profitability claims\\
+\bottomrule
+\end{tabular}
+
+\end{table}
+
+Chapter~\ref{ch:experiments} reports forecasting and historical trading results
+in this order: forecast accuracy, the trading rule and its assumptions, backtest
+profit, ablations, and sensitivity. Chapter~\ref{ch:trading} then reports what the
+live runs showed.
+
+\section{Main Contributions}
+This work makes three contributions.
+\begin{itemize}
+  \item An in-game forecasting model that combines recurrent play-by-play
+        representations with message passing among winner, spread and total
+        contracts to predict price changes over 30--120 seconds.
+  \item An empirical analysis of the sources of short-horizon predictability
+        across three sports. Component and input ablations examine the value of
+        structural price references and contract message passing, while finding
+        little additional benefit from play-type labels given the remaining
+        inputs. Feed-delay experiments characterize how forecasting and simulated
+        trading performance respond to information latency under the stated
+        decision rules.
+  \item A combined historical and live paper-trading evaluation that identifies
+        practical limits to converting forecasts into trading returns. It combines
+        an as-of protocol, later out-of-sample data and live observations to document
+        discrepancies involving stale reference prices, feed arrival times and
+        order execution, and assesses their implications for interpreting
+        simulated profitability.
+\end{itemize}
+
+\section{Summary of Results}
+On the walk-forward folds, the forecaster improves on predicting no price change
+and produces positive simulated returns after modeled fees across the six spread
+and total contract types. These folds also informed the trading rule and sizing,
+so their returns are development results rather than an independent test of the
+chosen strategy. Ablations indicate that structural price inputs are particularly
+valuable, message passing improves forecast skill across all six contract types,
+and play-type labels add little.
+
+At the two-minute horizon, development forecast skill ranges from 4.5\% to
+7.9\% across the six spread and total groups. In the later out-of-sample period,
+baseball earns 5.4 and 5.0 cents per contract on spreads and totals respectively;
+football earns 2.6 and 0.1 cents under its revised decision interval. The
+forward evaluation covers \resmainMLBAllgames{} MLB, \resmainNBAAllgames{} NBA
+and \resmainNFLAllgames{} NFL games, with positive net returns in four of six
+contract groups. MLB totals and NBA totals lose money. These observations
+support some transfer of the selected signals while showing that feed
+availability and execution remain important. Detailed uncertainty measures and the
+protocol qualifications accompany the results in
+Chapters~\ref{ch:experiments} and~\ref{ch:trading}.
+
+\section{Organization of the Report}
+Key terminology is defined at the front of the report.
+Chapter~\ref{ch:background} reviews related work and positions this study.
+Chapter~\ref{ch:data} defines the market setting and forecasting task, then
+presents the data construction and evaluation protocol.
+Chapter~\ref{ch:ingame} presents the proposed forecasting method, including
+input representations, model architecture and training procedure.
+Chapter~\ref{ch:experiments} presents forecast accuracy, the trading strategy and
+historical returns, followed by ablations and sensitivity analysis.
+Chapter~\ref{ch:trading} presents the live system, execution simulator and
+forward-test results, then examines feed and execution problems through
+diagnostic analysis of stale prices and adverse selection.
+Chapter~\ref{ch:conclusion} draws together the findings, discusses the study's
+limitations and identifies directions for further work.
 
 % -----------------------------------------------------------------------------
-\chapter{Background and Related Work}
+\chapter{Related Work}
 \label{ch:background}
 % -----------------------------------------------------------------------------
-\section{Prediction Markets and Kalshi}
-Contract structure, order book, taker/maker, fee schedule (fee grows with
-$p(1-p)$), settlement. \todo{Cite Kalshi documentation; keep to what the
-models need.}
+This chapter reviews four themes: calibration and information arrival in
+prediction markets, sports outcome and in-game probability models, temporal and
+relational forecasting, and the evaluation of forecasts and trading strategies.
+A final synthesis identifies the questions addressed by this study.
 
-\section{Market Efficiency and Underreaction}
-Efficient-markets framing; evidence for slow information absorption
-\citep{hong2000bad}; microstructure and signed order flow \citep{lee1991inferring}.
-\todo{Add prediction-market-specific efficiency / favourite--longshot bias
-literature; add the sports-market paper discussed in the research summary.}
+\section{Calibration and Information in Prediction Markets}\label{sec:efficiency}
+\paragraph{Prices as probabilities.}
+Prediction markets aggregate information through trading, so their prices are
+often interpreted as forecasts of event probabilities
+\citep{wolfers2004prediction,arrow2008promise}. This interpretation can be assessed
+by comparing prices with observed outcomes: among contracts trading at 20 cents,
+roughly 20\% should eventually pay out. Such agreement is called calibration.
+Calibration across a sample does not, however, establish how quickly prices
+respond to individual events during a game.
 
-\section{Learning on Time Series and Graphs}
-\begin{itemize}
-  \item Recurrent models: GRU \citep{cho2014learning}.
-  \item Spatial-temporal graph networks and adaptive graph learning:
-        AGCRN \citep{bai2020adaptive}. \todo{Add Graph WaveNet, DCRNN, STGCN.}
-  \item Gradient-boosted trees and linear baselines as strong references.
-\end{itemize}
+One departure from calibration is the favourite--longshot bias, in which longshots
+win less often than their prices imply. In horse-race betting,
+\citet{snowberg2010explaining} use compound bets to distinguish probability
+misperceptions from risk-loving preferences, finding stronger support for
+misperceptions as an explanation of longshot overbetting.
+On Kalshi, \citet{burgi2025makers} relate favourite--longshot patterns to fees
+and maker--taker participation, showing that observed returns also depend on
+how traders enter the market.
+For sports moneyline contracts, \citet{moshrefi2026prices} finds that calibration
+varies with time to expiry, with sharper departures near settlement. These
+results concern agreement with settlement outcomes, a different property from
+the speed at which new information enters prices.
 
-\section{Evaluating ML Forecasts in Finance}
-Look-ahead bias, overlapping labels, multiple testing, and why published gains
-often disappear out of sample \citep{bailey2014pseudo,lopezdeprado2018advances}.
-\todo{Link to literature notes in reports/literature\_stg\_finance.md.}
+\paragraph{Reactions to information.}
+Across sports, discrete game events allow researchers to examine how quickly
+prices incorporate news. In association football, \citet{gil2007testing} report
+mixed evidence from the 2002 World Cup, including continued price trends after
+goals. Such drift can also reflect changing outcome probabilities as game time
+passes. \citet{croxson2014information} isolate goal news from this continuing
+information flow by examining goals near half-time and find swift, full price
+adjustment. Their comparison shows why post-event drift alone need not imply
+an exploitable delay.
 
-\section{Machine Learning for Sports Betting}
-Surveys cover the algorithms and evaluation practices used
-\citep{bunker2019machine,galekwa2024systematic}. Two results shape our design:
-choosing models by calibration rather than accuracy gives better betting returns
-\citep{walsh2024machine}, and a model should be rewarded for differing from the
-bookmaker's odds rather than for matching them \citep{hubacek2019exploiting}.
-For in-game forecasting, simple calibrated models are a strong baseline
-\citep{pelechrinis2017iwinrnfl}. \todo{Add the NBA recurrent-model thesis (Poole)
-and discuss that prior work targets bookmaker odds, whereas we target
-prediction-market prices with an explicit execution model.}
+Adjustment may also differ across contracts on the same game.
+\citet{brown2014information} finds temporary mispricing between related in-play
+tennis assets, partly associated with differences in their price-update
+frequencies. This motivates examining whether related sports contracts help
+forecast one another's subsequent price movements, even when they respond to
+the same underlying news.
 
-\section{Positioning of This Work}
-\todo{Short comparison table: prior work vs.\ this project (data, task, evaluation, costs).}
+An apparent delay can, however, arise from infrequent trading.
+\citet{hasbrouck1991measuring} models trades and quote revisions jointly to
+estimate the information content and lasting price impact of trades. In sparse
+sports markets, a later print may simply catch up with quotes that have already
+incorporated the news. Forecasting that print does not establish an executable
+opportunity; the relevant check is whether the predicted movement remains
+tradable at the available quotes.
+
+\section{Sports Prediction and In-Game Probabilities}
+\paragraph{Outcome prediction.}
+Reviews by \citet{bunker2019machine} and \citet{galekwa2024systematic} cover neural
+networks, statistical classifiers and ensemble methods for sports prediction and
+betting. Bunker and Susnjak emphasise feature engineering, comparison across
+model families and the difficulty of comparing results obtained from different
+datasets and competitions. Their findings support evaluating both input
+representations and architecture within a common forecasting task.
+
+For betting, a likely winner is attractive only at odds offering a positive
+expected return. \citet{hubacek2019exploiting} incorporate this distinction into
+an NBA forecasting system by reducing correlation with bookmaker forecasts and
+allocating bets through a portfolio-based rule. A model that mainly reproduces
+the bookmaker's predictions offers little basis for identifying favourable odds.
+\citet{walsh2024machine} likewise find that calibration-based model selection
+produces better NBA betting returns than accuracy-based selection. Correctly
+ranking the likely winner is insufficient when betting decisions depend on the
+size of the probability difference from market odds.
+
+\paragraph{In-game probability models.}
+In-game models update outcome probabilities as play progresses.
+\citet{pelechrinis2017iwinrnfl} develop a logistic regression model of NFL win
+probability from play-by-play variables, reporting well-calibrated probabilities
+without significant improvement from the more complex nonlinear models considered.
+This suggests that much of the predictive information may already be captured by
+current-state variables. In soccer, \citet{robberechts2021bayesian} estimate
+remaining goals through time-varying scoring rates conditioned on game context,
+then obtain win, draw and loss probabilities. Their approach makes the scoring
+process explicit, which is important when a single goal can substantially change
+the outcome. These models estimate fundamental game uncertainty; the
+event-response literature instead asks how market prices incorporate it.
+
+Distributional models also connect game state to related contract outcomes.
+\citet{stern1994brownian} models basketball score differences using Brownian
+motion and derives win probabilities conditional on the lead and elapsed time.
+A distribution of the final margin can provide probabilities for both winning
+and covering a spread; totals require a distribution of the combined score.
+This motivates the structural reference used here, which combines game-state
+and market information under explicit distributional assumptions. Its
+construction is described in Chapter~\ref{ch:ingame}.
+
+\section{Temporal and Relational Forecasting Models}
+\paragraph{Sequence and graph representations.}
+In-game forecasting can draw on both the current state and the sequence of events
+that produced it. The gated recurrent unit of \citet{cho2014learning} updates a
+hidden representation through gates that retain previous information or replace
+it with new information. This allows a play history to be summarised as the game
+progresses. A GRU is a practical recurrent encoder here; the literature does not
+establish it as preferable to an LSTM or transformer for this task. Its predictive
+value depends on whether history adds information beyond the current score,
+clock and other state variables.
+
+A complementary source of information lies in the relationships between
+contracts. Since winner, spread and total contracts settle on the same game,
+their prices may help inform one another's forecasts. Message-passing networks
+provide a framework for incorporating these relationships by updating each
+node's representation with information aggregated from its neighbours
+\citep{gilmer2017neural}. The graph specifies which contracts exchange
+information, while learned transformations allow their influence to vary with
+contract features. This accommodates differences in how contracts respond to
+the same play.
+
+\paragraph{Temporal graph forecasting.}
+Temporal graph models address forecasting problems in which related series
+evolve together. DCRNN combines recurrent modelling with a directed road graph,
+allowing traffic forecasts to use connected sensors \citep{li2018diffusion}.
+Graph WaveNet and AGCRN instead learn additional or alternative connections
+from data \citep{wu2019graph,bai2020adaptive}. The distinction concerns whether
+relationships are supplied from domain knowledge or estimated during training.
+In finance, \citet{luo2024spatial} derive a company graph from financial-news
+co-occurrences, allowing a stock forecast to draw on related companies. These
+statistical links are a weaker analogue than the shared settlement variables of
+sports contracts. Brown's evidence of uneven adjustment across related betting
+assets supplies the more direct economic motivation; graph forecasting supplies
+a method for learning how information is combined across those assets.
+
+\paragraph{What architecture comparisons establish.}
+Sequence memory and cross-contract aggregation address different hypotheses:
+whether play history adds information beyond the current state, and whether
+other contracts add information beyond a contract's own features. Neither
+hypothesis requires assuming that a neural model is superior. The component
+ablations in Chapter~\ref{ch:experiments} test these contributions within the
+chosen model, with forecast skill measured against no change. They do not
+establish superiority over other nonlinear model families, which would require
+matched comparisons on the same forecasting task. The detailed
+architecture is presented in Chapter~\ref{ch:ingame}.
+
+\section{Evaluating Forecasts and Trading Strategies}
+\paragraph{Forecast metrics and temporal validation.}
+The distinction between forecasting outcomes and trading price movements also
+shapes evaluation. For outcome probabilities, strictly proper scoring rules,
+including logarithmic and Brier scores, are optimized in expectation by reporting
+the true probabilities \citep{gneiting2007strictly}. Unlike classification
+accuracy, they distinguish between forecasts that select the same winner but
+assign different probabilities. For price changes, squared error evaluates the
+conditional-mean forecast. Benchmark-relative forecast skill compares its error
+with that of a simple reference, as in the out-of-sample evaluation of
+\citet{campbell2008predicting}. Here the reference is zero change, rather than
+their historical-average return: it asks whether a forecast improves on retaining
+the current price. The resulting $R^2_{\mathrm{NC}}$ is a squared-error skill
+score, not conventional mean-centred $R^2$. Predictive skill alone does not
+account for the prices and quantities available for execution.
+
+The reliability of historical returns also depends on how the strategy was
+selected. Comparing many variants increases the chance of selecting one that
+performed well through sampling noise, even when each variant uses chronological
+splits \citep{bailey2014pseudo,lopezdeprado2018advances}. Results used to choose
+an architecture, trading threshold or sizing rule therefore form part of
+strategy development. A separate out-of-sample period
+provides stronger evidence when its protocol is fixed before the results are
+examined. In live sports, this temporal discipline extends to feed availability:
+an archived play timestamp may precede the time at which its information
+actually reached a trader.
+
+Dependence between observations further affects the interpretation of results.
+Forecasts at overlapping horizons share future prices, and contracts on the
+same game share information and outcomes. Treating these observations as
+independent can overstate precision. Cluster-based inference permits dependence
+within groups, provided assumptions about the independence of clusters are
+credible \citep{cameron2015practitioner}. Aggregating returns or paired model
+differences by game addresses within-game dependence; it does not eliminate
+dependence between simultaneous games. Resampling whole games, or date blocks
+when shared conditions matter, preserves more of this dependence than resampling
+individual forecast rows. The implemented uncertainty measures are specified in
+Chapter~\ref{ch:data}.
+
+\paragraph{Maker fees, fills and adverse selection.}
+Execution costs matter when forecast movements are only a few cents. Kalshi
+distinguishes taker orders executing against existing quotes from maker orders
+resting on the book; a limit order can execute in either role
+\citep{kalshi2026feeshelp}. \citet{burgi2025makers} find higher average returns
+after fees for makers than takers, although both groups have negative average
+returns in their sample. Providing liquidity is consequently not universally
+profitable. \citet{avellaneda2008high} formalise the trade-off between quote
+placement, execution intensity and inventory risk. Their market-making model
+provides context for passive execution, rather than a direct model of a
+directional sports strategy or empirical validation of its fills.
+
+Execution also exposes traders to adverse selection. \citet{glosten1985bid}
+show how better-informed traders selectively accept favourable quotes, imposing
+expected losses on liquidity providers. In a live game, a resting buy order may
+be filled after news has reduced the contract's value, before it is cancelled
+or repriced. \citet{lo2002econometric} estimate limit-order execution times from
+actual order data using survival analysis, illustrating why execution probability
+is an empirical object rather than an automatic consequence of a favourable
+forecast. Historical prints alone do not reveal a hypothetical order's queue
+position or guarantee its fill. Evaluation must account for both the orders that
+execute and the returns conditional on execution.
+
+\paragraph{Sizing and risk.}
+Sizing can change trading returns even when forecasts and entry rules are held
+fixed. \citet{kelly1956new} derives allocation by maximising expected logarithmic
+wealth growth; applying that principle requires a distribution of payoffs and
+attention to simultaneous exposures. Contracts on one game share risk, so
+independent contract-level sizing can concentrate exposure. For a strategy that
+exits before settlement, the relevant payoff distribution includes exit prices,
+fees and execution uncertainty. A Kelly fraction based solely on final win
+probability is consequently not justified by a short-horizon price-change
+forecast. Empirical sizing rules require the same evaluation discipline as
+entry thresholds.
+
+\section{Synthesis and Research Gap}
+The literature distinguishes estimating game uncertainty, forecasting market
+adjustment and demonstrating an executable return. This study brings those
+questions together for related contracts on the same sporting event.
+
+The reviewed work leaves open whether jointly modelling Kalshi winner, spread
+and total contracts improves short-horizon traded-price forecasts, and whether
+any gains survive information delays, executable-price checks, fees and
+conditional fills. Our contribution is an empirical test of these questions
+across three sports, with component ablations separating play memory from
+cross-contract aggregation. Predictability of a stale last print is insufficient
+evidence of a tradable lag; the economic conclusion depends on execution
+evidence as well as the forecast score.
 
 % -----------------------------------------------------------------------------
-\chapter{Data and Problem Formulation}
+\chapter{Problem Formulation and Data}
 \label{ch:data}
 % -----------------------------------------------------------------------------
-\section{Data Sources}
-\begin{itemize}
-  \item Kalshi trade archive (tens of millions of trades; labelled taker side)
-        and market metadata. \todo{final counts and date range}
-  \item Macro release calendar with consensus forecasts, and macro indicators.
-  \item Play-by-play feeds for MLB, NBA, NFL. \todo{sources, latency table}
-\end{itemize}
-\todo{Table: dataset, size, period, source, known gaps (e.g.\ no historical quotes, archive concentrated in 2025).}
+This chapter establishes the market setting, defines the forecasting task and
+describes the data and evaluation protocol. Data construction distinguishes
+information available at a decision time from future prices and settlement
+outcomes used as labels. The historical development sample, later out-of-sample period and live
+observations support different claims about generalisation and trading
+performance. These definitions provide the basis for the proposed forecasting
+method in Chapter~\ref{ch:ingame}, which explains the input representations,
+model architecture and training procedure.
 
-\section{Strict As-Of Principle}
-Every feature and every normaliser is computed only from information available
-at the decision time; baselines are rolling or expanding, never full-history.
-\todo{Describe the as-of layer and the integrity checks.}
+\section{Market Setting and Contract Universe}\label{sec:kalshi}
+The study covers game-level contracts on MLB, NBA and NFL games traded on Kalshi.
+Each contract has YES and NO outcomes, with a correct position paying \$1 at
+settlement. Prices are expressed in cents throughout the analysis. Winner
+contracts concern the winning team, spread contracts concern a team's margin of
+victory, and total contracts concern the combined score. Different thresholds
+produce ladders of related contracts on the same game.
 
-\section{Task Definitions}
-\todo{Formalise both tasks: inputs, target (price change over horizon $h$ or
-settlement value), decision time, metrics (R$^2$, AUC, gross and net P\&L per
-contract).}
+The forecasting universe comprises winner, spread and total contracts, which
+share game-level information and offer usable market coverage for joint
+modelling. Other markets were excluded because of limited quote coverage,
+additional feature requirements, or weak forecasting and trading potential in
+preliminary analysis. 
 
-\section{Splits and Evaluation Protocol}
-Walk-forward / time-ordered splits, block permutation tests, frozen holdout.
-\todo{Describe split dates and what is frozen before looking at results.}
+Games enter the development panel when they have matched play-by-play data,
+a winner contract, and both spread and total ladders. Only regular-season and
+playoff games are included; preseason and exhibition games, including MLB spring
+training, NBA preseason and NBA Summer League, are excluded.
+
+The historical analysis uses individual trade records and one-minute bid and ask
+candlesticks because continuous order-book records are unavailable for this sample
+\citep{kalshi2026trades,kalshi2026candles}. Trades identify the initiating side:
+a YES-taker print provides an ask-side observation, while a NO-taker print
+provides a bid-side observation when expressed as a YES price. These observations
+supplement the candlesticks between minute updates, but cannot recover continuous
+quotes, available depth or queue positions. This data choice supports price
+forecasting while limiting the precision of historical execution estimates;
+fills must be assessed under the assumptions in Section~\ref{sec:execution}.
+
+Contract outcomes are taken from Kalshi's settlement labels. The game's final
+score provides an integrity check, while its play-by-play end time determines
+the end of the in-game observation period. Market closure follows the exchange's
+own schedule and can occur before or after the game ends, so using it as the
+game-end timestamp could truncate play or include post-game observations as
+in-game data. The pipeline therefore uses the sports feed to identify game end
+and retains the exchange close time as a diagnostic. The feed-based boundary
+also identifies forecast horizons extending beyond the game, for which missing
+future trades may be replaced by settlement payoffs as described below.
+
+\section{Forecasting Task}\label{sec:task}
+The task is to forecast traded-price changes in winner, spread and total
+contracts on MLB, NBA and NFL games. For game $g$, let $C_g(t)$ be its set of
+contracts at decision time $t$, and let $X_g(t)$ contain the play history, game
+state and market observations available by that time. The forecasting problem is
+\begin{align}
+  \widehat\Delta_i^{(h)}(t) &= f_\theta\bigl(X_g(t),i,h\bigr),
+  && i\in C_g(t),\quad h\in\{30,60,120\},
+  \label{eq:forecast-mapping}\\
+  \Delta_i^{(h)}(t) &= \bar p_{i,h}(t)-a_i(t),
+  \label{eq:forecast-target}
+\end{align}
+where $a_i(t)$ is the reference price at decision time and $\bar p_{i,h}(t)$ is
+the representative future traded price defined below. Both prices and their
+difference are measured in cents; horizons are in seconds. The model parameters
+$\theta$ are learned from the training data. Inputs use only information available
+at $t$, while future prices supply the targets. The horizons are
+30, 60 and 120 seconds, with the 120-second forecast used for trading.
+Figure~\ref{fig:forecast-timeline} illustrates the timing of inputs and targets.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=0.95cm,y=1cm,font=\small]
+  \definecolor{inputblue}{HTML}{46698A}
+  \definecolor{targetteal}{HTML}{347C76}
+  % Separate the information available at the decision from future labels.
+  \fill[inputblue!12] (0,0.15) rectangle (5,0.8);
+  \fill[targetteal!16] (10,0.15) rectangle (13.5,0.8);
+  \node[align=center,text width=4.5cm] at (2.5,1.5)
+    {Available inputs $X_g(t)$\\Plays, game state and contract observations};
+  \node[align=center,text width=3.6cm] at (11.75,1.5)
+    {Future trades\\used to form the target};
+  \draw[->,thick] (0,0) -- (14.3,0) node[right] {Time};
+  \draw[thick,inputblue] (5,-0.12) -- (5,0.9);
+  \draw[dashed,targetteal] (10,0) -- (10,0.9);
+  \draw[dashed,targetteal] (13.5,0) -- (13.5,0.9);
+  \node[below,align=center] at (5,-0.15)
+    {$t$\\Decision; reference $a_i(t)$};
+  \node[below] at (10,-0.15) {$t+h$};
+  \node[below] at (13.5,-0.15) {$t+h+15$};
+  \draw[<->] (5,0.5) -- (10,0.5)
+    node[midway,above] {Forecast horizon $h$};
+  \foreach \x in {10.5,11.2,12.1,12.8,13.2}
+    \fill[targetteal] (\x,0) circle (1.7pt);
+  \node[align=center] at (11.75,-1.25)
+    {15-second target window\\Volume-weighted price $\bar p_{i,h}(t)$};
+  \node at (7,-2.3)
+    {Target: $\displaystyle\Delta_i^{(h)}(t)=\bar p_{i,h}(t)-a_i(t)$};
+\end{tikzpicture}
+\caption{Forecast timing for one contract and horizon. Inputs include only
+information available by $t$; plays enter after the specified feed delay.
+Dots represent trades in $(t+h,t+h+15]$, used to construct the future-price
+label rather than the inputs. The timeline is schematic and not to scale.}
+\label{fig:forecast-timeline}
+\end{figure}
+
+\paragraph{Decision times and inputs.}
+The play unit is one pitch in MLB, one possession in NBA and one play from
+scrimmage in NFL. Each game is sampled on a five-second grid. At time $t$, the model receives the
+play history available under the specified feed delay, the corresponding game
+state, and observations of the game's contracts available by that time. Play
+features include event type, score changes and feed-provided win probabilities;
+contract features include prices, quote age and recent trading activity. The
+structural price reference is computed from the available game state and market
+information. Chapter~\ref{ch:ingame} describes these representations and how they
+are combined.
+
+For contract $i$, let $a_i(t)$ denote the price from which the forecast change is
+measured. In the traded-price panel, this anchor is the last trade no more than
+120 seconds old, with a reconstructed quote-based value used when that trade is
+unavailable. The separate trading rule requires a print within the previous
+60 seconds before considering an entry. Forecasting rows and trading decisions
+therefore have different eligibility conditions.
+
+\paragraph{Future-price targets.}
+Trading is irregular, so an exact transaction price need not exist at $t+h$.
+Instead, the target uses the trades in the following 15-second window,
+\begin{equation}
+  J_{i,t,h}=\{j: t+h < t_{ij}\leq t+h+15\},
+\end{equation}
+where $t_{ij}$ is the timestamp of trade $j$ in contract $i$. If $p_{ij}$ is its
+YES price and $v_{ij}$ its size, the representative future price is
+\begin{equation}
+  \bar p_{i,h}(t)=
+  \frac{\sum_{j\in J_{i,t,h}}v_{ij}p_{ij}}
+       {\sum_{j\in J_{i,t,h}}v_{ij}}.
+\end{equation}
+The minimum and maximum prices in the same window define an interval used by
+the training loss. Forecast accuracy is evaluated against the volume-weighted
+price change defined in Equation~\eqref{eq:forecast-target}.
+
+An empty target window is marked missing and does not contribute to that
+horizon's price score or loss. Where a horizon extends beyond the feed's end of
+game and there is no target-window trade, the panel substitutes the contract's
+settlement payoff. These observations concern terminal value rather than a
+subsequent execution price. The model also has an auxiliary binary target
+$y_i\in\{0,1\}$ indicating whether the contract settles YES. Price-change
+forecasts drive the trading decisions in Chapter~\ref{ch:trading}; the settlement
+output supports training through the auxiliary objective in
+Section~\ref{sec:ingame-loss}. Future prices and outcomes are labels and do not
+enter the input history.
+
+\section{Data Sources and Coverage}\label{sec:data-sources}
+\paragraph{Market and sporting data.}
+Market listings supply contract identifiers, rules, thresholds and settlement
+labels. Kalshi's trade records provide prices, quantities, timestamps and taker
+sides, while one-minute candlesticks provide bid and ask observations
+\citep{kalshi2026trades,kalshi2026candles}. The historical dataset does not contain
+a continuous order-book reconstruction with depth or queue positions.
+
+MLB play-by-play is obtained from the MLB Stats API, including pitch timestamps,
+counts, outs and scores. Its win-probability feed supplies updates at the
+plate-appearance level \citep{mlbstatapi}. NBA and NFL schedules and event records
+are obtained through ESPN's public summary and scoreboard endpoints
+\citep{espnapi}. Historical NFL play-end timestamps and post-play win probabilities
+come from nflverse play-by-play files \citep{nflversedata}; the live NFL system
+uses ESPN.
+
+\begin{table}[htbp]
+\centering
+\caption{Development Data Coverage}
+\label{tab:data-coverage}
+\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+League & Games & First date & Last date & Contract-step rows\\
+\midrule
+MLB & 1,289 & 2025-09-30 & 2026-06-29 & 39,662,336\\
+NBA & 1,316 & 2025-10-21 & 2026-06-13 & 39,729,641\\
+NFL & 282 & 2025-09-04 & 2026-01-25 & 12,968,892\\
+\bottomrule
+\end{tabular}
+\tablenote{Pre-July 2026 panels; dates use America/New\_York time. Contract-step rows are repeated observations.}
+\end{table}
+
+\paragraph{Coverage and selection.}
+Table~\ref{tab:data-coverage} describes the saved panels used by the final
+forecasting models, with pitch-level MLB inputs. The dates bound the available
+sample rather than indicating continuous play throughout the period. In
+particular, MLB combines postseason games from 2025 with games from the first
+part of the 2026 season. Its earlier regular-season games lack the full contract
+ladders required by this study.
+
+The panel contains many contract-step rows because a game has multiple contracts
+observed repeatedly on the five-second grid. Its effective evidence is limited
+by the number of games, trading activity and target availability. Requiring
+complete contract ladders selects games with the relevant market coverage, and
+requiring a future trade for a price target selects observations with trading
+activity. Forecast scores therefore describe the observed target windows rather
+than every listed contract at every instant. Holdout and live sample sizes are
+reported alongside their results in Chapters~\ref{ch:experiments}
+and~\ref{ch:trading}.
+
+\section{Data Construction and Information Availability}\label{sec:asof}
+\paragraph{Matching and market observations.}
+Contracts are matched to games using league, teams and date, with explicit
+handling of relistings and rescheduled games. Trades are deduplicated by trade
+identifier. Prints sharing a timestamp use a consistent ordering to approximate
+the sequence of a sweep; their exact execution order is not observed.
+
+Quote observations combine candlestick closes with transaction-implied bid or
+ask observations. Candles enter only at the end of their completed minute;
+trades enter at their recorded creation time. Each side retains its observation
+time, so staleness and missing sides can be represented in the inputs. A carried
+quote describes the latest observed price, not a guarantee that the price
+remained executable until the next observation.
+
+A contract-step row requires a reference price, but incomplete quotes do not
+automatically exclude it. Quote availability, age and width remain visible
+to the model, allowing it to distinguish reliable observations from stale
+or one-sided markets. The precise retention rules are given in
+Appendix~\ref{sec:panel-conventions}.
+
+\paragraph{Play timing and feed delay.}
+The model must observe a play's outcome after it becomes available, rather than
+at the start of an action whose result is still unknown. MLB inputs use each
+pitch's result time, with plate-appearance win probabilities revealed only on
+the final pitch of that appearance. An explicit timing approximation makes a
+home-run result available no later than seven seconds after pitch start when
+the archived end timestamp includes the subsequent trot. This is a modeling
+assumption, not a measured feed-arrival time.
+
+NBA events are grouped into possessions, including the associated free-throw
+sequence, and become available at the possession's end. NFL plays use their
+nflverse end timestamp when matched; missing end times are approximated from
+snap time and the median duration of that play type in earlier games. These
+rules avoid exposing a completed play's score or win probability at its start.
+
+Let $\tau_j$ be the modeled result time of play $j$ and $d$ the assumed feed
+delay. At decision time $t$, the historical model can use only plays satisfying
+\begin{equation}
+  \tau_j+d\leq t.
+\end{equation}
+Plays are ordered by availability, and game-state features are rebuilt from the
+available prefix. The delay therefore affects the play memory, score, clock and
+state-derived contract features together. Market observations retain their own
+timestamps. The delay is set per sport from the latency of the live feed, as
+described next; alternative delays are assessed separately.
+
+\paragraph{Latency requirements and the choice of delay.}\label{sec:data-latency}
+A model is only usable in trading if it can be run on information that has
+actually arrived. The public play-by-play feeds used for live trading do not
+publish a play at the moment it happens, and the Kalshi market prices a play
+within roughly 5 to 20 seconds. Measured on the recorded live feeds, plays reach us
+about 7 to 15 seconds after the pitch in MLB, a median of about 45 seconds after the
+event in NBA (ESPN updates in batches roughly every 20 seconds, with a 90th
+percentile near 75 seconds) and about 43 seconds in NFL. The model for each sport
+is therefore trained and evaluated with a delay that its live feed can meet:
+10 seconds for MLB, which covers 97\% of observed arrivals (53\% at 5 seconds),
+and 60 seconds for NBA and NFL, which exceeds the typical arrival time with room
+for batching. A model that used a play before the feed delivers it would show a
+forecast skill and profit that no live runner could reproduce.
+
+\paragraph{Preventing look-ahead bias.}
+Look-ahead bias arises when a historical forecast uses information that would
+not have been available at the decision time, which inflates retrospective
+performance. The as-of principle guards against this: inputs and trading
+decisions at $t$ use only information available by $t$. Historical joins take
+the latest observation at or before the decision time, allowing for the feed
+delay and the completion time of candlesticks. Future trade prices and
+settlement outcomes serve only as labels, and final listing fields such as
+lifetime volume are kept out of the inputs. Missing values are masked, input
+scales are fixed per league, and later out-of-sample data are never used to fit parameters or
+select stopping epochs.
+
+These controls cannot show that the historical information set exactly matches
+what a live trader saw. Archived play-by-play generally holds the final version
+of each event, so later corrections may remain even after a fixed delay, which
+approximates availability rather than reconstructing every revision and
+delivery time. Recorded live feeds provide a separate check on this remaining
+risk.
+
+\paragraph{Data-quality checks.}\label{sec:data-quirks}
+Checks cover event ordering, contract matching, duplicate keys and consistency
+between settlement labels and final scores.
+Postponed games and doubleheaders are checked against the specific fixture
+attached to each listing. Games are assigned to evaluation periods by their
+first-play time.
+
+\section{Splits and Evaluation Protocol}\label{sec:data-splits}
+\paragraph{Walk-forward development folds.}
+Games are ordered by first play within each league. Approximately the earliest
+40\% form fold 0, used only for initial training. The remaining games are divided
+into five consecutive evaluation folds. Boundaries move to the start of a new
+America/New\_York calendar day so that the same day's games are not split between
+folds. All contracts and decision times from a game stay together.
+
+For evaluation fold $k$, model fitting uses only folds earlier than $k$. The
+latest 15\% of those training games are reserved for early stopping. Five random
+seeds are used, with their forecasts averaged for the trading evaluation.
+Table~\ref{tab:fold-sizes} gives the saved fold sizes. The neural training
+procedure is specified in Chapter~\ref{ch:ingame}.
+
+\begin{table}[htbp]
+\centering
+\caption{Chronological Fold Sizes}
+\label{tab:fold-sizes}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+League & Fold 0 & Fold 1 & Fold 2 & Fold 3 & Fold 4 & Fold 5\\
+\midrule
+MLB & 527 & 153 & 150 & 158 & 151 & 150\\
+NBA & 526 & 163 & 154 & 160 & 157 & 156\\
+NFL & 120 & 28 & 33 & 42 & 32 & 27\\
+\bottomrule
+\end{tabular}
+\tablenote{Fold 0 is training only; each later fold uses earlier games for fitting.}
+\end{table}
+
+These folds provided evidence for choosing the architecture, input groups and
+trading rules. Their results are therefore development evidence, even though
+individual model forecasts are generated on later games than their training
+sample. The held-out epoch-selection games also serve a different role from the
+later out-of-sample evaluation.
+
+\paragraph{Later out-of-sample evaluation.}
+The final evaluation period begins with games whose first play is on or after
+1 July 2026 (UTC). Access controls kept these data separate from development.
+Final models were trained on the
+pre-cutoff sample, reserving the latest 15\% for early stopping, and then
+predicted the later games. Entry and exit rules were fixed before these
+results were inspected, with one exception: the NFL decision interval
+was changed from 60 to 5 seconds after the first evaluation, so that result is
+reported as a post-inspection protocol change alongside the original. Live paper
+trading (Chapter~\ref{ch:trading}) provides a further test under real feed
+arrivals and market conditions.
+
+\section{Evaluation Measures}\label{sec:data-metrics}
+\paragraph{Forecast skill.}
+Since the naive forecast of a traded price is its last value, the natural
+benchmark for a price-change forecast is zero change. For observations with an
+available target, forecast skill is the proportional reduction in squared error
+relative to that benchmark, an out-of-sample $R^2$ centred on zero rather than on
+the sample mean:
+\begin{equation}
+ R^2_{\mathrm{NC}}=
+ 1-\frac{\sum_{(i,t)}\left(\Delta_i^{(h)}(t)-\widehat\Delta_i^{(h)}(t)\right)^2}
+          {\sum_{(i,t)}\left(\Delta_i^{(h)}(t)\right)^2}.
+\end{equation}
+A value of zero means the model is no better than retaining the anchor price;
+positive values mean it is better and negative values worse. Scores are
+reported by league, contract type and horizon. Training also uses the observed
+price interval, while the auxiliary outcome head is assessed using probabilistic
+loss. The forecasting loss and interval score are defined in
+Chapter~\ref{ch:ingame}.
+
+\paragraph{Trading performance and uncertainty.}
+Trading results report profit before fees and after the assumed fees. If trade $j$ has size $q_j$ and net profit $r_j$ cents per contract,
+the size-weighted net return is
+\begin{equation}
+ \mathrm{Net\ cents/contract}=\frac{\sum_j q_j r_j}{\sum_j q_j}.
+\end{equation}
+Total profit and traded quantity are reported alongside this ratio, so a result
+based on very little trading remains visible. Returns are aggregated by game
+for uncertainty assessment; ablation comparisons use paired differences in
+per-game profit. $t$-statistics are computed over game-level profits (one observation 
+per game). Shared market conditions across games can still create dependence, and 
+the many model and strategy comparisons limit the interpretation of isolated 
+significance levels. Main results and sensitivity analyses are presented in 
+Chapter~\ref{ch:experiments}.
 
 % -----------------------------------------------------------------------------
-\chapter{Study I: Cross-Market Propagation in Macro Markets}
-\label{ch:macro}
-% -----------------------------------------------------------------------------
-\section{Spatial-Temporal Graph Framework}
-Nodes, edges, snapshots and labels as interchangeable strategies; resolution-triggered
-graph snapshots. \todo{Figure: pipeline diagram.}
-
-\section{Models}
-\subsection{Imposed-Structure Baselines}
-Zero-parameter economic sign rule; per-pair regression; linear ladder.
-\subsection{Learned Graph Models}
-Inductive AGCRN with adaptive adjacency $\tilde A=\mathrm{softmax}(\mathrm{ReLU}(EE^\top))$
-and node-adaptive weights \citep{bai2020adaptive}. \todo{Equations, hyper-parameters.}
-\subsection{Other Learners}
-Tree ensembles, MLP, Bayesian hierarchical model.
-
-\section{Results}
-\todo{Tables: model comparison on R$^2$/AUC; structure estimation (edges surviving
-multiple-testing correction); gross edge versus cost.}
-
-\section{Can a Graph Be Learned From This Data?}
-Semi-synthetic recovery test: plant a known graph in data built from the real
-release calendar, and measure whether each learner recovers it
-(Section: \todo{numbers from reports/recovery\_test.md}).
-
-\section{Lessons}
-Why the learned graph did not help (too few co-firing events, signal dilution,
-implementation pitfalls found by checklist), and why this motivated moving to a
-data-rich setting.
-
-% -----------------------------------------------------------------------------
-\chapter{Study II: In-Game Sports Forecasting}
+\chapter{Proposed Forecasting Method}
 \label{ch:ingame}
 % -----------------------------------------------------------------------------
-\section{Problem Setting}
-Given the live feed of a game, predict the price of related Kalshi contracts a
-short time after each play. \todo{Plain-language definition of a play, a
-contract leg, and the decision time.}
+\section{Model Overview}
+The model implements the forecasting task in Section~\ref{sec:task} by combining
+three sources of information: the sequence of observed plays, the current game
+state, and prices and activity across contracts on the same game. A recurrent
+encoder summarises play history, and a graph network exchanges information
+between contract types. Two output heads then produce price-change forecasts
+and an auxiliary settlement-probability estimate.
 
-\section{Data Pipeline}
-Play-by-play alignment to market time, feed latency and revisions, as-of
-feature construction. \todo{Figure: timeline of event $\to$ feed $\to$ price.}
+Figure~\ref{fig:ingame-arch} shows the computation at one decision time. Each
+contract has its own representation, while all contracts share the game context.
+The same architecture is used across MLB, NBA and NFL, with separate models
+trained for each sport. Building on the data construction in
+Chapter~\ref{ch:data}, this chapter explains how the inputs become a shared game
+context, how related contracts exchange information, and how the resulting
+representations are trained to forecast prices.
 
-\section{Model Architecture}
-GRU sequence encoder over plays with a graph over related contracts within a game.
-\todo{Architecture figure, input features, loss, training on GPU cluster, seeds
-(5-seed average).}
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm,font=\small,
+  box/.style={draw=black!60,rounded corners=2pt,align=center,
+              minimum height=0.9cm,inner sep=6pt},
+  contract/.style={circle,draw=archteal,fill=archteal!12,
+                   minimum size=0.7cm,inner sep=1pt},
+  mean/.style={circle,draw=archteal,fill=archteal!24,
+               minimum size=0.9cm,inner sep=2pt},
+  flow/.style={->,thick,draw=black!65},
+  shared/.style={->,dashed,draw=archblue,thick},
+  message/.style={<->,draw=archteal,thick}]
+  \definecolor{archblue}{HTML}{46698A}
+  \definecolor{archteal}{HTML}{347C76}
 
-\section{Ablations}
-Feed delay, graph vs.\ no graph, feature groups, per-sport differences.
-\todo{Ablation table.}
+  % Temporal encoder: one recurrent state per available play.
+  \node[anchor=west,font=\small\bfseries] at (0,15.2)
+    {Temporal memory: plays ordered by availability};
+  \draw[->,thick,draw=archblue] (0.3,13.3) -- (7.2,13.3);
+  \foreach \x/\j in {1.2/1,3.2/2,5.2/j} {
+    \draw[draw=archblue] (\x,13.2) -- (\x,13.4);
+    \node[above,font=\footnotesize] at (\x,13.4) {$\tau_{\j}+d$};
+  }
+  \draw[dashed,draw=archblue] (6.4,8.6) -- (6.4,13.9);
+  \node[above,font=\footnotesize] at (6.4,13.9) {Cutoff $t$};
+  \foreach \x/\j in {1.2/1,3.2/2,5.2/j} {
+    \node[box,fill=archblue!10,minimum width=1.1cm] (u\j) at (\x,11.6)
+      {$u_{\j}$};
+    \node[box,fill=archblue!18,minimum width=1.3cm] (h\j) at (\x,9.6)
+      {GRU\\$h_{\j}$};
+    \draw[flow] (u\j) -- (h\j);
+  }
+  \node at (4.2,11.6) {$\cdots$};
+  \draw[->,very thick,draw=archblue] (h1) -- (h2);
+  \draw[->,very thick,draw=archblue] (h2) -- (hj);
+  \node[box,fill=archblue!10,text width=3.4cm] (state) at (10,11.6)
+    {Current game state\\and market features};
+  \node[box,fill=archblue!18,text width=2.4cm] (ctx) at (10,9.6)
+    {Context network};
+  \draw[flow] (state) -- (ctx);
+  \draw[flow] (hj.east) -- (ctx.west)
+    node[midway,above=3pt,text=black] {$h_g(t)$};
+  \node[box,fill=archblue!10] (c) at (14,9.6) {$c_g(t)$};
+  \draw[flow] (ctx) -- (c);
 
-\section{Frozen Holdout Results}
-Report what the frozen specification (candidates, exit rules, sizing) produced,
-with no post-hoc pass rule. \todo{Gross P\&L per contract with confidence intervals.}
+  % Individual contract nodes and the pooled representation of each type.
+  \node[font=\small\bfseries] at (5.2,7.4) {Relational processing: contract snapshot at $t$};
+  \node[align=center] (init) at (5.2,6.4)
+    {$z_i^{(0)}=F_n(x_i(t))+A c_g(t)$};
+  \draw[shared] (c.south) -- (14,6.4) -- (init.east);
+  \foreach \a/\b in {0.1/3.3,3.6/6.8,7.1/10.3}
+    \fill[archteal!5,rounded corners=5pt] (\a,0.5) rectangle (\b,5.3);
+  \node[mean] (mw) at (1.7,4.4) {$\mu_W$};
+  \node[mean] (ms) at (5.2,4.4) {$\mu_S$};
+  \node[mean] (mt) at (8.7,4.4) {$\mu_T$};
+  \node at (1.7,0.95) {Winner};
+  \node at (5.2,0.95) {Spread};
+  \node at (8.7,0.95) {Total};
+  \foreach \name/\x/\lab in {w1/1.1/w_1,w2/2.3/w_2,
+                            s1/4.0/s_1,s2/5.2/s_2,s3/6.4/s_3,
+                            t1/7.5/t_1,t2/8.7/t_2,t3/9.9/t_3}
+    \node[contract] (\name) at (\x,2.4) {$\lab$};
+  \foreach \name in {w1,w2}
+    \draw[message,thin] (\name) -- (mw);
+  \foreach \name in {s1,s2,s3}
+    \draw[message,thin] (\name) -- (ms);
+  \foreach \name in {t1,t2,t3}
+    \draw[message,thin] (\name) -- (mt);
+  \draw[message] (mw) -- (ms);
+  \draw[message] (ms) -- (mt);
+  \draw[message] (mw.north) .. controls (3.2,5.8) and (7.2,5.8) .. (mt.north);
+
+  % Both heads operate on each final node together with the game context.
+  \node[box,fill=archteal!12,text width=2.4cm] (price) at (13,4.7)
+    {Price-change head};
+  \node[box,fill=archteal!12,text width=2.4cm] (result) at (13,1.7)
+    {Settlement head};
+  \coordinate (split) at (11.4,3.2);
+  \draw[flow] (10.4,3.2) -- (split)
+    node[midway,above=2pt,text=black] {$z_i^{(2)}$};
+  \draw[flow] (split) |- (price.west);
+  \draw[flow] (split) |- (result.west);
+  \draw[shared] (14,6.4) -- (14.6,6.4) -- (14.6,4.7) -- (price.east);
+  \draw[shared] (14.6,4.7) -- (14.6,1.7) -- (result.east);
+  \node[below,align=center] at (13,3.95)
+    {$\widehat\Delta_i^{(30)},\ \widehat\Delta_i^{(60)},\ \widehat\Delta_i^{(120)}$};
+  \node[below] at (13,1.05) {$\widehat q_i(t)$};
+\end{tikzpicture}
+\caption{Model architecture at decision time $t$. A GRU summarises the plays
+available by $t$ into a game context $c_g(t)$ (dashed), which is shared by every
+contract. Contracts exchange information through their within-type means
+$\mu_W$, $\mu_S$, $\mu_T$ in two message-passing rounds, and two heads read
+the result. Contract counts are illustrative.}
+\label{fig:ingame-arch}
+\end{figure}
+
+\section{Input Representations and Structural Reference}\label{sec:ingame-inputs}
+\subsection{Play, Game and Contract Features}
+Inputs are organised into a sequence of play vectors, a shared game-state
+vector at each decision time, and a vector for each contract. All follow the
+information-availability rules in Chapter~\ref{ch:data}. Table~\ref{tab:input-encoding}
+summarises their numerical representation; the learned transformations of these
+vectors are described in Section~\ref{sec:ingame-arch}.
+
+\paragraph{Play sequence.}
+The play unit is a pitch in MLB, a possession in NBA and a play from scrimmage
+in NFL. Event types use a fixed set of sport-specific indicators. Each vector
+contains both the state after the
+play and changes caused by it: score margin and combined score describe the
+state, while changes in these quantities describe the scoring event. Possession
+is represented by separate home and away indicators. Additional situation
+features include down, distance and field position in NFL, and outs, balls and
+strikes in MLB. Remaining regulation time is represented as a fraction.
+
+Numerical input features are normalised using fixed sport-specific scales to
+keep their magnitudes comparable. Time gaps use logarithmic transforms to
+reduce the influence of long stoppages, while win probabilities remain on a
+zero-to-one scale. The same transformations are applied during training and
+evaluation; missing-value conventions are given in
+Appendix~\ref{sec:implementation}.
+
+\paragraph{Shared game context.}
+At each decision time, the current available state supplies the remaining
+fraction, scaled score margin and total, and possession indicators. It also
+records whether a new play became available during the preceding five seconds
+and the time since the latest available play. Market inputs include the
+normalised home-winner price, an availability indicator and the logarithm
+of recent winner-market trading activity. This separates the current state
+from the history represented by the recurrent encoder.
+
+\paragraph{Contract representation.}
+Winner, spread and total contracts use three type indicators; two further
+indicators identify the home or away side, both zero for totals. Quote and
+trade prices are normalised to a zero-to-one scale. Ages and volumes use
+logarithmic transforms, while signed trade flow is logarithmically transformed
+with its direction preserved. Threshold distance is $k-s_iM(t)$ for spreads and $k-S(t)$ for
+totals, where $M(t)$ is the home-minus-away margin and $S(t)$ the combined score;
+the distance is normalised consistently with the score margin. The structural
+reference and its gap from the anchor, $b_i(t)-a_i(t)$, are also normalised.
+
+Availability indicators distinguish observed prices from missing values and
+identify recent trades and usable structural references. The network can
+therefore interpret a price alongside its freshness and coverage.
+
+\begin{table}[H]
+\centering\small
+\caption{Input Feature Encoding}
+\label{tab:input-encoding}
+\begin{tabular}{@{}p{0.16\textwidth}p{0.35\textwidth}p{0.43\textwidth}@{}}
+\toprule
+Input group & Information & Encoding \\
+\midrule
+Play sequence & Event type, scoring changes, game state, win probability and
+situation & Categorical indicators, scaled values and log time gaps \\
+Shared game context & Remaining time, scores, possession, winner-market price
+and activity & Scaled values, binary indicators and log activity/age \\
+Contract & Type, team side, quotes, recent trades, threshold distance and
+structural reference & Binary indicators, scaled prices/distances and
+log activity/age \\
+\bottomrule
+\end{tabular}
+\tablenote{Indicators take values 0/1; prices are scaled from cents.}
+\end{table}
+
+An illustrative contract encoding is provided in
+Appendix~\ref{sec:encoding-example}.
+
+\subsection{Structural Price Reference}\label{sec:structural-reference}
+The features above describe the game state and the market observations for each
+contract. Their implications for a particular contract also depend on its
+settlement threshold: the same score and remaining time can make one total
+likely to settle positively while leaving a higher total uncertain. A useful
+additional input is therefore an approximate probability of exceeding each
+threshold, expressed on the same scale as the observed contract price.
+
+The structural price reference supplies this mapping through a simple scoring
+distribution. For spreads, the current winner-market probability anchors a
+distribution of the final score margin. For totals, the observed combined score
+is supplemented by an estimate of scoring during the remaining game. These
+references give the neural model an explicit relationship between game
+conditions and contract thresholds; the gap from the observed price can then
+inform its price-change forecast. The reference is an input feature, and the
+model remains free to learn departures from it.
+
+For spreads, following the normal-score approximation motivated by \citet{stern1994brownian},
+let $\tau$ denote the fraction of regulation play remaining and $p_H$ the
+home-win probability implied by the available winner-market price. Write
+$z=\Phi^{-1}(p_H)$, where $\Phi$ is the standard normal cumulative distribution
+function. A normally distributed final home-minus-away margin with standard
+deviation $\sigma_m\sqrt{\tau}$ and mean $\sigma_m\sqrt{\tau}\,z$ has home-win
+probability $p_H$. The corresponding reference for a spread contract with threshold $k$ is
+\begin{equation}
+ b_i(t)=100\,\Phi\!\left(s_i z-\frac{k}{\sigma_m\sqrt{\tau}}\right),
+ \qquad
+ s_i=\begin{cases}1,&\text{home-team spread},\\-1,&\text{away-team spread}.
+ \end{cases}
+ \label{eq:spread-reference}
+\end{equation}
+Here $k$ is the margin that the designated team must exceed. The current score
+influences the spread reference through the winner-market probability; threshold
+and remaining time determine how that probability maps to other spreads.
+
+For an over-total contract, let $S(t)$ be the combined score and $L_g$ the
+pregame total implied by the game's total ladder, interpolated at a 50-cent over
+price. Approximating the remaining score by a normal distribution with mean
+$L_g\tau$ and standard deviation $\sigma_T\sqrt{\tau}$ gives
+\begin{equation}
+ b_i(t)=100\,\Phi\!\left(
+ \frac{S(t)+L_g\tau-k}{\sigma_T\sqrt{\tau}}\right).
+ \label{eq:total-reference}
+\end{equation}
+The remaining fraction is based on the regulation clock in NBA and NFL, and on
+outs remaining in MLB. Uncertainty decreases with the square root of this
+fraction. The distribution widths are fixed sport-specific development choices;
+their values and numerical safeguards are listed in
+Appendix~\ref{sec:implementation}.
+
+The assumptions deliberately simplify scoring: they do not model possession-
+specific rates, discrete scores or every late-game effect. The model receives
+both $b_i(t)$ and $b_i(t)-a_i(t)$ so that it can learn when the reference is
+informative. No separate structural reference is assigned to winner contracts;
+its absence is indicated explicitly. The contribution of these features is
+assessed by ablation in Chapter~\ref{ch:experiments}.
+
+\section{Temporal and Relational Architecture}\label{sec:ingame-arch}
+The encoded inputs enter two complementary stages. Play memory represents the
+history of the game, while message passing combines the current observations
+across its contracts. Both stages condition the forecast for each contract.
+
+\subsection{Play Memory and Choice of GRU}
+A GRU is used to maintain a fixed-size summary of the ordered play sequence.
+Its gates allow earlier context to be retained or replaced as new plays arrive,
+which suits a game observed through successive pitches, possessions or plays.
+A single recurrent layer keeps this summary compact and makes it available to
+all contracts on the game.
+
+A preliminary comparison supported this choice: replacing the GRU with a
+two-layer causal transformer \citep{vaswani2017attention} reduced price-change
+$R^2$ for spreads and totals at all three short horizons on the first three NFL
+folds, with zero assumed feed delay. This limited development check supports
+the choice of GRU for our purposes.
+
+Let $u_j$ be the feature vector of the $j$th available play. A learned linear
+projection and rectified linear activation precede a one-layer GRU
+\citep{cho2014learning}:
+\begin{equation}
+ r_j=\operatorname{ReLU}(P u_j+b_P),\qquad
+ h_j=\operatorname{GRU}(r_j,h_{j-1}),\qquad h_0=0.
+\end{equation}
+At decision time $t$, the model selects the state after the last available play,
+$h_g(t)$. If no play is available, this state is zero. Thus the recurrent encoder
+can represent patterns beyond the latest score and clock without requiring a
+hand-written list of play sequences. Whether that memory improves forecasts is
+tested by replacing it with zeros and retraining the remaining model.
+
+The selected state conditions every contract on the game. Temporal memory
+resides in this play encoder; graph representations are recomputed at each
+decision time, allowing the contract set to change without maintaining a
+separate recurrent state for each contract.
+
+\subsection{Game Context and Contract Encoding}
+Let $s_g(t)$ denote the current game and market features, and $x_i(t)$ the
+features of contract $i$. The game context and initial node representation are
+\begin{equation}
+ c_g(t)=F_c\bigl([s_g(t),h_g(t)]\bigr),\qquad
+ z_i^{(0)}=F_n\bigl(x_i(t)\bigr)+A c_g(t),
+ \label{eq:node-encoding}
+\end{equation}
+where brackets denote concatenation. $F_c$ and $F_n$ are feed-forward networks,
+and $A$ is a learned linear projection. Adding the shared context to each
+contract encoding combines game-wide information with contract-specific prices
+and thresholds. The hidden dimension is 64 throughout these representations.
+
+\subsection{Message Passing Between Contract Types}
+The initial node representations share a game context but still encode each
+contract separately. Message passing lets a forecast also depend on the
+observed state of related markets. Contracts on the game form the graph nodes.
+Let $k_i$ be
+the type of contract $i$ and $C_s$ the set of available nodes of type $s$, where
+$s$ is winner, spread or total. In round $r$, the model first averages the node
+representations within each sending type:
+\begin{equation}
+ \mu_s^{(r)}=\frac{1}{|C_s|}\sum_{j\in C_s}z_j^{(r)},\qquad
+ m_i^{(r)}=\sum_s W_{k_i,s}^{(r)}\mu_s^{(r)}.
+ \label{eq:contract-messages}
+\end{equation}
+An absent type contributes a zero vector. Each receiving--sending type pair has
+its own learned matrix $W_{k_i,s}^{(r)}$. The averages include the receiving
+contract's own type and representation.
+
+Each node is then updated through a feed-forward transformation with a residual
+connection:
+\begin{equation}
+ z_i^{(r+1)}=z_i^{(r)}+U_r\bigl([z_i^{(r)},m_i^{(r)}]\bigr),
+ \qquad r=0,1.
+ \label{eq:contract-update}
+\end{equation}
+The two rounds have separate parameters and operate on the same snapshot.
+Connectivity is supplied through
+shared game membership and contract types; the network learns the transformations
+of aggregated information, rather than an adjacency matrix. Averaging within
+types permits changing contract counts and threshold ladders across games.
+Removing both rounds tests the value of explicit cross-contract aggregation.
+
+\subsection{Forecast and Settlement Heads}
+Both heads receive the final node representation and game context,
+$v_i=[z_i^{(2)},c_g(t)]$. The price head produces one change in cents for each
+configured horizon:
+\begin{equation}
+ \widehat\Delta_i^{(h)}(t)=10\,D_h(v_i).
+\end{equation}
+The factor of ten is a fixed output scale, not a restriction on the predicted
+change. The auxiliary head produces a log-odds adjustment $R(v_i)$. With
+$p_i=\operatorname{clip}(a_i(t)/100,0.005,0.995)$, its settlement-probability
+estimate is
+\begin{equation}
+ \widehat q_i(t)=\operatorname{sigmoid}\!\left(
+ \log\frac{p_i}{1-p_i}+R(v_i)\right).
+ \label{eq:settlement-head}
+\end{equation}
+A zero adjustment reproduces the clipped anchor probability. This auxiliary
+task encourages the shared representation to retain information about final
+outcomes, while trading decisions use the price-change forecasts.
+
+\section{Training Objective and Procedure}\label{sec:ingame-training}
+\subsection{Price and Auxiliary Losses}\label{sec:ingame-loss}
+Trades within the target window can occur at different prices. Training
+therefore uses the observed interval, avoiding a penalty for predictions that
+fall within that range, and an auxiliary loss for the final outcome. Let
+$\ell_i^{(h)}(t)$ and $u_i^{(h)}(t)$ be the minimum and maximum prices in the
+15-second target window, and write
+$\widehat p_i^{(h)}(t)=a_i(t)+\widehat\Delta_i^{(h)}(t)$. Its distance outside
+the interval is
+\begin{equation}
+ e_i^{(h)}(t)=\max\!\left(\ell_i^{(h)}(t)-\widehat p_i^{(h)}(t),0\right)
+             +\max\!\left(\widehat p_i^{(h)}(t)-u_i^{(h)}(t),0\right).
+ \label{eq:interval-distance}
+\end{equation}
+This distance is zero inside the observed range. A Huber penalty limits the
+influence of large deviations:
+\begin{equation}
+ H_\delta(e)=\begin{cases}
+ \tfrac12 e^2,&0\leq e\leq\delta,\\
+ \delta(e-\tfrac12\delta),&e>\delta,
+ \end{cases}
+ \qquad \delta=5\text{ cents}.
+\end{equation}
+Let $V$ index the valid contract--time--horizon targets in a batch and $B$ the
+contract--time observations with a settlement label. The combined objective is
+\begin{align}
+ L_{\mathrm{price}}&=\frac{1}{10|V|}\sum_{(i,t,h)\in V}
+                 H_\delta\bigl(e_i^{(h)}(t)\bigr),\\
+ L_{\mathrm{result}}&=-\frac{1}{|B|}\sum_{(i,t)\in B}
+  \left[y_i\log\widehat q_i(t)+(1-y_i)\log(1-\widehat q_i(t))\right],\\
+ L&=L_{\mathrm{price}}+0.1L_{\mathrm{result}}.
+ \label{eq:combined-loss}
+\end{align}
+Only valid targets contribute to each loss; padding and missing observations
+are masked out according to Chapter~\ref{ch:data}.
+
+The interval loss accommodates variation among trades within a target window;
+it does not imply that every price in that interval was executable. Forecast
+skill is evaluated against the volume-weighted price change rather than against
+the interval alone. The interval formulation, auxiliary weight and Huber
+threshold were set during development and were not separately ablated.
+
+\subsection{Optimisation and Model Selection}
+Separate models are trained for MLB, NBA and NFL using AdamW. Batches sample
+decision times from multiple games, retaining all eligible contracts at each
+sampled time so that message passing uses the complete available graph.
+Padding masks accommodate differences in contract counts. Architecture and
+optimisation settings are summarised in Appendix~\ref{sec:implementation}.
+
+Model selection follows the chronological protocol in Chapter~\ref{ch:data}.
+The latest 15\% of the available training games form the validation set. Early
+stopping monitors the validation interval Huber loss, excluding the auxiliary
+settlement loss, and the best checkpoint is restored for evaluation.
+
+Each specification is trained with five random seeds, and its price-change
+forecasts are averaged for trading evaluation. Chapter~\ref{ch:experiments}
+first evaluates the complete model and its trading strategy, then uses
+retrained ablations and sensitivity checks to examine the sources and limits
+of the observed performance.
 
 % -----------------------------------------------------------------------------
+\chapter{Historical Evaluation}
+\label{ch:experiments}
+% -----------------------------------------------------------------------------
+\section{Experimental Setup}\label{sec:exp-setup}
+The model is evaluated first as a forecaster and then as part of a trading
+strategy. After the main results, ablations examine which components contribute
+to performance, and sensitivity analyses test the operating assumptions.
+Historical out-of-sample testing checks whether the forecast signals remain
+valid on games occurring after the data used to fit the model. Results use
+the chronological walk-forward test folds and the later out-of-sample period
+defined in Section~\ref{sec:data-splits}, with five-seed averaging for trading
+evaluation. Each walk-forward forecast is out of sample with respect to model
+fitting, but these fold results informed model and strategy choices. The later
+MLB/NFL evaluation, beginning on 1 July 2026, provides a separate check on
+whether the selected signals and trading rules transfer to subsequent games,
+subject to the disclosed NFL protocol change. Live execution is examined separately in
+Chapter~\ref{ch:trading}.
+Table~\ref{tab:experiment-overview} summarises the experimental comparisons.
+\begin{table}[htbp]\centering\small
+\caption{Experimental Comparisons}
+\label{tab:experiment-overview}
+\begin{tabular}{@{}p{2.7cm}p{3.2cm}p{5.1cm}p{2cm}@{}}\toprule
+Comparison & Sample & Purpose & Results\\\midrule
+Forecast accuracy & Walk-forward folds; later MLB/NFL sample & Check out-of-sample forecast skill against no change & Section~\ref{sec:exp-forecast}\\
+Historical trading & Walk-forward folds; later MLB/NFL sample & Check historical out-of-sample returns after fees & Section~\ref{sec:exp-main}\\
+Retrained ablations & Development folds & Remove model components and input groups & Section~\ref{sec:ingame-ablate}\\
+Sensitivity analysis & Development folds & Vary feed delay and forecast/holding horizon & Section~\ref{sec:exp-sensitivity}\\
+Forward evaluation & Live-recorded games & Assess book execution, feed safeguards and fixed quoting baselines & Section~\ref{sec:forward}\\
+\bottomrule\end{tabular}
+\tablenote{Historical forecasts are out of sample relative to model fitting. Walk-forward folds informed model and strategy selection; the later MLB/NFL sample provides a separate evaluation. Historical model comparisons use five seeds; live baselines are fixed, untrained rules.}
+\end{table}
+
+\section{Forecasting Performance}\label{sec:exp-forecast}
+This section asks how well the model predicts the change in each contract's price,
+before any trading rule is applied. The benchmark is the forecast of no price
+change, scored with the forecast skill measure of Section~\ref{sec:data-metrics}.
+
+\subsection{Skill by Contract Type and Horizon}
+On the walk-forward folds the model beats no change on all six spread and total
+contract types at the two-minute horizon, with skill between 4.5\% and 7.9\%
+(Table~\ref{tab:skill}). Skill is highest at the shortest horizon and falls as the
+horizon grows. Winner contracts are the exception: their skill is close to zero at
+the evaluated short horizons (Table~\ref{tab:skill-holdout}). Trading is restricted to
+spreads and totals and to the 30--120 second horizons, as stated in
+Chapter~\ref{ch:data}. The trading strategy uses the 120-second forecast;
+Section~\ref{sec:horizon-choice} evaluates this choice in terms of returns after
+costs, rather than forecast skill alone.
+
+\begin{table}[htbp]\centering
+\caption{Two-Minute Forecast Skill}
+\label{tab:skill}
+\small
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+ & MLB spread & MLB total & NBA spread & NBA total & NFL spread & NFL total\\
+\midrule
+Skill (\%) & 7.47 & 6.68 & 5.62 & 4.48 & 6.26 & 7.93\\
+\bottomrule
+\end{tabular}
+\tablenote{Skill against no change (\%); row-weighted mean across folds and five seeds. Feed delays: MLB 10 s; NBA/NFL 60 s.}
+\end{table}
+
+\subsection{Stability of Forecast Skill Across Sports}
+The aggregate results conceal differences in how forecast skill changes over
+time. MLB and NFL can be assessed on the later out-of-sample period, while NBA provides a
+comparison across successive development folds. These offer different levels
+of evidence, but both help identify where the aggregate scores are least
+representative of later performance.
+
+MLB retains much of its skill out of sample (Table~\ref{tab:skill-holdout}).
+At 120 seconds, spread skill falls from 7.5\% to 6.5\% and total skill from
+6.7\% to 4.8\%, with positive error reductions supported by the game-clustered
+tests. NFL deteriorates more sharply: spread skill falls from 6.3\% to 1.5\%
+and total skill from 7.9\% to $-0.2$\%. Spreads still improve on no change
+($t=2.9$), but totals show no skill in the later out-of-sample period ($t=-0.2$). This NFL sample contains
+only 64 games, limiting the precision of this comparison.
+
+NBA also shows deterioration, although within the development period rather
+than a separate later out-of-sample period. At 60 seconds, spread skill falls from 16.4\% in the
+first fold to 3.0\% in the fifth, and total skill from 13.3\% to 4.6\%
+(Table~\ref{tab:fold-skill}), despite an expanding training sample. Mean bid--ask widths narrow over the same period,
+suggesting a changing market setting, although their contribution to the
+decline was not isolated. The original out-of-sample evaluation snapshot predates the new NBA
+season; later NBA observations are evaluated live in Chapter~\ref{ch:trading}.
+Section~\ref{sec:nba-transfer} compares the deterioration in total skill with
+the forward returns and distinguishes declining forecast skill from changes
+in trading profitability.
+Table~\ref{tab:skill-holdout} includes all three sports, identifying the
+evaluation sample for each. It scores the averaged forecast, whereas
+Table~\ref{tab:skill} reports the mean of the individual seeds' scores.
+
+\begin{table}[htbp]\centering
+\caption{Forecast Skill Across Sports and Horizons}
+\label{tab:skill-holdout}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lllrrr@{}}
+\toprule
+Sport & Sample & Contract & 30 s & 60 s & 120 s\\
+\midrule
+Baseball & Out-of-sample & Winner & 0.1 (1.7) & $-0.1$ ($-0.9$) & $-0.4$ ($-3.2$)\\
+ & & Spread & 16.7 (37.1) & 11.3 (33.7) & 6.5 (23.9)\\
+ & & Total & 14.0 (36.5) & 9.1 (30.3) & 4.8 (18.6)\\
+\midrule
+Basketball & Folds 1--5 & Winner & $-0.0$ ($-0.6$) & $-0.1$ ($-1.2$) & $-0.3$ ($-1.8$)\\
+ & & Spread & 14.3 (15.6) & 10.7 (16.0) & 7.0 (14.9)\\
+ & & Total & 11.5 (19.7) & 8.6 (18.7) & 5.7 (15.5)\\
+\midrule
+Football & Out-of-sample & Winner & $-0.0$ ($-0.4$) & $-0.0$ ($-0.3$) & $-0.1$ ($-0.3$)\\
+ & & Spread & 5.4 (8.4) & 3.4 (6.0) & 1.5 (2.9)\\
+ & & Total & 0.4 (0.5) & $-0.1$ ($-0.1$) & $-0.2$ ($-0.2$)\\
+\bottomrule
+\end{tabular}
+\tablenote{Skill (\%) for the five-seed ensemble; game-clustered $t$-statistics in parentheses. MLB/NFL: later out-of-sample period; NBA: walk-forward test folds used in development. Feed delays: MLB 10 s; NBA/NFL 60 s. See Appendix~\ref{sec:skill-uncertainty}.}
+\end{table}
+
+
+\section{Trading Strategy and Backtest Assumptions}\label{sec:execution}
+Positive forecast skill does not establish tradability. Capturing a predicted
+move requires an available entry, a subsequent exit and returns sufficient to
+cover costs. The following rules define that conversion from forecasts to
+simulated trades.
+\subsection{Entry, Exit and Sizing Rules}
+The reference strategy uses the 120-second forecast, with variants examined
+later in the chapter. Its signal is the forecast price minus the latest traded
+price. The entry and exit rules were fixed before inspecting the later
+out-of-sample results except for the
+NFL decision-interval change disclosed in Section~\ref{sec:data-splits}. The
+current quantity scale is specified separately below.
+\begin{itemize}
+  \item \textbf{Decisions.} A decision is made every 5 seconds, with at most one
+        open order or position per contract. A signal below 5 cents is ignored; this
+        minimum is shared across leagues and contract types to limit further
+        strategy-specific tuning.
+  \item \textbf{Baseball skip window.} In baseball, no decision is made while 15 to
+        60 seconds have passed since the last pitch the model knows of. After 15
+        seconds with no new pitch, the next pitch has probably been thrown but, under
+        the feed delay, is not yet known to the model, while the market has already
+        priced it; an order placed then rests against participants who know the
+        result. The window was chosen on the development folds and fixed before
+        the later out-of-sample evaluation. Without it, net return on baseball falls from 9.8
+        and 7.0 cents per contract on spreads and totals to 3.2 and 2.3 in the
+        development folds, and from 5.4 and 5.0 to $-0.2$ and 0.6 on the later
+        out-of-sample period.
+  \item \textbf{Entry.} The order rests one cent inside the reference price, below it
+        to buy and above it to sell, for up to 60 seconds.
+  \item \textbf{Exit.} A fixed exit is attempted 120 seconds after entry
+        (Section~\ref{sec:exec-tradeoffs}). Holding to settlement on the same entries
+        is reported as a descriptive comparison only.
+  \item \textbf{Size.} The signal and trading width determine quantity as
+        specified in Section~\ref{sec:position-sizing}.
+\end{itemize}
+
+\subsection{Position Sizing and Trade Quantity}\label{sec:position-sizing}
+Position sizing gives stronger forecasts more weight without assigning the
+same quantity to every opportunity. For signal $s_j$ and observed trading width
+$d_j$, both measured in cents, the normalised weight is
+\begin{equation}
+ w_j=\left[\operatorname{clip}_{[0,1]}\!\left(\frac{|s_j|-5}{10}\right)\right]^2
+ \ell_j,\qquad
+ \ell_j=\begin{cases}
+ \operatorname{clip}_{[0,1]}(d_j/10), & d_j\text{ observed},\\
+ 1, & \text{otherwise},
+ \end{cases}
+\end{equation}
+where $\operatorname{clip}_{[0,1]}(x)=\min(1,\max(0,x))$.
+The width is the difference between the latest YES- and NO-initiated trade
+prices, requiring both trades to fall within the preceding 120 seconds.
+The signal component rises quadratically above 5 cents and reaches its maximum
+at 15 cents; the width component reaches its maximum at 10 cents. The quantity is
+\begin{equation}
+ q_j=\operatorname{round}_{0.01}(20w_j),
+\end{equation}
+using half-up rounding. The maximum order is therefore 20 contract units;
+quantities that round to zero are omitted.
+
+Table~\ref{tab:sizing-evidence} compares returns by signal strength before
+applying a minimum signal or sizing weights. Each fill counts as one contract;
+the execution rules and sport-specific feed delays are retained. Bands are
+assigned after simulation, so they describe returns without selecting orders
+by signal magnitude. Signals of at most 8 cents lose money in all six
+league--contract groups, while signals of at least 15 cents earn the highest
+mean return in each group. This pattern supports giving stronger signals more
+weight, although it does not establish an optimal threshold or weighting
+function. Returns are not uniformly monotonic, and the highest-signal NFL
+spread and total bands contain only 11 and 7 fills, respectively.
+
+The comparison does not show a consistent improvement in returns with
+trading width. All width bands have negative mean returns, and widths of at
+least 10 cents outperform widths below 5 cents in only three of the six
+groups. The increasing width adjustment is therefore a heuristic rather than
+a relationship established by this table. Neither set of marginal bands
+isolates the independent effects of signal strength and trading width.
+
+\input{generated/ch5_sizing_evidence}
+
+As this study does not model the market impact of our orders, we cap
+trade quantities at 20 contracts, below the median observed trade size in each
+of the six market groups (Table~\ref{tab:trade-quantity}). These medians are
+computed from approximately 32.8 million deduplicated trades in the development
+archive. Keeping orders small relative to typical trades is a conservative
+choice intended to make the evaluation more realistic, although it does not
+establish that market impact is negligible. Available liquidity at the quoted
+price is examined separately using the order-book simulator in
+Chapter~\ref{ch:trading}.
+
+\begin{table}[htbp]\centering\small
+\caption{Median Observed Trade Quantity}
+\label{tab:trade-quantity}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+Sport & Spread & Total\\
+\midrule
+MLB & 25 & 29\\
+NBA & 39 & 38\\
+NFL & 49 & 44\\
+\bottomrule
+\end{tabular}
+\tablenote{Development-archive trades; quantities are contract units.}
+\end{table}
+
+
+\subsection{Fee Structure and the Choice of Resting Orders}
+Kalshi's fee schedule effective 7 July 2026 gives fees in dollars as
+\begin{align}
+  F_{\mathrm{taker}} &= R\!\left(0.07 M_t C p(1-p)\right), \\
+  F_{\mathrm{maker}} &= R\!\left(0.0175 M_m C p(1-p)\right),
+\end{align}
+where $C$ is the number of contracts, $p$ is the dollar price, $M_t$ and $M_m$
+are the respective series multipliers, and $R$ denotes the schedule's rounding
+rule. The default multipliers are $M_t=1$ and $M_m=0$, with exceptions listed
+by series \citep{kalshi2026feeschedule}.
+
+At 50 cents and unit multipliers, the unrounded fees are 1.75 cents per contract
+for a taker and 0.4375 cents for a maker. Two fills near that price therefore
+cost approximately 3.5 cents if both take liquidity, compared with 0.875 cents
+if both provide it, before rounding. This difference is material when the
+forecast concerns a price movement of only a few cents.
+
+The strategy consequently seeks entry through a resting limit order, quoting
+one cent below the reference price to buy or one cent above it to sell. This
+controls the entry price and aims to reduce fees and spread-crossing costs.
+The reference is the last trade, however, so the order need not be competitive
+with the current book. A favourable forecast does not imply that the desired
+entry is available. Moreover, a limit that crosses the book executes as a taker;
+the order-book-aware paper engine assigns the taker fee to such fills.
+
+\subsection{Execution Trade-offs and Simulation Assumptions}\label{sec:exec-tradeoffs}
+Resting orders exchange immediate execution for the possibility of a better
+price and lower fees. An order may expire unfilled, or fill only after new
+information makes its price unattractive. Adverse selection can therefore offset
+the apparent saving \citep{glosten1985bid}. The choice of resting orders is a
+cost-motivated design decision whose value must be assessed with the fill process,
+rather than a claim that maker execution is always more profitable.
+
+Under the specified strategy, entry orders rest for up to 60 seconds. Historical
+simulation counts a fill only when a subsequent trade prints strictly through
+the limit. The fixed-exit rule first attempts another resting order 120 seconds
+after entry; an unsuccessful exit can fall back to taking liquidity or holding
+to settlement. Maker execution at entry therefore does not guarantee maker fees
+on the entire trade.
+
+Historical backtests use a standardised fee model, deducting $1.75p(1-p)$ cents
+per contract for maker fills and $7p(1-p)$ cents for taker fills, where $p$ is
+the fill price in dollars. Fees are applied to both entry and exit according
+to the execution type; positions held to settlement incur no exit trading fee.
+All reported net returns include these costs. Chapter~\ref{ch:trading} uses
+series-specific fees in the order-book replay.
+
+These assumptions permit consistent historical comparisons but do not fully
+reconstruct executable liquidity. Chapter~\ref{ch:trading} tests them against
+recorded order books and live paper orders.
+
+\section{Backtest Results}\label{sec:exp-main}
+Table~\ref{tab:main-pnl} reports returns under the stated strategy, separating
+walk-forward development results from the later out-of-sample evaluation. The latter provides a separate
+check on transfer, subject to the disclosed protocol changes. All returns
+remain conditional on the historical fill and fee assumptions; they should not
+be interpreted as realised exchange profits.
+
+\input{generated/ch5_20x_main}
+
+
+\input{generated/ch5_20x_discussion}
+
+The cumulative historical returns are provided in
+Appendix~\ref{sec:historical-curves} (Figure~\ref{fig:money}).
+
+The following analyses examine which model components support these results
+and how performance depends on the operating conditions, using the development
+folds for both comparisons.
+
+\section{Ablation Study}\label{sec:ingame-ablate}
+The ablation study tests whether the model's components add predictive value
+beyond the remaining inputs. Each variant removes a component or input group
+and is retrained using the same chronological splits and five-seed averaging
+as the full model. Each uses its league's operating feed delay, 10 seconds for
+MLB and 60 seconds for NBA and NFL, and is compared with the full model trained
+at the same delay.
+
+Both forecast skill and trading returns are considered, with profit differences
+paired by game. This distinguishes improvements in average prediction from
+changes in the signals selected for trading (Table~\ref{tab:ablation}).
+
+\input{generated/ch5_20x_ablation}
+
+\subsection{Message Passing and Play Memory}
+Message passing between the contracts of one game is the most valuable part of
+the architecture. Without it, skill falls in all six contract types by 1.4 to 4.2
+points, a loss of roughly 20 to 80\%, and profit falls significantly in three of
+the six (baseball spreads and totals, and football totals). The effect on profit is
+not significant in basketball and in football spreads. Without message passing the
+model also trades 30 to 50\% less in baseball and about 40\% less in football,
+while profit per contract is mixed: it falls from 9.8 to 6.0 cents for baseball
+spreads and from 6.9 to 3.2 cents for football totals, and rises from 5.2 to
+7.0 cents for football spreads.
+
+This pattern is consistent with the shared settlement structure of contracts
+on a game: neighbouring thresholds and related market types provide useful
+context for an individual forecast. Play memory contributes less consistently.
+Removing it lowers baseball skill by 0.5 and 1.4 points, but leaves basketball
+and football skill unchanged or slightly higher (by up to 0.7 points), and its
+profit effects are small except for baseball spreads ($t=-2.6$). The results
+therefore support relational processing more strongly than a general claim
+that longer play history improves trading returns.
+
+\subsection{Structural Reference and Observed Inputs}
+The largest skill losses arise when the structural-reference feature group is
+removed. This group supplies threshold distance, the approximate price reference
+and its gap from the anchor. Skill falls by 1.9 to 7.4 points in all six contract
+types, and profit falls in every one, significantly in four ($t$ from $-2.8$ to
+$-6.3$; basketball totals and football spreads reach only $-1.3$ and $-1.4$). The
+removal turns baseball totals into a loss. For football, skill falls from about
+7--9\% to about 1\%, and trading falls by 54 to 63\%. Removing win probability, which also
+removes the reference features grouped with it, is nearly as costly, so the two effects cannot
+be fully separated.
+
+Event labels add little conditional on the retained game state. Removing play
+type while keeping score, time and win probability changes skill by at most
+0.4 points, with no clear profit improvement from keeping the labels. The
+effects of plays on the score and win probability remain available, so this
+does not imply that the plays themselves carry no information. Removing
+recent trades or quotes costs 0.1 to 1.1 points of skill each. Both ablations
+retain the reference price, measuring the additional value of trading
+activity and quotes rather than the value of market information as a whole.
+
+\subsection{Interpretation}
+Taken together, the ablations indicate that the relationship between the game
+state, contract thresholds and the last traded price is central to the
+forecasts. They do not establish that the structural reference is a true fair
+value or that the signal represents delayed adjustment to news. Skill and
+profit usually agree, but not always: basketball spreads lose skill without message
+passing yet keep their profit, football spreads earn more per contract without it,
+and removing quotes raises baseball spread profit per contract while lowering skill. Profit depends on the few confident, fillable
+signals, not on the average forecast, so both measures are reported.
+
+These comparisons use the development folds, on which the strategy was
+designed, and overlapping feature groups limit attribution to individual
+inputs. Their transfer to later games is assessed through the later out-of-sample and
+live evaluations; Chapter~\ref{ch:conclusion} discusses the broader limitations.
+
+\section{Sensitivity Analysis}\label{sec:exp-sensitivity}
+The ablations address model composition. The following checks instead vary
+information delay, forecast horizon and trading assumptions to examine the
+conditions under which the observed performance persists.
+
+\subsection{Feed Delay}
+Each delay uses a separately trained model with the same delay applied during
+evaluation; Table~\ref{tab:feed-delay} reports the two-minute forecast skill and net
+return at each delay trained. In NBA and NFL, simulated profit remains positive at delays
+comparable to the public feed. At 45 seconds, about the median arrival time of
+both feeds, net profit per contract is 5.5 and 2.8 cents for basketball spreads and
+totals and 5.8 and 5.9 cents for football (per-game $t$ from 2.8 to 6.1), close to
+the 60-second operating models (5.9, 2.3, 5.2 and 6.9 cents). Skill and profit fall
+from 0 to 30 seconds and then change little through 60 seconds, suggesting that the
+remaining predictability does not depend entirely on the most recent play.
+
+\input{generated/ch5_20x_delay}
+
+Baseball is more sensitive (Table~\ref{tab:feed-delay}). Skill falls steadily with
+delay: by 1.0 and 1.4 points for spreads and totals between no delay and 10 seconds,
+and by a further 0.5 and 0.7 points at 15 seconds. Returns follow skill for totals,
+rising to 10.2 cents per contract with no delay and falling to 4.3 at 15 seconds.
+Baseball spreads, however, earn slightly less with no delay (8.7 cents) than at
+10 seconds (9.8), so skill is the cleaner measure of what the model loses. The live baseball feed arrives 7 to 15 seconds after the pitch, so the
+10-second model approximates this range. Faster information is therefore
+potentially more valuable in MLB, although neither this comparison nor the
+NBA/NFL results establish live profitability.
+
+\subsection{Prediction Horizon}\label{sec:horizon-choice}
+The operating horizon balances forecast skill against the size of moves
+available after costs. Although $R^2$ generally falls with the horizon, it
+measures error relative to no change, not cents earned on a trade. A longer
+horizon may allow a larger favourable movement to cover costs, while also
+exposing the position to further game events. The trading comparison tests
+this trade-off directly.
+
+Table~\ref{tab:horizon-trading} compares 30-, 60- and 120-second strategies
+on the five development test folds. All use the same five-seed model ensemble,
+the league's feed delay (10 seconds for MLB, 60 seconds for NBA and NFL), entry and fill rules, fees and the $20\times$
+quantities defined in Section~\ref{sec:position-sizing}. Each uses the forecast for
+its own horizon and attempts an exit that many seconds after the entry fill;
+the entry and exit order deadlines remain unchanged. Thus the comparison
+evaluates the forecast and holding period jointly, rather than isolating the
+forecast head. The 30-second backtest was added after the operating horizon
+had been selected, as a supplementary sensitivity check. It uses the stored
+development forecasts and does not reopen horizon selection on the later
+out-of-sample data.
+
+\input{generated/ch5_20x_horizons}
+
+The 120-second strategy earns higher net returns per contract than the
+30-second strategy in all six groups and the 60-second strategy in five.
+MLB totals favour 60 seconds, although the difference from 120 seconds is small.
+The improvement over 30 seconds is most clearly supported for MLB spreads,
+NBA spreads and NFL totals.
+Against 60 seconds, only MLB spreads have a paired $t$ above two. The results
+therefore support 120 seconds as a common operating horizon across sports,
+despite its lower forecast skill, without establishing its superiority for
+every contract type. They also do not isolate longer holding as the cause of
+the improvement, since the forecasts and selected trades change with the
+horizon. The later out-of-sample evaluation tests the selected strategy without choosing the
+horizon again.
+
+
 \chapter{Trading System and Live Evaluation}
 \label{ch:trading}
 % -----------------------------------------------------------------------------
-\section{Execution Model}
-Maker vs.\ taker, fee model, fill assumptions, order-management variants.
-\todo{Gross first, then fees.}
+Historical forecast skill leaves open whether signals remain useful under
+live feed delays and executable prices. This chapter examines that question
+using the lum.id paper-trading system and an exchange simulator supplied with
+live-recorded feeds and order books. It reports forward returns, compares
+them with simple quoting rules, and examines the feed and execution effects
+behind differences from the historical results.
 
-\section{Why Signals Shrink: Stale Prices and Adverse Selection}
-Stale last print versus true move; settled losers as post-event pick-offs.
-\todo{Tables from reports/ingame\_journal.md and stale-reference analysis.}
+\section{Live Paper-Trading System}\label{sec:livesystem}
+The lum.id system generates paper-trading decisions from arriving game and
+market feeds. Its original paper ledger uses the print-based fill rule from
+Chapter~\ref{ch:experiments}. The reported forward returns use a separate
+exchange simulator, which evaluates the strategy against received-time feeds
+and recorded order books. This combines observations of live information
+availability with a more detailed model of execution; the simulator's ledger
+is distinct from the original live paper-order log.
 
-\section{Live Paper-Trading System}
-Runners, recorder, replay tool, watchdog, sandbox deployment.
-\todo{System diagram.} \todo{Live vs.\ backtest parity results from forward\_test\_log.md.}
+Each runner follows the play feed, computes forecasts and generates paper
+orders. Baseball applies a 10-second delay after pitch results; basketball
+and football apply 60 seconds after the estimated play end, or the actual
+arrival time if later. Order quantities follow
+Section~\ref{sec:position-sizing}.
 
-\section{Forward-Test Results}
-\todo{Games traded, P\&L, divergences from backtest (feed latency, postponements).}
+The recorder preserves the arrival order of feeds, trades and book updates.
+These observations also support matched baseline and safeguard comparisons.
+Figure~\ref{fig:live-system} shows the relationship between live data collection,
+paper orders and simulated exchange execution.
+\begin{figure}[htbp]\centering
+\begin{tikzpicture}[x=1cm,y=1cm,font=\small,
+ box/.style={draw=black!60,rounded corners,align=center,text width=3cm,minimum height=1cm}]
+\node[box] (feeds) at (0,1.6) {Game feeds\\Kalshi trades and book};
+\node[box] (runner) at (4,1.6) {lum.id runner\\Forecasts and decisions};
+\node[box] (paper) at (8,1.6) {Live paper orders\\Print-based fills};
+\node[box] (records) at (0,-.5) {Recorder\\Received-time observations};
+\node[box] (replay) at (4,-.5) {Order-book simulator\\Strategy and execution};
+\node[box] (results) at (8,-.5) {Evaluation\\Forecasts, fills and returns};
+\draw[->,thick] (feeds) -- (runner);
+\draw[->,thick] (runner) -- (paper);
+\draw[->,thick] (feeds) -- (records);
+\draw[->,thick] (records) -- (replay);
+\draw[->,thick] (replay) -- (results);
+\draw[->,thick] (paper) -- (results);
+\end{tikzpicture}
+\caption{Live paper-trading data collection and simulated exchange evaluation.
+The reported returns use the order-book simulator; the original paper ledger
+provides a separate record of live decisions.}
+\label{fig:live-system}
+\end{figure}
+
+\section{Exchange Simulator}\label{sec:simulator}
+The print-based fill rule cannot reconstruct queue position, the price paid
+when taking liquidity, or the book available when an order reaches the
+exchange. The event-driven simulator addresses these limitations by executing
+the strategy against recorded book updates. It provides a more detailed
+execution model, while retaining the limitation that other participants cannot
+respond to the simulated orders.
+
+\subsection{Design}
+\paragraph{Timing.} Book updates follow exchange timestamps, so an accepted
+order sees the recorded liquidity at its acceptance time. A 90 ms latency,
+based on the sandbox's measured round-trip time, is assumed between a decision
+and acceptance; slower settings provide a sensitivity check.
+
+\paragraph{Fills.} A resting order joins the back of its price level. Recorded
+trades consume the queue ahead; cancellations conservatively leave the assumed
+queue position unchanged. Orders that cross the book consume available
+liquidity and pay taker fees. The simulator also retains the through-print
+fill condition. These rules distinguish obtaining a favourable quote from
+actually receiving a fill at that price.
+
+\paragraph{Fees.} Each fill uses the series-specific fee type and multiplier,
+with the coefficients in Section~\ref{sec:execution} and the exchange's rounding
+rules \citep{kalshi2026feeschedule}. Baseball spread and total contracts
+pay taker fees only, at half the base multiplier; basketball and football
+contracts pay both maker and taker fees. Accounting conventions are given in
+Appendix~\ref{sec:sim-implementation}.
+
+\subsection{Validation and Limits}
+Validation checks cover queue handling, fills and the fee ledger. On twelve
+games, requiring fills to be backed by traded volume changed net returns from
+6.05 to 6.00 cents per contract; 95\% of through-print fills were confirmed by
+the recorded book shortly afterwards. Slower order latency also had little
+effect on maker results in these checks. These findings support the replay
+mechanics but do not validate market impact, exchange rejections or lost-message
+behaviour, which are not modelled. Additional replay conventions are given in
+Appendix~\ref{sec:sim-implementation}.
+
+\section{Forward-Test Results}\label{sec:forward}
+The forward evaluation tests the selected strategy on later games under the
+information and execution conditions described above. The reported returns
+are conditional on simulated execution and do not represent realised exchange 
+profits.
+% Future update: extend the reported sample after additional game recordings
+% and their replay comparisons have been completed.
+
+\subsection{Method}
+The paper-trading simulation ran from 12 October to 2 November 2026. The evaluation sample comprises
+\resmainMLBAllgames{} MLB, \resmainNBAAllgames{} NBA and
+\resmainNFLAllgames{} NFL games with sufficient feed and order-book coverage,
+covering regular-season and playoff games and excluding NBA preseason games.
+MLB was already in the postseason, leaving only ten games before the season
+ended. Its sample is therefore small and differs from the largely regular-season
+training data. Baseball results are descriptive and provide limited evidence
+of transfer.
+
+The model is held fixed across the recording period. Each game is evaluated
+with the simulator in Section~\ref{sec:simulator}, using the sizing rule in
+Section~\ref{sec:position-sizing}. The strategy seeks resting-order entry and
+an exit after 120 seconds, with taker execution and settlement as fallbacks.
+NBA totals remain eligible throughout the game, including overtime.
+
+\input{generated/results_tables_main}
+
+Table~\ref{tab:live} reports fills, quantity, gross profit, fees and net returns
+by league and contract type. Spread contracts earned in every league; totals earned in
+football but lost in baseball and basketball.
+
+\subsection{Stalled-Feed Guard}
+Feed safeguards suspend trading when the available game state may be
+outdated: baseball waits for unresolved pitches, while basketball and football
+check for late arrivals. Basketball also pauses during reviews and incomplete
+play updates. Table~\ref{tab:guard} compares these checks with the same games
+evaluated without them. Only the \resguardmetagames{} games in which a guard
+acted require a separate simulation. The precise conditions are given in
+Appendix~\ref{sec:sim-implementation}.
+
+\input{generated/results_tables_guard}
+
+In basketball, the guard changes net profit from
+\$\resguardNBAGuardoffnet{} to \$\resguardNBAGuardonnet{}; in football the
+change is smaller (\$\resguardNFLGuardoffnet{} against
+\$\resguardNFLGuardonnet{}).
+
+Baseball earns more without the unresolved-pitch guard, but the difference is
+uncertain (paired game-level $t=1.3$ across ten games). The comparison therefore
+does not establish that every safeguard improves returns consistently.
+
+\subsection{Comparison with Simple Market-Making Baselines}
+A strategy that earns spread by quoting should be compared with quoting that has no information about the game.
+For the baseline comparison, recorded games are rerun using three rules from
+the market-making literature, with the same exchange simulator, fees and maker
+entry and exit as the model. These rules use only the order book and trade
+tape; nothing is trained or tuned.
+\begin{itemize}
+  \item \textbf{Symmetric quote} \citep{avellaneda2008high} with no inventory or signal skew:
+        a bid one cent below the last price and an offer one cent above, alternating on successive ticks.
+  \item \textbf{Micro-price skew} \citep{stoikov2018micro}: quote on the side towards which the
+        size-weighted mid of the best bid and ask leans, which reflects imbalance of the top of the book.
+  \item \textbf{Trade-flow skew} \citep{cont2014price}: quote on the side of the net signed trade volume of the last 60 seconds.
+\end{itemize}
+The main comparison uses the model's decision times: each baseline trades on
+the same contracts and at the same moments as the model, holding the timing
+of opportunities fixed. Baselines place one contract per order, while the
+model uses Section~\ref{sec:position-sizing}. Each strategy is evaluated on the
+same recorded games. The comparison concerns fixed quoting rules; learned
+market makers \citep{spooner2018market} fall outside its scope.
+
+Table~\ref{tab:baselines} reports annualised Sharpe and maximum drawdown
+alongside net return per unit, win rate and profit factor, separately for
+spreads and totals in each league.
+Sharpe is computed from per-game net profits, including zero-fill games, and
+annualised using the number of regular-season games in each league
+\citep{sharpe1994ratio}. Maximum drawdown is the largest decline in end-of-day
+cumulative profit from a previous peak, including the initial zero balance.
+This dollar risk measure reflects the strategies' different order sizes.
+
+\input{generated/results_tables_baselines}
+
+Annualisation assumes uncorrelated observations, and the estimates are
+uncertain on small samples \citep{lo2002statistics}. In addition,
+selecting among many configurations can inflate apparent performance
+\citep{bailey2014deflated}. They therefore describe the observed comparisons
+rather than establish that the highest-ranked strategy is reliably superior.
+
+Figure~\ref{fig:baseline-comparison} traces the return measure over the same
+games, using the baselines restricted to the model's decision times. Each point
+is cumulative net profit divided by cumulative entry quantity, rather than
+cumulative dollar profit. This permits comparison despite different order
+sizes. Separate spread and total panels show differences between contract
+types within each league.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=\textwidth]{generated/results_baseline_comparison.pdf}
+\caption{Running net cents per unit on matched recorded games, with spreads
+above and totals below for MLB, NBA and NFL. Baselines use the model's decision
+times. Each curve tracks cumulative net profit divided by cumulative entry
+quantity for one contract type and ends at its corresponding return in
+Table~\ref{tab:baselines}.}
+\label{fig:baseline-comparison}
+\end{figure}
+
+On these matched samples, the model has the highest observed net return per
+unit in five of the six league--contract groups, and the highest profit factor
+and annualised Sharpe in all six. Every baseline loses after fees at these
+decision times. NBA totals are the exception for net return per unit: the
+model loses 7.47 cents per unit, compared with losses of 5.45--5.92 cents for
+the baselines, despite its higher profit factor and less negative Sharpe.
+The comparison also
+includes the model's signal-dependent sizing, so it does not isolate the
+forecast from its execution policy.
+
+\subsection{NBA Totals: Historical Decay and Forward Performance}\label{sec:nba-transfer}
+NBA totals are the weakest forward result: they return \resmainNBATotalnetcpercontract{} cents
+per contract (Table~\ref{tab:live}), against 2.33 cents across the historical folds
+at the same 60-second feed delay, and they are the one group in which the model trails
+the market-making baselines (Table~\ref{tab:baselines}). NBA spreads, by contrast,
+retain most of their historical return. The historical trend in predictability
+helps interpret the totals result. In Table~\ref{tab:nba-fold-comparison} the
+ensemble's two-minute forecast skill for totals falls in every successive fold, from
+11.20\% to 2.90\%, despite an expanding training sample. This deterioration suggests
+that relationships useful early in the historical period became less informative
+later. The average across all folds consequently gives a stronger impression of
+predictability than the final fold alone.
+
+\input{generated/nba_fold_comparison}
+
+Trading returns provide a less uniform picture. Totals earn 3.69 cents per contract in
+fold 1, fall to 1.18 and $-0.02$ cents in folds 2 and 3, and recover to 5.83 cents in fold 5
+despite the lowest forecast skill. The historical evidence therefore supports a steady
+decline in average forecasting performance, not a steady decline in profit from the
+selected trades. This distinction matters because sizing, fill selection and
+occasional large price moves can sustain trading returns even as average predictive
+accuracy weakens.
+
+Declining historical skill is consistent with a weakening forecasting edge, sometimes
+described as \emph{alpha decay}, and weakens the case for treating full-period averages
+as stable expectations. It does not by itself explain the forward loss, which is
+well below even the weakest historical fold. The forward sample covers the following
+NBA season. One possible explanation is that the distribution of total game scores in
+previous seasons is not representative of the current season, reducing the
+reliability of learned relationships for totals contracts. The forward sample also
+uses received-time feeds and recorded-book execution, so changing game composition,
+liquidity and execution can contribute. These results motivate monitoring skill and returns over time
+without attributing the deterioration solely to faster information incorporation or
+greater competition.
+
 
 % -----------------------------------------------------------------------------
-\chapter{Discussion}
-\label{ch:discussion}
-% -----------------------------------------------------------------------------
-\section{What Worked and What Did Not}
-\todo{Honest critique: where ML helped, where simple structure won, data limits.}
+\section{Feed Availability}\label{sec:artefacts}
+The live results expose variation in information arrival that aggregate
+historical scores obscure. The responses described here were motivated by observed live
+problems and require further forward evaluation.
 
-\section{Threats to Validity}
-Look-ahead leakage risks, multiple testing, regime change, archive selection,
-feed latency in live deployment.
+Historical reconstruction assigns a fixed availability delay to each play.
+Actual arrivals vary, and archived records can also differ from the provisional
+records seen live. Baseball feeds include pending and revised calls, while
+basketball observations often arrive in batches. A quiet feed can therefore
+indicate either a pause in play or missing information, with different
+implications for a trading decision.
 
-\section{Limitations}
-\todo{Scope: MLB/NBA/NFL only, paper trading, capacity and market impact.}
+The observed arrival delays motivate the 10-second MLB and 60-second NBA/NFL
+settings described in Section~\ref{sec:data-latency}. Safeguards reduce exposure
+to outdated state, but cannot recover information already used by faster
+participants.
 
-% -----------------------------------------------------------------------------
+\section{Why Signals Shrink: Stale Prices and Adverse Selection}\label{sec:stale}
+Even with timely game information, a forecast relative to the last trade need
+not describe a move that remains available in the current book. In a diagnostic
+rerun of one baseball game with fast inputs, the order-book midpoint was already
+about 7 cents in the strategy's favour from the reference when an order was
+placed, and then moved only about 1.5 cents over 120 seconds. Most of the
+signal in this example was the distance between a stale last print and the
+current market. The resting limit order one cent inside that reference sat behind
+the market and filled selectively when the price reversed: filled orders lost 1.5 cents,
+while unfilled signals were followed by favourable moves of 8 cents at 120
+seconds, which are not attainable profits.
+Taking at the touch instead lost 2.5 cents before fees and 5 after.
+
+The second mechanism is adverse selection after a play. On the baseball test
+folds, the trades that were held to settlement and lost were mostly entered just
+after an in-play pitch: 49\% of the losing totals trades were filled within 15
+seconds of one, against about 5\% of other trades, and most were short positions
+in the over that were then decided against the strategy. Excluding fills within
+15 seconds of an in-play pitch lifts simulated totals profit from 7.0 to
+10.1 cents. This exclusion is a retrospective diagnostic, not an implementable
+filter, since the runner does not yet know the play. The timing is consistent
+with better-informed participants accepting stale quotes, although their
+information is not observed.
+
+These findings connect forecasting accuracy with execution: predictable changes
+may already be in current quotes, and orders that fill can face different
+outcomes from those that do not, so forecast skill, entry availability and
+fill-conditional returns must be assessed together.
+
+
 \chapter{Conclusion and Future Work}
 \label{ch:conclusion}
 % -----------------------------------------------------------------------------
-\section{Summary}
-\todo{Answer each sub-question from Section 1.2 in one paragraph.}
+\section{Summary of Findings}
+This thesis examined whether in-game information and related contract prices
+can predict short-horizon price changes in Kalshi sports markets, and whether
+those forecasts can support trading after accounting for information delays,
+fees and execution. The study covered MLB, NBA and NFL, combining a recurrent
+representation of game history with message passing among winner, spread and
+total contracts. Historical evaluation was complemented by live paper trading
+and replay of recorded order books, allowing forecasting performance and
+execution to be examined separately.
 
-\section{Recommendations for Further Work}
-\todo{Deep-book/quote data, lower-latency feeds, additional sports, calibration
-of probabilities, online learning.}
+The historical results support predictability in spread and total prices
+relative to a no-change forecast. Winner contracts show little comparable
+skill at these horizons. Ablations indicate that the relationship between the
+game state, contract thresholds and observed prices is particularly useful:
+removing structural-reference inputs or contract message passing generally
+reduces forecast skill and simulated returns. The contribution of play memory
+is less consistent, while play-type labels add little once their effects on
+the score, clock and win probability are represented. These findings support
+modelling contracts within their shared game context, without establishing
+that every architectural component is necessary or that the structural
+reference represents a true fair value.
+
+Under the historical fill and fee assumptions, the strategy earns positive
+development returns across the six spread and total groups. Later out-of-sample
+results are less uniform: baseball retains positive returns on both contract
+types, football spreads are modestly positive but not clearly different from zero,
+and football totals show no return. The
+120-second horizon offers a useful compromise between forecast skill and
+the size of price movements available after costs, rather than maximising
+forecast skill alone. Returns also differ between the full forecast sample
+and the signals selected for trading, which explains why improvements in
+average prediction error do not always translate into higher profit.
+
+The forward paper-trading evaluation, supported by recorded-order-book replay,
+provides further evidence for the model's predictive signals. Net returns are
+positive in four of the six league--contract groups: MLB spreads, NBA spreads,
+and NFL spreads and totals (Table~\ref{tab:live}). MLB totals and NBA totals are
+the exceptions, with negative net returns. The positive results across the
+other groups support the model's predictive power on the signals selected
+for trading, extending the historical evidence to later games under observed
+feed arrivals and simulated book execution. This support is broad across the
+three sports, although it is not uniform across contract types.
+
+NBA's declining forecast skill across the historical folds also warns against
+assuming a stable predictive edge. Its trading returns do not decline
+uniformly, and the weaker forward results are concentrated in totals, so
+this pattern is consistent with deterioration without identifying its cause.
+
+The live observations and order-book replays also reveal limits to translating
+predictive signals into executable returns.
+A favourable forecast relative to the last trade may reflect a reference
+price that is already stale, rather than a movement still available at an
+executable quote. Resting orders can then remain unfilled during favourable
+price moves and fill after subsequent information makes them attractive to
+the other side. Delayed or revised game feeds compound this problem by
+changing what the strategy knows when it places an order. Consequently,
+positive historical returns do not by themselves establish reliable live
+profitability. A central contribution of the study is the evaluation framework
+that makes these differences visible, alongside the forecasting model itself.
+
+\section{Limitations}
+\paragraph{Development choices and statistical uncertainty.}
+The walk-forward folds informed the architecture, input groups, trading rules
+and sizing specification. Although each model was trained on earlier games,
+these folds are development evidence for the selected system. Paired
+comparisons reduce variation common to two specifications but do not remove
+selection effects from examining many alternatives. Overlapping feature groups
+also prevent a clean causal interpretation of individual ablations. Game-level
+$t$-statistics and the scaling of risk measures rely on assumptions about
+dependence between observations; shared trading conditions and games played
+on the same day may weaken those assumptions. Isolated significant results
+therefore require caution.
+
+\paragraph{Evaluation coverage and protocol changes.}
+The later out-of-sample period provides a separate check on transfer, but
+includes MLB and NFL only. The NFL decision interval was revised after the
+first evaluation, and the current quantity scale was adopted after the
+original analysis. The baseball skip window was chosen on development data
+and fixed before examining the later sample. Historical quantities are
+recalculated on saved fill paths, so they do not capture every order that
+would arise under the revised sizes. These qualifications limit the extent
+to which the results constitute an untouched test of the final strategy.
+
+\paragraph{Information availability and execution.}
+The as-of protocol restricts forecasts to information available at the decision
+time, but reconstructed historical availability cannot reproduce every delay,
+revision or interruption encountered by live feeds. Historical fills are
+inferred from trades, while the order-book simulator provides a closer
+approximation using recorded liquidity and explicit queue assumptions.
+Neither is a record of actual exchange execution. Historical returns depend
+on the standardised fee and fill assumptions specified in
+Chapter~\ref{ch:experiments}. The simulator does not model market impact,
+participant responses, exchange rejections or all recording failures. Keeping
+order sizes below typical observed trade quantities reduces the scale of the
+assumed intervention but does not validate these omissions.
+
+\paragraph{Scope and external validity.}
+The study concerns one venue and three sports, with trading restricted to
+spreads and totals. The forward-test period is short, coverage depends on
+usable recordings, and no real orders were submitted. Its results are useful
+for identifying feed and execution mechanisms but cannot establish capacity,
+stable profitability or performance in other seasons and market conditions.
+Likewise, forecast skill against a last-trade benchmark is not direct evidence
+of market inefficiency: the predictable movement may already be reflected in
+quotes or may be unavailable after trading costs.
+
+\section{Directions for Further Work}
+Future work could bring the forecasting objective closer to the prices at
+which orders can execute. Training targets could incorporate the current bid,
+ask and midpoint alongside the last trade, while estimating fill probability
+and returns conditional on a fill would help distinguish stale reference
+prices from remaining trading opportunities. These estimates could also
+inform order placement, cancellation and exits. Comparing forecasts with
+order quantities and execution rules held fixed would help determine whether
+model improvements translate into better trading outcomes independently of
+sizing.
+
+A longer prospective study would clarify whether the positive returns in
+most contract groups persist beyond the present sample. Fixing the complete
+specification before evaluation, retaining received-time feeds and order-book
+records, and comparing models over the same opportunities would strengthen
+this assessment. Further NBA observations would be particularly useful for
+understanding the contrasting results for spreads and totals. More timely
+game feeds would also allow a direct test of whether reducing information
+delay improves executable returns. Uncertainty estimates that account for
+dependence between games, together with risk measures based on a defined
+capital allocation, would make these comparisons more informative.
+
+Extending the study across seasons and liquidity conditions would help
+establish when the learned relationships remain useful. For NBA totals,
+comparing total-score distributions across seasons could test whether changes
+in scoring patterns contribute to the forward losses. Such an analysis could
+also examine whether retraining on more recent games improves transfer.
+Comparisons with simpler models using the same structural inputs would
+further clarify how much predictive value comes from the neural architecture
+and how much comes from the information supplied to it.
 
 % =============================================================================
 % REFERENCES (page numbering continues; alphabetical by first author)
@@ -407,10 +2333,20 @@ Tetlock, P.C., Tetlock, P.E., Varian, H.R., Wolfers, J. and Zitzewitz, E. (2008)
 The promise of prediction markets. \textit{Science}, Vol.~320, No.~5878,
 May 2008, pp.~877--878.
 
+\bibitem[Avellaneda and Stoikov(2008)]{avellaneda2008high}
+Avellaneda, M. and Stoikov, S. (2008). High-frequency trading in a limit order
+book. \textit{Quantitative Finance}, Vol.~8, No.~3, pp.~217--224.
+\url{https://doi.org/10.1080/14697680701381228}.
+
 \bibitem[Bai et al.(2020)]{bai2020adaptive}
 Bai, L., Yao, L., Li, C., Wang, X. and Wang, C. (2020). Adaptive graph
 convolutional recurrent network for traffic forecasting. In
 \textit{Advances in Neural Information Processing Systems 33 (NeurIPS 2020)}.
+
+\bibitem[Bailey and L\'opez de Prado(2014)]{bailey2014deflated}
+Bailey, D.H. and L\'opez de Prado, M. (2014). The deflated Sharpe ratio: correcting
+for selection bias, backtest overfitting and non-normality. \textit{Journal of
+Portfolio Management}, Vol.~40, No.~5, pp.~94--107.
 
 \bibitem[Bailey et al.(2014)]{bailey2014pseudo}
 Bailey, D.H., Borwein, J.M., L\'opez de Prado, M. and Zhu, Q.J. (2014).
@@ -418,10 +2354,32 @@ Pseudo-mathematics and financial charlatanism: the effects of backtest
 overfitting on out-of-sample performance. \textit{Notices of the American
 Mathematical Society}, Vol.~61, No.~5, May 2014, pp.~458--471.
 
-\bibitem[Bunker and Susnjak(2019)]{bunker2019machine}
-Bunker, R.P. and Susnjak, T. (2019). The application of machine learning
-techniques for predicting results in team sport: a review. arXiv:1912.11762.
-\todo{check final published venue and year}
+\bibitem[Brown(2014)]{brown2014information}
+Brown, A. (2014). Information processing constraints and asset mispricing.
+\textit{The Economic Journal}, Vol.~124, No.~575, pp.~245--268.
+\url{https://doi.org/10.1111/ecoj.12057}.
+
+\bibitem[Bunker and Susnjak(2022)]{bunker2019machine}
+Bunker, R.P. and Susnjak, T. (2022). The application of machine learning
+techniques for predicting match results in team sport: a review. \textit{Journal of
+Artificial Intelligence Research}, Vol.~73, pp.~1285--1322.
+\url{https://doi.org/10.1613/jair.1.13509}.
+
+\bibitem[B\"urgi et al.(2025)]{burgi2025makers}
+B\"urgi, C., Deng, W. and Whelan, K. (2025). Makers and takers: the economics of
+the Kalshi prediction market. MPRA Paper No.~126350, University College Dublin,
+September 2025.
+
+\bibitem[Cameron and Miller(2015)]{cameron2015practitioner}
+Cameron, A.C. and Miller, D.L. (2015). A practitioner's guide to cluster-robust
+inference. \textit{Journal of Human Resources}, Vol.~50, No.~2, pp.~317--372.
+\url{https://doi.org/10.3368/jhr.50.2.317}.
+
+\bibitem[Campbell and Thompson(2008)]{campbell2008predicting}
+Campbell, J.Y. and Thompson, S.B. (2008). Predicting excess stock returns out of
+sample: can anything beat the historical average? \textit{The Review of Financial
+Studies}, Vol.~21, No.~4, pp.~1509--1531.
+\url{https://doi.org/10.1093/rfs/hhm055}.
 
 \bibitem[Cho et al.(2014)]{cho2014learning}
 Cho, K., van Merri\"enboer, B., G\"ul\c{c}ehre, \c{C}., Bahdanau, D.,
@@ -429,46 +2387,221 @@ Bougares, F., Schwenk, H. and Bengio, Y. (2014). Learning phrase representations
 using RNN encoder--decoder for statistical machine translation. In
 \textit{Proceedings of EMNLP 2014}, pp.~1724--1734.
 
+\bibitem[Cont et al.(2014)]{cont2014price}
+Cont, R., Kukanov, A. and Stoikov, S. (2014). The price impact of order book events.
+\textit{Journal of Financial Econometrics}, Vol.~12, No.~1, pp.~47--88.
+
+\bibitem[Croxson and Reade(2014)]{croxson2014information}
+Croxson, K. and Reade, J.J. (2014). Information and efficiency: goal arrival in
+soccer betting. \textit{The Economic Journal}, Vol.~124, No.~575, pp.~62--91.
+\url{https://doi.org/10.1111/ecoj.12033}.
+
+\bibitem[ESPN(n.d.)]{espnapi}
+ESPN (n.d.). Public NBA and NFL summary and scoreboard API endpoints.
+\url{https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary}.
+Accessed 28 October 2026.
+
+\bibitem[Fama(1970)]{fama1970efficient}
+Fama, E.F. (1970). Efficient capital markets: a review of theory and empirical
+work. \textit{The Journal of Finance}, Vol.~25, No.~2, May 1970, pp.~383--417.
+
+\bibitem[Fischer and Krauss(2018)]{fischer2018deep}
+Fischer, T. and Krauss, C. (2018). Deep learning with long short-term memory
+networks for financial market predictions. \textit{European Journal of
+Operational Research}, Vol.~270, No.~2, 2018, pp.~654--669.
+\url{https://doi.org/10.1016/j.ejor.2017.11.054}.
+
 \bibitem[Galekwa et al.(2024)]{galekwa2024systematic}
-Galekwa, R.M., Tshimula, J.M., Tajeuna, E.G. and Kyamakya, K. (2024).
+Galekwa, R.M., Tshimula, J.M., Tajeuna, E.G. and Kyandoghere, K. (2024).
 A systematic review of machine learning in sports betting: techniques,
-challenges, and future directions. arXiv:2410.21484.
-\todo{verify author list and venue}
+challenges, and future directions. Preprint, arXiv:2410.21484.
+\url{https://arxiv.org/abs/2410.21484}.
+
+\bibitem[Gil and Levitt(2007)]{gil2007testing}
+Gil, R. and Levitt, S.D. (2007). Testing the efficiency of markets in the 2002
+World Cup. \textit{Journal of Prediction Markets}, Vol.~1, No.~3, pp.~255--270.
+\url{https://www.ubplj.org/index.php/jpm/article/view/504}.
+
+\bibitem[Gilmer et al.(2017)]{gilmer2017neural}
+Gilmer, J., Schoenholz, S.S., Riley, P.F., Vinyals, O. and Dahl, G.E. (2017).
+Neural message passing for quantum chemistry. In \textit{Proceedings of the
+34th International Conference on Machine Learning}, PMLR 70, pp.~1263--1272.
+\url{https://proceedings.mlr.press/v70/gilmer17a.html}.
+
+\bibitem[Glosten and Milgrom(1985)]{glosten1985bid}
+Glosten, L.R. and Milgrom, P.R. (1985). Bid, ask and transaction prices in a
+specialist market with heterogeneously informed traders. \textit{Journal of
+Financial Economics}, Vol.~14, No.~1, pp.~71--100.
+\url{https://doi.org/10.1016/0304-405X(85)90044-3}.
+
+\bibitem[Gneiting and Raftery(2007)]{gneiting2007strictly}
+Gneiting, T. and Raftery, A.E. (2007). Strictly proper scoring rules,
+prediction, and estimation. \textit{Journal of the American Statistical
+Association}, Vol.~102, No.~477, pp.~359--378.
+\url{https://doi.org/10.1198/016214506000001437}.
+
+\bibitem[Gu et al.(2020)]{gu2020empirical}
+Gu, S., Kelly, B. and Xiu, D. (2020). Empirical asset pricing via machine
+learning. \textit{The Review of Financial Studies}, Vol.~33, No.~5, 2020,
+pp.~2223--2273. \url{https://doi.org/10.1093/rfs/hhaa009}.
+
+\bibitem[Hasbrouck(1991)]{hasbrouck1991measuring}
+Hasbrouck, J. (1991). Measuring the information content of stock trades.
+\textit{The Journal of Finance}, Vol.~46, No.~1, pp.~179--207.
+\url{https://doi.org/10.1111/j.1540-6261.1991.tb03749.x}.
 
 \bibitem[Hong et al.(2000)]{hong2000bad}
 Hong, H., Lim, T. and Stein, J.C. (2000). Bad news travels slowly: size,
 analyst coverage, and the profitability of momentum strategies.
 \textit{The Journal of Finance}, Vol.~55, No.~1, February 2000, pp.~265--295.
 
-\bibitem[Hubáček et al.(2019)]{hubacek2019exploiting}
+\bibitem[Hub\'a\v{c}ek et al.(2019)]{hubacek2019exploiting}
 Hub\'a\v{c}ek, O., \v{S}ourek, G. and \v{Z}elezn\'y, F. (2019). Exploiting
 sports-betting market using machine learning. \textit{International Journal
-of Forecasting}, Vol.~35, No.~2, 2019, pp.~783--796. \todo{verify volume/pages}
+of Forecasting}, Vol.~35, No.~2, pp.~783--796.
+\url{https://doi.org/10.1016/j.ijforecast.2019.01.001}.
+
+\bibitem[Kalshi(2026a)]{kalshi2026feeschedule}
+Kalshi (2026a). \textit{Fee schedule}. Effective 7 July 2026.
+\url{https://kalshi.com/docs/kalshi-fee-schedule.pdf}.
+Accessed 28 October 2026.
+
+\bibitem[Kalshi(2026b)]{kalshi2026feeshelp}
+Kalshi (2026b). Fees. \textit{Kalshi Help Center}, 19 April 2026.
+\url{https://help.kalshi.com/en/articles/13823805-fees}.
+Accessed 28 October 2026.
+
+\bibitem[Kalshi(2026c)]{kalshi2026candles}
+Kalshi (2026c). Get market candlesticks. \textit{API Documentation}.
+\url{https://docs.kalshi.com/api-reference/market/get-market-candlesticks}.
+Accessed 28 October 2026.
+
+\bibitem[Kalshi(2026d)]{kalshi2026trades}
+Kalshi (2026d). Get trades. \textit{API Documentation}.
+\url{https://docs.kalshi.com/api-reference/market/get-trades}.
+Accessed 28 October 2026.
+
+\bibitem[Kelly(1956)]{kelly1956new}
+Kelly, J.L., Jr. (1956). A new interpretation of information rate.
+\textit{The Bell System Technical Journal}, Vol.~35, No.~4, pp.~917--926.
+\url{https://doi.org/10.1002/j.1538-7305.1956.tb03809.x}.
 
 \bibitem[Lee and Ready(1991)]{lee1991inferring}
 Lee, C.M.C. and Ready, M.J. (1991). Inferring trade direction from intraday
 data. \textit{The Journal of Finance}, Vol.~46, No.~2, June 1991, pp.~733--746.
 
+\bibitem[Li et al.(2018)]{li2018diffusion}
+Li, Y., Yu, R., Shahabi, C. and Liu, Y. (2018). Diffusion convolutional recurrent
+neural network: data-driven traffic forecasting. In \textit{Proceedings of the
+International Conference on Learning Representations (ICLR 2018)}.
+\url{https://arxiv.org/abs/1707.01926}.
+
+\bibitem[Lo(2002)]{lo2002statistics}
+Lo, A.W. (2002). The statistics of Sharpe ratios. \textit{Financial Analysts
+Journal}, Vol.~58, No.~4, pp.~36--52.
+
+\bibitem[Lo et al.(2002)]{lo2002econometric}
+Lo, A.W., MacKinlay, A.C. and Zhang, J. (2002). Econometric models of limit-order
+executions. \textit{Journal of Financial Economics}, Vol.~65, No.~1, pp.~31--71.
+\url{https://doi.org/10.1016/S0304-405X(02)00134-4}.
+
 \bibitem[L\'opez de Prado(2018)]{lopezdeprado2018advances}
 L\'opez de Prado, M. (2018). \textit{Advances in Financial Machine Learning}.
 Wiley, Hoboken, NJ, 2018.
+
+\bibitem[Luo et al.(2024)]{luo2024spatial}
+Luo, C., Ma, T. and Cucuringu, M. (2024). Spatial-temporal stock movement
+prediction and portfolio selection based on the semantic company relationship
+graph. Preprint, 18 January 2024. SSRN 4699179.
+\url{https://doi.org/10.2139/ssrn.4699179}.
+
+\bibitem[MLB Advanced Media(n.d.)]{mlbstatapi}
+MLB Advanced Media (n.d.). MLB Stats API: live game feed and win-probability
+endpoints. \url{https://statsapi.mlb.com/}.
+Accessed 28 October 2026.
+
+\bibitem[Moshrefi(2026)]{moshrefi2026prices}
+Moshrefi, N. (2026). Prices, probabilities, and parlays: systematic bias in
+sports prediction markets. Preprint, arXiv:2607.14430.
+\url{https://arxiv.org/abs/2607.14430}.
+
+\bibitem[nflverse(n.d.)]{nflversedata}
+nflverse (n.d.). \textit{nflverse data}: play-by-play datasets.
+\url{https://github.com/nflverse/nflverse-data/releases/tag/pbp}.
+Accessed 28 October 2026.
+
+\bibitem[\"Otting et al.(2022)]{otting2022reaction}
+\"Otting, M., Michels, R., Langrock, R. and Deutscher, C. (2022). The reaction
+to news in live betting. Preprint, arXiv:2108.00821, revised 11 February 2022.
+\url{https://arxiv.org/abs/2108.00821v2}.
 
 \bibitem[Pelechrinis(2017)]{pelechrinis2017iwinrnfl}
 Pelechrinis, K. (2017). iWinRNFL: a simple, interpretable and well-calibrated
 in-game win probability model for NFL. arXiv:1704.00197.
 
+\bibitem[Radde(2026a)]{radde2026trading}
+Radde, K. (2026a). Trading volume on prediction markets has soared in recent
+months. Pew Research Center, 27 May 2026. Data from The Block; notional taker
+volume in U.S. dollars.
+
+\bibitem[Radde(2026b)]{radde2026doubled}
+Radde, K. (2026b). Prediction markets' trading volume doubled between May and
+July, largely driven by sports. Pew Research Center, 23 September 2026. Data from
+The Block; notional taker volume in U.S. dollars.
+
+\bibitem[Robberechts et al.(2021)]{robberechts2021bayesian}
+Robberechts, P., Van Haaren, J. and Davis, J. (2021). A Bayesian approach to
+in-game win probability in soccer. In \textit{Proceedings of the 27th ACM SIGKDD
+Conference on Knowledge Discovery and Data Mining}.
+\url{https://doi.org/10.1145/3447548.3467194}.
+
+\bibitem[Sharpe(1994)]{sharpe1994ratio}
+Sharpe, W.F. (1994). The Sharpe ratio. \textit{Journal of Portfolio Management},
+Vol.~21, No.~1, pp.~49--58.
+
+\bibitem[Snowberg and Wolfers(2010)]{snowberg2010explaining}
+Snowberg, E. and Wolfers, J. (2010). Explaining the favorite--longshot bias: is
+it risk-love or misperceptions? \textit{Journal of Political Economy},
+Vol.~118, No.~4, pp.~723--746.
+\url{https://doi.org/10.1086/655844}.
+
+\bibitem[Spooner et al.(2018)]{spooner2018market}
+Spooner, T., Fearnley, J., Savani, R. and Koukorinis, A. (2018). Market making via
+reinforcement learning. In \textit{Proceedings of the 17th International Conference
+on Autonomous Agents and MultiAgent Systems (AAMAS 2018)}, pp.~434--442.
+
+\bibitem[Stoikov(2018)]{stoikov2018micro}
+Stoikov, S. (2018). The micro-price: a high-frequency estimator of future prices.
+\textit{Quantitative Finance}, Vol.~18, No.~12, pp.~1959--1966.
+
+\bibitem[Stern(1994)]{stern1994brownian}
+Stern, H.S. (1994). A Brownian motion model for the progress of sports scores.
+\textit{Journal of the American Statistical Association}, Vol.~89, No.~427,
+pp.~1128--1134. \url{https://doi.org/10.1080/01621459.1994.10476851}.
+
+\bibitem[Vaswani et al.(2017)]{vaswani2017attention}
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A.N.,
+Kaiser, \L. and Polosukhin, I. (2017). Attention is all you need. In
+\textit{Advances in Neural Information Processing Systems 30}, pp.~5998--6008.
+\url{https://arxiv.org/abs/1706.03762}.
+
 \bibitem[Walsh and Joshi(2024)]{walsh2024machine}
 Walsh, C. and Joshi, A. (2024). Machine learning for sports betting: should
 model selection be based on accuracy or calibration? \textit{Machine Learning
-with Applications}, Vol.~16, 2024. \todo{verify article number}
+with Applications}, Vol.~16, Article 100539.
+\url{https://doi.org/10.1016/j.mlwa.2024.100539}.
 
 \bibitem[Wolfers and Zitzewitz(2004)]{wolfers2004prediction}
 Wolfers, J. and Zitzewitz, E. (2004). Prediction markets. \textit{Journal of
 Economic Perspectives}, Vol.~18, No.~2, Spring 2004, pp.~107--126.
 
-% \todo{Add: Kalshi documentation (organisation as author), Graph WaveNet,
-% DCRNN, STGCN, the sports-market efficiency paper, the five papers in papers/.
-% Verify every entry above before submission.}
+\bibitem[Wu et al.(2019)]{wu2019graph}
+Wu, Z., Pan, S., Long, G., Jiang, J. and Zhang, C. (2019). Graph WaveNet for
+deep spatial-temporal graph modeling. In \textit{Proceedings of the 28th
+International Joint Conference on Artificial Intelligence}, pp.~1907--1913.
+\url{https://doi.org/10.24963/ijcai.2019/264}.
+
+% Kalshi documentation is included in the bibliography above.
 \end{thebibliography}
 
 % =============================================================================
@@ -478,16 +2611,159 @@ Economic Perspectives}, Vol.~18, No.~2, Spring 2004, pp.~107--126.
 \small
 \singlespacing
 
-\chapter{Implementation Details}
-\todo{Repository layout, key modules, hyper-parameters, cluster job settings.}
+\chapter{Implementation Details}\label{sec:implementation}
+\section{Model Configuration}
+\begin{table}[htbp]\centering
+\caption{Training Configuration}
+\label{tab:training-config}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Setting & Value\\
+\midrule
+Optimiser & AdamW\\
+Learning rate / weight decay & $10^{-3}$ / $10^{-4}$\\
+Hidden dimension & 64\\
+Dropout (context and message updates) & 0.1\\
+Gradient norm limit & 1\\
+Games per batch / sampled times per game & Up to 16 / up to 256\\
+Decision-time sampling & Without replacement\\
+Maximum epochs / early-stopping patience & 40 / 5\\
+Random seeds per specification & 5\\
+Parameter count & Approximately 0.48 million\\
+\bottomrule
+\end{tabular}
+\tablenote{Common settings for MLB, NBA and NFL.}
+\end{table}
+Parameter counts vary slightly across sports because the input dimensions
+differ. Missing win-probability levels are carried forward within a game, with
+0.5 used if no earlier value exists; missing changes are set to zero.
+For the structural reference, the remaining fraction is clipped to
+$[10^{-3},1]$ and the home-win probability to $[0.01,0.99]$. Fixed margin and
+total widths $(\sigma_m,\sigma_T)$ are $(4,4.25)$ for MLB, $(14.5,19.5)$ for
+NBA and $(13,14.5)$ for NFL. These widths are development choices and are
+distinct from the numerical input normalisation.
+
+Models were implemented in PyTorch and trained on NVIDIA A100 GPUs.
+
+\section{Contract Encoding Example}\label{sec:encoding-example}
+Consider an NBA home spread requiring a margin above 5.5 points when the
+available home lead is four points. Suppose its bid and ask are 59 and 61 cents
+and its latest trade is 60 cents, observed 15 seconds earlier.
+Table~\ref{tab:encoding-example} illustrates the resulting representation.
+Missing bids and asks use scaled placeholders of zero and one, respectively,
+with separate indicators identifying whether a quote is observed.
+
+\begin{table}[htbp]\centering
+\caption{NBA Contract Encoding Example}
+\label{tab:encoding-example}
+\begin{tabular}{@{}p{0.28\textwidth}p{0.31\textwidth}p{0.35\textwidth}@{}}
+\toprule
+Feature & Raw information & Encoded value \\
+\midrule
+Contract type & Spread & $(0,1,0)$: winner, spread, total \\
+Team side & Home & $(1,0)$: home, away \\
+Bid and ask & 59 and 61 cents & $0.59$, $0.61$ \\
+Quote availability & Both sides available & $(1,1)$ \\
+Latest trade price & 60 cents & $0.60$ \\
+Recent-trade indicator & 15 seconds old & $1$ \\
+Trade age & 15 seconds & Log-transformed and normalised \\
+Threshold distance & $5.5-4=1.5$ points & Normalised by the sport-specific scale \\
+\bottomrule\end{tabular}
+\end{table}
+
+\section{Historical Sizing Recalculation}\label{sec:historical-resizing}
+Historical returns use the saved development and later out-of-sample fills.
+Each stored fill receives its original signal-and-width
+weight, multiplied by 20 and rounded half up to 0.01. Zero quantities are
+excluded from profit and quantity aggregates. The saved entry and exit paths
+are retained: opportunities previously blocked by an order that now rounds
+to zero are not reconstructed. This fixed-fill calculation must therefore be
+distinguished from a fresh chronological replay of the complete strategy.
+
+Per-game profit includes eligible games without retained fills as zeros.
+Net profit, profit per unit and paired statistics are
+recomputed from the resized quantities. Historical fees retain the stated
+unrounded per-unit assumptions; the series-specific fee and queue model belongs
+to the separate evaluation on live-recorded order books.
+
+The unsized comparison in Table~\ref{tab:sizing-evidence} instead simulates
+orders without a signal cutoff and assigns one contract to each fill. Allowing
+weak signals can occupy a contract before a stronger signal arrives, so these
+fills differ from those of the selected strategy.
+
+\section{Replay and Recording Details}\label{sec:sim-implementation}
+Book reconstruction deduplicates exchange events before applying updates.
+Limit prices follow the whole-cent grid, rounding buys down and sells up.
+Simulated taker orders reduce the available displayed quantity so that
+subsequent orders cannot reuse the same liquidity. The event ordering,
+queue rules and fee ledger are checked separately from the forecasting model;
+the empirical validation is reported in Section~\ref{sec:simulator}.
+
+The fee ledger uses the exchange's per-order rounding and rebate accumulator,
+with an assumed account balance precision of \$0.0001. The feed-guard comparison
+retains each league's own checks: baseball waits for unresolved in-play pitches;
+basketball and football suspend trading if any of the five latest plays arrived
+more than 120 seconds late. Basketball also excludes review and placeholder
+updates and requires agreement with the forecast based on real-time play stamps.
+
+\section{Panel Construction Conventions}\label{sec:panel-conventions}
+Trades sharing a timestamp are ordered by taker direction, price and trade
+identifier to approximate sweep order. A contract-step row is retained when
+it has a reference price and is either marked live or has a reference between
+2 and 98 cents. The live indicator requires a two-sided, non-crossed quote
+no wider than 10 cents, a midpoint between 3 and 97 cents, and quote age no
+greater than five minutes. Missing or stale sides remain identifiable through
+the model's quote-quality features.
+
+\section{Code Availability}\label{sec:code-availability}
+The code for the forecasting model, the live paper-trading runner, the exchange
+simulator and replay, and the scripts that generate the tables and figures in
+this report is available at \url{https://github.com/casperngeen/event-pred}.
+The raw market and play-by-play recordings are not included because of their size.
 
 \chapter{Additional Results}
-\todo{Extra tables and plots that would break the flow of the main report.}
+\section{Historical Performance Over Time}\label{sec:historical-curves}
+\begin{figure}[htbp]\centering
+\includegraphics[width=\textwidth]{generated/ch5_20x_cumulative.pdf}
+\caption{Cumulative historical net profit at $20\times$ sizing under the stated
+fee model. Shading marks the later out-of-sample
+period for MLB and NFL. NBA contains development games only. Quantities are
+applied to saved simulated fills, without market impact.}
+\label{fig:money}
+\end{figure}
 
-\chapter{Conference Paper (optional, $\le$10 pages)}
-\todo{Delete this appendix if not submitting a paper. Allowed on top of the 55-page limit.}
+\section{Uncertainty in Forecast Skill}\label{sec:skill-uncertainty}
+The parenthesised statistics in Table~\ref{tab:skill-holdout} test whether the
+five-seed forecast ensemble reduces squared error relative to no change.
+For each valid target, let $d_j=y_j^2-(y_j-\widehat y_j)^2$, where $y_j$ is
+the observed price change. Let $D_g$ and $n_g$ be the sum of these differences
+and the number of observations in game $g$, and let $G$ be the game count.
+The game-clustered paired statistic is
+\begin{equation}
+ t=\frac{\sum_g D_g}
+ {\sqrt{\frac{G}{G-1}\sum_g(D_g-n_g\bar d)^2}},
+ \qquad \bar d=\frac{\sum_g D_g}{\sum_g n_g}.
+\end{equation}
+Positive values favour the model. Clustering permits dependence among the
+repeated times and contracts within a game; it assumes independence across
+games and does not adjust for testing multiple horizons and contract types.
+For MLB and NFL, the calculation uses the saved predictions and valid-target
+masks from the later out-of-sample evaluation. For NBA, it pools the five disjoint
+development test folds, using their saved ensemble forecasts and matching
+panel targets. These NBA results remain development evidence.
 
-\chapter{Reproducibility and Data Dictionary}
-\todo{Data schemas, as-of layer definitions, how to rerun experiments.}
+\section{Fold and Seed Sensitivity}
+Table~\ref{tab:fold-skill} reports short-horizon forecast skill separately for
+all five development folds, using the sport-specific delays of the live models.
+The individual-seed mean and the forecast ensemble are different summaries;
+this table uses the former, consistent with Table~\ref{tab:skill}.
+\input{generated/fold_skill}
+
+Table~\ref{tab:seed-returns} shows how later out-of-sample returns vary across
+training seeds under the original evaluation configuration. Each seed generates
+its own signals and selected fills, so the range reflects changes in the
+trading decisions as well as forecast variation. The ensemble averages
+forecasts before trading rather than averaging the five profit figures.
+\input{generated/seed_returns}
 
 \end{document}

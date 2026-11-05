@@ -1,0 +1,50 @@
+{
+  "source": "data/sports_live/sandbox/2026-10-15/MLB_849810",
+  "ticker": "KXMLBTOTAL-26OCT152000MILLAD-10",
+  "decision": {
+    "t": 1792119387.747,
+    "ticker": "KXMLBTOTAL-26OCT152000MILLAD-10",
+    "kind": "total",
+    "level": 42.97758483886719,
+    "ref": 49.0,
+    "signal": -6.022,
+    "width": 18.0,
+    "action": "order",
+    "side": -1,
+    "limit": 50.0,
+    "size": 0.0105
+  },
+  "order_events": [
+    {
+      "event": "placed",
+      "id": 9,
+      "ticker": "KXMLBTOTAL-26OCT152000MILLAD-10",
+      "kind": "total",
+      "t0": 1792119387.747,
+      "side": -1,
+      "limit": 50.0,
+      "size": 0.0105,
+      "signal": -6.022,
+      "stage": "entry",
+      "ahead": 0.0
+    },
+    {
+      "event": "filled",
+      "id": 9,
+      "t": 1792119432.206,
+      "price": 50.0
+    },
+    {
+      "event": "exit posted",
+      "id": 9,
+      "t": 1792119552.206,
+      "price": 98.0
+    },
+    {
+      "event": "to settlement",
+      "id": 9,
+      "t": 1792119792.206
+    }
+  ],
+  "market_trades": 180
+}

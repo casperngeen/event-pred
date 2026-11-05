@@ -1,0 +1,16 @@
+*.aux
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.out
+*.toc
+*.log
+*.bbl
+*.blg
+main.pdf
+
+# Reference papers, compiled copies, latex byproducts
+fyp-reference-*.pdf
+A0271633H-fyp-final-report.pdf
+*.synctex.gz
