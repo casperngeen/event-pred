@@ -50,6 +50,18 @@ statsapi's MLB codes match; ESPN differs (map in `fetch_pbp.py`, `TO_SRC`).
   needs the same guards.
 - **ESPN's API is unofficial** and can change or rate-limit without notice; plan a fallback
   (official league feeds or a paid provider) before trading on NBA / NFL game state.
+- **NBA live feeds are too slow to trade on (measured 13-16 Oct 2026, 25 preseason games recorded on the lum.id
+  sandbox, scratchpad `nba_delay.py`):**
+  - **ESPN `/summary`:** polled every 2 s, it changed only every 20 s (median; 10-52 s). A play reached us a median
+    ~45 s after its wallclock (per game 40-51 s; p25 ~37 s, p90 ~75 s). Three 16 Oct games ran 10-50 min behind.
+  - **ESPN's wallclock is the real time.** Around 1,394 made baskets, the scoring team's Kalshi win price is flat
+    until the wallclock, makes about half its move by +5 s and nearly all by +20 s (+2.9c in total). By the time
+    ESPN delivers the play, the market has priced it.
+  - **stats.nba.com `playbyplayv3`:** no use live. In every game it returned an empty play list until the game
+    was over, then the whole game in one response (about half the games never at all). The NBA's live feed
+    (`cdn.nba.com` liveData) refuses us with 403.
+  - **So:** the NBA models, validated at a 10 s delay, can't be traded on these feeds; a faster feed (official
+    or paid) would be needed first.
 - **Holdout**: anything closing (or, for results, known) on or after 2026-07-01 lives under
   `data/sports/_HOLDOUT_DO_NOT_USE/` and is read once, for the final test.
 

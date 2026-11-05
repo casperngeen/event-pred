@@ -88,3 +88,7 @@ kalshi_api_key.txt
 panels/
 results/ingame/
 results/ingame_ridge/
+
+# FYP format handout and local Claude settings
+FYP-Report-Format-*.pdf
+.claude/settings.local.json
