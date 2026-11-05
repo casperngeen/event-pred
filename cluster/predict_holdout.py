@@ -33,7 +33,6 @@ _spec.loader.exec_module(_ingame)
 NAMES = {"MLB": "gru_d10_h30-60-120-1800_tp_pitch", "NFL": "gru_d10_h30-60-120-1800_tp", "NBA": "gru_d10_h30-60-120-1800_tp"}
 # the frozen models (reports/holdout_spec.md; MLB: every pitch a play, section 9)
 HZ = ["30s", "60s", "120s", "1800s"]
-DELAY_S = 10.0
 FOLD = 99
 KEEP = ("step", "game", "kind", "value", "delta", "value_h", "y", "has_bid", "has_ask", "entry_bid", "entry_ask")
 
@@ -46,7 +45,10 @@ def main() -> None:
     ap.add_argument("--out", default="results/holdout")
     ap.add_argument("--seeds", default="0,1,2,3,4")
     ap.add_argument("--device", default="auto")
+    ap.add_argument("--delay", type=float, default=10.0, help="feed delay of the model (frozen: 10; NFL also 60, written up in the thesis)")
     a = ap.parse_args()
+    delay_s = a.delay
+    names = {k: v.replace("_d10_", f"_d{delay_s:g}_") for k, v in NAMES.items()}
     panel, out = Path(a.panel), Path(a.out)
     assert "panels" not in panel.parts, "keep holdout panels out of panels/ (training jobs read it)"
     pn = _ingame.Panel(panel, horizons=HZ)
@@ -58,10 +60,10 @@ def main() -> None:
     print(f"{a.league}: {pn.n_games} games, device {dev}, seeds {seeds}", flush=True)
     total, first = None, None
     for s in seeds:
-        w = Path(a.weights) / f"{a.league}_final_{NAMES[a.league]}_seed{s}.pt"
+        w = Path(a.weights) / f"{a.league}_final_{names[a.league]}_seed{s}.pt"
         model, ck = _ingame.load_model(w, pn, dev)
-        assert ck["info"]["delay_s"] == DELAY_S and ck["info"]["seed"] == s, f"{w}: not the frozen settings"
-        pr = _ingame.predict(model, pn, games, dev, stride=1, delay_s=DELAY_S)
+        assert ck["info"]["delay_s"] == delay_s and ck["info"]["seed"] == s, f"{w}: not the frozen settings"
+        pr = _ingame.predict(model, pn, games, dev, stride=1, delay_s=delay_s)
         pr = {k: pr[k] for k in KEEP}
         if first is None:
             first = {k: v for k, v in pr.items() if k != "delta"}
@@ -69,12 +71,12 @@ def main() -> None:
         else:
             assert np.array_equal(pr["step"], first["step"]) and np.array_equal(pr["kind"], first["kind"]), "seeds' rows differ"
             total += pr["delta"]
-        base = out / f"{a.league}_fold{FOLD}_{NAMES[a.league]}_seed{s}"
+        base = out / f"{a.league}_fold{FOLD}_{names[a.league]}_seed{s}"
         np.savez_compressed(base.with_suffix(".npz"), **pr)
         base.with_suffix(".json").write_text(json.dumps(ck["info"] | {"weights": str(w), "panel": str(panel)}, indent=1))
         print(f"  seed {s}: {len(pr['delta']):,} contract-steps -> {base}.npz", flush=True)
         del pr, model
-    base = out / f"{a.league}_fold{FOLD}_{NAMES[a.league]}_ens5_seed0"
+    base = out / f"{a.league}_fold{FOLD}_{names[a.league]}_ens5_seed0"
     np.savez_compressed(base.with_suffix(".npz"), **first, delta=(total / len(seeds)).astype(np.float32))
     base.with_suffix(".json").write_text(json.dumps({"horizons": HZ, "seeds": seeds, "panel": str(panel)}, indent=1))
     print(f"  average of {len(seeds)} seeds -> {base}.npz")

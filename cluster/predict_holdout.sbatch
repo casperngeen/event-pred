@@ -3,6 +3,7 @@
 # The holdout panels sit in holdout_panels/<league>/ only for this run (never panels/); see cluster/README.md.
 #     sbatch cluster/predict_holdout.sbatch                  # MLB NFL
 #     LEAGUES="MLB" sbatch --array=0 cluster/predict_holdout.sbatch
+#     LEAGUES="NFL" DELAY=60 sbatch --array=0 cluster/predict_holdout.sbatch   # NFL 60 s model (train_final.sbatch with DELAY=60)
 # Results: results/holdout/<league>_fold99_gru_d10_h30-60-120-1800_tp[_pitch]_{seed<s>,ens5_seed0}.npz (+ .json) (MLB: _pitch)
 # GPU: a100-40 by default; another type for one submission (options on the command line override this line):
 #     cluster/submit.sh <this script> [options]: the first modern GPU type with free capacity (never the old nv cards)
@@ -21,4 +22,4 @@ source "${VENV:-.venv-cluster}/bin/activate"
 read -r -a LG <<< "${LEAGUES:-MLB NFL}"
 LEAGUE=${LG[${SLURM_ARRAY_TASK_ID:-0}]}
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
-python cluster/predict_holdout.py --league "$LEAGUE" --panel "holdout_panels/$LEAGUE" --weights results/ingame/final --out results/holdout
+python cluster/predict_holdout.py --league "$LEAGUE" --panel "holdout_panels/$LEAGUE" --weights results/ingame/final --out results/holdout ${DELAY:+--delay "$DELAY"}

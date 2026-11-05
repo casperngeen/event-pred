@@ -2,7 +2,7 @@
 # Average the seeds of every ablation version whose 25 runs (5 folds x 5 seeds) have all finished, on a CPU compute
 # node, deleting the per-seed forecasts afterwards (cluster/average_seeds.py --delete-seeds). Versions already
 # averaged or not finished are skipped, so this can be rerun as jobs finish. From ~/event-pred on the cluster:
-#     cluster/average_ablations.sh
+#     cluster/average_ablations.sh                 # (ABL_D60=1 also averages the NBA/NFL 60 s ablations)
 # Prints, per version and league, the run name to copy back to the laptop (reports/ablation_runsheet.md, step c).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -21,6 +21,10 @@ name() {   # league memory delay rounds drop -> run name between fold<k>_ and _s
 versions() {   # league -> "memory delay rounds drop" per version
   echo "gru 10 0 -"; echo "none 10 2 -"; echo "none 10 0 -"
   for d in play_type wp baseline prints quotes; do echo "gru 10 2 $d"; done
+  if [ -n "${ABL_D60:-}" ] && [ "$1" != MLB ]; then   # NBA/NFL ablations trained at 60 s (NBA_NFL_DELAY=60 cluster/submit_ablations.sh)
+    echo "gru 60 0 -"; echo "none 60 2 -"; echo "none 60 0 -"
+    for d in play_type wp baseline prints quotes; do echo "gru 60 2 $d"; done
+  fi
   if [ "$1" = MLB ]; then for d in 0 5 15; do echo "gru $d 2 -"; done
   else for d in 0 30 45 60; do echo "gru $d 2 -"; done; fi
 }

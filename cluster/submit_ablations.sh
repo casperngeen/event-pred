@@ -6,6 +6,7 @@
 #     cluster/submit_ablations.sh                       # every step
 #     STEPS="A1 A2 A3" cluster/submit_ablations.sh      # some steps (A1-A3, B1-B5, C)
 #     DRY_RUN=1 cluster/submit_ablations.sh             # print the sbatch commands only
+#     NBA_NFL_DELAY=60 NBA_NFL_ONLY=1 STEPS="A1 A2 A3 B1 B2 B3 B4 B5" cluster/submit_ablations.sh   # NBA/NFL ablations at 60 s (8 tasks)
 # Each task runs PACK trainings one after another (~1 h typical, 3 h limit). Runs whose .json exists are skipped
 # (--skip-existing), so a task that hits the time limit or fails is redone by rerunning the same command.
 # When a version's runs have all finished: cluster/average_ablations.sh.
@@ -35,9 +36,9 @@ for step in ${STEPS:-$ALL}; do
       cluster/submit.sh cluster/train_ingame.sbatch --array=0-2 --job-name=abl-C-mlb
   else
     # NBA + NFL: 50 runs in one task; MLB: 25 runs in one task
-    MEMORY=$MEM EXTRA_ARGS="$EXTRA" LEAGUES="NBA NFL" PANEL_SUFFIX=_v3 DELAYS="10" SEEDS="0 1 2 3 4" PACK=50 HORIZONS=$HZ \
-      cluster/submit.sh cluster/train_ingame.sbatch --array=0 --job-name=abl-$step-nba-nfl
-    MEMORY=$MEM EXTRA_ARGS="$EXTRA" LEAGUES="MLB" PANEL_SUFFIX=_pitch_v3 DELAYS="10" SEEDS="0 1 2 3 4" PACK=25 HORIZONS=$HZ \
+    MEMORY=$MEM EXTRA_ARGS="$EXTRA" LEAGUES="NBA NFL" PANEL_SUFFIX=_v3 DELAYS="${NBA_NFL_DELAY:-10}" SEEDS="0 1 2 3 4" PACK=50 HORIZONS=$HZ \
+      cluster/submit.sh cluster/train_ingame.sbatch --array=0 --job-name=abl-$step-nba-nfl${NBA_NFL_DELAY:+-d$NBA_NFL_DELAY}
+    [ -n "${NBA_NFL_ONLY:-}" ] || MEMORY=$MEM EXTRA_ARGS="$EXTRA" LEAGUES="MLB" PANEL_SUFFIX=_pitch_v3 DELAYS="10" SEEDS="0 1 2 3 4" PACK=25 HORIZONS=$HZ \
       cluster/submit.sh cluster/train_ingame.sbatch --array=0 --job-name=abl-$step-mlb
   fi
 done
