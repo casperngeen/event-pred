@@ -36,8 +36,11 @@ SERIES_FEES={'KXMLBGAME':('quadratic_with_maker_fees',D('0.5')),'KXMLBSPREAD':('
              'KXNFLGAME':('quadratic_with_maker_fees',D(1)),'KXNFLSPREAD':('quadratic_with_maker_fees',D(1)),'KXNFLTOTAL':('quadratic_with_maker_fees',D(1))}
 
 
+SIZE_X=20           # final sizing rule: contracts = SIZE_X x weight, to the nearest 0.01 (Kalshi's smallest count increment)
+
+
 def size_contracts(weight):
-    return math.floor(500*weight+.5)/100
+    return math.floor(100*SIZE_X*weight+.5)/100
 
 
 def snap(price_c,side):

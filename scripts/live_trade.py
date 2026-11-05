@@ -9,13 +9,13 @@ Per game, every 5-s step of the game (first play + 5k s):
     decide      holdout_spec section 3 on the candidate kinds (--kinds, default spread,total): a print
                 in the last 60 s is the reference; signal = forecast level at +120 s - reference;
                 |signal| >= 5c; one order or position per contract at a time; MLB: no decision while
-                15-60 s have passed since the last pitch the model knows, nor while the feed shows a ball
+                15-60 s have passed since the last pitch the model knows (the skip window: a ball is probably in play and the
+                market is pricing a result the feed has not delivered), nor while the feed shows a ball
                 in play whose result it doesn't have yet (live only: the live feed lists the pitch "In play,
                 run(s)" seconds after contact, with the old score, and its result ~20 s later; finished-game
                 feeds, which the models learn from, never show that state); weight ((|signal| - 5) / 10)^2
                 x width / 10 (each capped at 1; width 1 when a side is missing), placed as round(K x weight)
-                whole contracts (--contracts K, default 5; no order if that is 0: b34_integer_sizing, journal
-                2026-10-24)
+                to the nearest 0.01 contract (--contracts K, default 20; no order if that is 0)
     paper book  buy limit at reference - 1c / sell at + 1c, resting 60 s, filled by a later print strictly
                 through it; exit 120 s after the fill: rest 1c past the last print for 120 s, else take
                 the next opposite-side print within 120 s, else hold to settlement. Fees: maker 1.75 p(1-p)
@@ -62,7 +62,7 @@ import live_record as R
 KINDS_DEFAULT = ("spread", "total")
 HORIZON = "120s"
 MIN_SIGNAL, REF_MAX_S, WIDTH_S = 5.0, 60.0, 120.0
-CONTRACTS_K = None             # contracts per order at full weight: None = the backtest weight (0-1) to the nearest 0.01; K = whole contracts, round(K x weight)
+CONTRACTS_K = 20.0             # contracts per order at full weight: round(K x weight) to the nearest 0.01 contract (None = the 0-1 weight itself)
 ENTRY_S, HOLD_S, EXIT_S, OFFSET = 60.0, 120.0, 120.0, 1.0
 SKIP_AGE = {"MLB": (15.0, 60.0), "NFL": None, "NBA": None}
 # NBA calls not final yet. The model learnt from finished games' feeds, which show only the final version of a play:
@@ -74,6 +74,7 @@ SKIP_AGE = {"MLB": (15.0, 60.0), "NFL": None, "NBA": None}
 #   the corrected possessions have reached the model
 NBA_PLACEHOLDER = re.compile(r"^No |Default")
 NBA_REVIEW = re.compile(r"Challenge|Review|replaycenter")
+NBA_SHIFT_S, NBA_SHIFT_TOL = 3600.0, 600.0           # see Engine._unshift
 NBA_REVIEW_PENDING = re.compile(r"^Challenge$|replaycenter")
 REVIEW_SETTLE_S, REVIEW_MAX_S = 30.0, 600.0
 STALE_S, STALE_N = 120.0, 5    # NFL / NBA: no decisions while any of the last STALE_N new plays reached us > STALE_S late
@@ -105,8 +106,8 @@ def size_of(signal: float, width: float | None) -> float:
 
 
 def contracts_of(weight: float, k: int | None) -> float:
-    """Contracts for a 0-1 weight, half up (0 = no order): k None: the weight to the nearest 0.01; else round(k x weight) whole contracts."""
-    return float(np.floor(weight * 100 + 0.5)) / 100 if k is None else float(np.floor(k * weight + 0.5))
+    """Contracts for a 0-1 weight, half up to the nearest 0.01 (0 = no order): k x weight, or the weight itself when k is None."""
+    return float(np.floor((1 if k is None else k) * weight * 100 + 0.5)) / 100
 
 
 class Log:
@@ -327,6 +328,7 @@ class Engine:
         self.lock = threading.Lock()
         self.doc, self.doc_new = None, False
         self.first_seen: dict[str, float] = {}
+        self.shifted: set[str] = set()                 # NBA plays whose wallclock ESPN had an hour early
         self.plays = None
         self.px = self.pt = self.pstate = None
         self.px_t = self.pt_t = self.pstate_t = None   # NBA: the same plays stamped at their real end times (see shadow_true)
@@ -369,6 +371,8 @@ class Engine:
                 if r["key"] not in self.first_seen:
                     self.first_seen[r["key"]] = r["received"]
                     self.lags.append(r["delay_s"])
+                    if r.get("shifted"):
+                        self.shifted.add(r["key"])
             self.resumed = set(self.first_seen)
         if (root / "orders.jsonl").exists():
             self.book.resume(list(R.rows(root / "orders.jsonl")))
@@ -398,8 +402,26 @@ class Engine:
     # ------------------------------------------------------------------ data in
     def on_feed(self, doc: dict, got: dt.datetime) -> None:
         with self.lock:
+            if self.L_ == "NBA":
+                self._unshift(doc, got.timestamp())
             self.doc, self.doc_new = doc, True
             self._seen(doc, got.timestamp())
+
+    def _unshift(self, doc: dict, got: float) -> None:
+        """ESPN stamped some NBA plays' wallclock exactly one hour early (1 Nov 2026, BOS@ORL all plays, BKN@IND up to
+        about 00:00 UTC; the arrival times were right). A play first seen 3600 s +- NBA_SHIFT_TOL late is one of them:
+        add the hour back, here and on every later copy of the play, before anything reads the document. Only while
+        the newest play in the document is late by that hour too: a recorder that starts mid-game sees a backlog of
+        old plays with the newest one on time, and that is not this fault."""
+        plays = [p for p in doc.get("plays") or [] if p.get("wallclock")]
+        stamps = [LM.epoch(dt.datetime.fromisoformat(p["wallclock"].replace("Z", "+00:00"))) for p in plays]
+        faulty = bool(stamps) and abs(got - max(stamps) - NBA_SHIFT_S) < NBA_SHIFT_TOL
+        for p, t in zip(plays, stamps):
+            k = p.get("id")
+            if faulty and k not in self.first_seen and abs(got - t - NBA_SHIFT_S) < NBA_SHIFT_TOL:
+                self.shifted.add(k)
+            if k in self.shifted:
+                p["wallclock"] = dt.datetime.fromtimestamp(t + NBA_SHIFT_S, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def _seen(self, doc: dict, got: float) -> None:
         """First time each play reached us; the delay against when it happened (MLB: the pitch's end, as
@@ -424,7 +446,8 @@ class Engine:
                 if r["espn_play_id"] not in self.first_seen and r["t"] is not None:
                     self.first_seen[r["espn_play_id"]] = got
                     new.append(dict(key=r["espn_play_id"], happened=LM.epoch(r["t"]), received=got,
-                                    delay_s=got - LM.epoch(r["t"]), event_type=r["event_type"]))
+                                    delay_s=got - LM.epoch(r["t"]), event_type=r["event_type"],
+                                    **({"shifted": True} if r["espn_play_id"] in self.shifted else {})))
             st = (((doc.get("header") or {}).get("competitions") or [{}])[0].get("status") or {}).get("type") or {}
             final = st.get("state") == "post"
         self.final = self.final or final
@@ -702,7 +725,7 @@ def main() -> None:
     ap.add_argument("--no-books", action="store_true", help="no 15-s order-book polling (live_books_ws.py streams them)")
     ap.add_argument("--publish-kinds", help="kinds whose signals are sent (default: --kinds)")
     ap.add_argument("--publish", action="store_true", help="send to Lumid (default: dry run, payloads only logged)")
-    ap.add_argument("--contracts", type=int, default=CONTRACTS_K, help="whole contracts per order at full weight (K): round(K x weight); default: the backtest weight to the nearest 0.01")
+    ap.add_argument("--contracts", type=float, default=CONTRACTS_K, help="contracts per order at full weight (K): round(K x weight) to the nearest 0.01; default 20")
     ap.add_argument("--rate", type=float, default=8.0, help="Kalshi requests/s for this runner (all runners together: <= 20)")
     ap.add_argument("--exchange-sim", action="store_true", help="paper fills from the exchange simulator (live_exec.py) fed by the recorder's books_ws.jsonl; the print-fill book keeps running on the same orders (default: print-fill rule only)")
     ap.add_argument("--sim-latency", type=float, default=float(os.environ.get("SIM_LATENCY", .09)), help="decision -> exchange acceptance, s: 0.015 on the VM, 0.09 on the Lumid sandbox")

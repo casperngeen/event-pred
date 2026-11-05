@@ -45,9 +45,9 @@ class TestFees(unittest.TestCase):
 
 class TestExecution(unittest.TestCase):
     def test_user_sizing(self):
-        self.assertEqual(size_contracts(.321),1.61)
-        self.assertEqual(size_contracts(1.),5.)
-        self.assertEqual(size_contracts(.001),.01)
+        self.assertEqual(size_contracts(.321),6.42)
+        self.assertEqual(size_contracts(1.),20.)
+        self.assertEqual(size_contracts(.0004),.01)
         self.assertEqual(size_contracts(0.),0.)
 
     def test_snap_to_cent_grid(self):

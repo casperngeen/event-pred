@@ -1,6 +1,6 @@
 """Live in-game forecaster (holdout_spec section 2): the model's inputs for one game at one 5-s step,
-rebuilt from raw data as it arrives, and the 5 seeds' average forecast. MLB (every pitch a play) and NFL
-(every ESPN play).
+rebuilt from raw data as it arrives, and the 5 seeds' average forecast. MLB (every pitch a play), NFL
+(every ESPN play) and NBA (every possession, as b1_nba_events.possessions cuts ESPN's rows).
 
 The inputs follow analysis/graph_2026_10/b3_table.py (plays_mlb_pitch / plays_nfl, quotes, print_columns,
 p_home) and b4_export.py (play_arrays, node_frame; mode "prints" = panel_v3) rule for rule, so the model
@@ -16,9 +16,11 @@ NFL differs from training in two inputs that only exist after the game (stg.spor
 a play's end time (nflverse; live: the time our feed first delivered the play) and nflverse's win
 probability (live: ESPN's, which the training data used only where nflverse had none).
 
-Feed delay: the model was trained with plays reaching it 10 s after they happen. Live, a play is known
-when the feed delivers it, so delay_s (added on top) defaults to 0 here; the real delay is logged by the
-runner (live_trade.py), and the model is retrained if it differs much from 10 s.
+Feed delay: a model trained at delay D (the "d<D>" in its name) saw each play D s after it happened (NFL:
+after its end). Live, a play also cannot count before our feed delivered it; the runner (live_trade.py)
+passes delay_s and logs the real delay. ESPN's NFL plays reach us ~43 s after the snap, so the NFL model is
+trained at 60 s and a play counts at its estimated end + 60 s, or on arrival if that is later
+(nfl_live_plays); at delay_s = 0 that is simply its arrival.
 """
 from __future__ import annotations
 
@@ -79,6 +81,10 @@ CFG = {
                 NAMES="gru_d10_h30-60-120-1800_tp_pitch",
                 SERIES={"KXMLBGAME": "winner", "KXMLBSPREAD": "spread", "KXMLBTOTAL": "total"},
                 ALIAS={"A": "ATH", "ARI": "AZ", "FLA": "MIA", "KAN": "KC", "WAS": "WSH"}),    # stg.sports.contracts.ALIAS
+    "NBA": dict(S_M=14.5, S_T=19.5, SCALE=20.0, TOT_SCALE=225.0, PLAY_SCALE=3.0, S_SCALES=(1.0, 1.0, 1.0), PLAY_UNIT="pa",
+                L_FALLBACK=229.98529, GROUPS=["made_2", "made_3", "miss", "turnover", "ft_trip", "period_end"],
+                NAMES="gru_d10_h30-60-120-1800_tp",
+                SERIES={"KXNBAGAME": "winner", "KXNBASPREAD": "spread", "KXNBATOTAL": "total"}, ALIAS={}),
     "NFL": dict(S_M=13.0, S_T=14.5, SCALE=14.0, TOT_SCALE=45.0, PLAY_SCALE=7.0, S_SCALES=(4.0, 10.0, 100.0), PLAY_UNIT="pa",
                 L_FALLBACK=44.68, GROUPS=[g for g, _ in NFL_GROUPS], NAMES="gru_d10_h30-60-120-1800_tp",
                 SERIES={"KXNFLGAME": "winner", "KXNFLSPREAD": "spread", "KXNFLTOTAL": "total"},
@@ -191,9 +197,11 @@ def mlb_plays(doc: dict, start_utc: dt.datetime, live_clock: bool = False) -> pl
     return e.with_columns((pl.col("dpoints") > 0).alias("is_scoring")).sort("t_event", "seq")
 
 
-def espn_rows(doc: dict) -> list[dict]:
-    """fetch_pbp.parse_espn's rows of an NFL /summary document, plus the drive in progress (a finished
+def espn_rows(doc: dict, league: str = "NFL") -> list[dict]:
+    """fetch_pbp.parse_espn's rows of an ESPN /summary document; NFL: plus the drive in progress (a finished
     game's document has none; parse_espn reads the finished drives only)."""
+    if league == "NBA":
+        return parse_espn("NBA", "live", doc)
     cur = (doc.get("drives") or {}).get("current")
     if cur and cur.get("plays"):
         doc = dict(doc, drives=dict(doc["drives"], previous=list(doc["drives"].get("previous", [])) + [cur]))
@@ -240,10 +248,16 @@ def nfl_plays(ev: pl.DataFrame, home_id: str | None) -> pl.DataFrame:
     return e.with_columns(pl.col("is_scoring").fill_null(False)).sort("t_event", "seq")
 
 
-def nfl_live_plays(doc: dict, start_utc: dt.datetime, first_seen: dict[str, float]) -> tuple[pl.DataFrame, str | None]:
-    """nfl_plays from a live ESPN document. A play is known when our feed first delivered it (first_seen:
-    ESPN play id -> epoch s, filled in by the caller); training used its end time (nflverse), which is
-    published only after the game. Returns the plays and the home team's ESPN id."""
+NFL_END_S = 5.0     # snap to end of a play, roughly (journal 2026-10-05: field goals ~3.7 s, passes ~5.1 s)
+
+
+def nfl_live_plays(doc: dict, start_utc: dt.datetime, first_seen: dict[str, float],
+                   delay_s: float = 0.0) -> tuple[pl.DataFrame, str | None]:
+    """nfl_plays from a live ESPN document. Training timed a play at its end (nflverse, published only
+    after the game) and the model saw it delay_s later. Live, t_event = the later of its estimated end
+    (ESPN snap + NFL_END_S; stoppages: their own time) and its arrival - delay_s (first_seen: ESPN play
+    id -> epoch s, filled in by the caller), so it counts at max(end + delay_s, arrival) once the
+    forecaster adds delay_s. Returns the plays and the home team's ESPN id."""
     comp = ((doc.get("header") or {}).get("competitions") or [{}])[0]
     home_id = next((c["team"]["id"] for c in comp.get("competitors", []) if c.get("homeAway") == "home"), None)
     rows = espn_rows(doc)
@@ -253,11 +267,132 @@ def nfl_live_plays(doc: dict, start_utc: dt.datetime, first_seen: dict[str, floa
             "espn_play_id": pl.String}
     ev = pl.DataFrame([{**{k: r.get(k) for k in cols if k != "wp"}, "wp": r.get("home_wp_post")} for r in rows],
                       schema=cols, orient="row")
-    seen = pl.Series("t_event", [first_seen.get(i) for i in ev["espn_play_id"]], pl.Float64)
+    seen = pl.Series("t_event", [first_seen.get(i) for i in ev["espn_play_id"]], pl.Float64) - delay_s
+    end = pl.col("t") + pl.when(pl.col("event_type").is_in(NFL_STOPPAGES).fill_null(False)).then(pl.duration(seconds=0)) \
+        .otherwise(pl.duration(milliseconds=int(NFL_END_S * 1000)))
     h = (pl.col("t") - start_utc).dt.total_seconds() / 3600
-    ev = (ev.with_columns(pl.from_epoch(seen * 1e6, time_unit="us").dt.replace_time_zone("UTC").alias("t_event"))
+    arr = pl.from_epoch(seen * 1e6, time_unit="us").dt.replace_time_zone("UTC")
+    ev = (ev.with_columns(pl.when(arr.is_null()).then(None).otherwise(pl.max_horizontal(arr, end)).alias("t_event"))
           .filter(h.is_between(-1, 8).fill_null(False), pl.col("t_event").is_not_null()))
     return nfl_plays(ev, home_id), home_id
+
+
+# ----------------------------------------------------------------------------- NBA possessions
+
+NBA_FT = re.compile(r"Free Throw - (?:Flagrant |Clear Path )?(\d) of (\d)")
+
+
+def nba_possessions(g: pl.DataFrame, home_id: str | None = None) -> list[dict]:
+    """b1_nba_events.possessions for one game's ESPN rows (sorted by seq), rule for rule, plus each possession's
+    last row's ESPN play id (end_id). home_id: the home team's ESPN id; None = as training finds it, the team
+    whose made shots raise the home score (live, early on, that team may not have scored yet)."""
+    if home_id is None:
+        up = g.filter(pl.col("home_score").diff() > 0)["team_id"].drop_nulls()
+        home_id = up.mode()[0] if len(up) else None
+    et, desc, team = g["event_type"].to_list(), g["description"].fill_null("").to_list(), g["team_id"].to_list()
+    t, clock, scoring = g["t"].to_list(), g["clock"].to_list(), g["is_scoring"].to_list()
+    hs, as_, wp, sv = g["home_score"].to_list(), g["away_score"].to_list(), g["home_wp_post"].to_list(), g["score_value"].to_list()
+    pid = g["espn_play_id"].to_list() if "espn_play_id" in g.columns else [None] * g.height
+    n = len(et)
+    rows, last_foul, trip_foul = [], None, None
+    prev = dict(i=-1, hs=0, as_=0, wp=None, t=None)
+    for i in range(n):
+        e, d = et[i] or "", desc[i].lower()
+        kind, stamp, offense = None, t[i], team[i]
+        m = NBA_FT.match(e)
+        if "Foul" in e and "Turnover" not in e:
+            last_foul = i
+        if m and int(m.group(1)) == 1:
+            trip_foul = last_foul
+        if e in ("End Period", "End Game"):
+            kind, offense = "period_end", None
+        elif m:
+            if m.group(1) == m.group(2) and scoring[i]:
+                kind = "ft_trip"
+                if trip_foul is not None and (t[i] - t[trip_foul]).total_seconds() < 120:
+                    stamp = t[trip_foul]
+        elif scoring[i]:
+            # and-one: a 1-of-1 free throw by the same team at the same game clock follows
+            and_one = any(NBA_FT.match(et[j] or "") and (et[j] or "").endswith("1 of 1") and team[j] == team[i]
+                          for j in range(i + 1, min(i + 6, n)) if clock[j] == clock[i])
+            if not and_one:
+                kind = "made_3" if sv[i] == 3 else "made_2"
+        elif "Defensive Rebound" in e or "defensive team rebound" in d:
+            kind = "miss"
+            offense = None if team[i] is None else ("away" if team[i] == home_id else "home")
+        elif "Turnover" in e or e == "Traveling":
+            kind = "turnover"
+        if kind is None:
+            continue
+        if prev["t"] is not None and t[i] == prev["t"] and kind == "turnover":
+            continue                                    # offensive foul + turnover rows: one event
+        side = offense if offense in ("home", "away", None) else ("home" if offense == home_id else "away")
+        if kind == "miss":
+            side = offense
+        rows.append(dict(end_seq=i, t=stamp, t_end=t[i], kind=kind, offense=side, home_pts=hs[i] - prev["hs"],
+                         away_pts=as_[i] - prev["as_"], wp_post=wp[i], period=g["period"][i], clock=clock[i],
+                         home_score=hs[i], away_score=as_[i], end_id=pid[i]))
+        prev = dict(i=i, hs=hs[i], as_=as_[i], wp=wp[i] if wp[i] is not None else prev["wp"], t=t[i])
+    return rows
+
+
+def nba_tau() -> pl.Expr:
+    """b1_baseline.tau_left (NBA): the share of the 48 regulation minutes left; overtime as its clock / 48."""
+    clk = pl.col("clock")
+    mm = pl.when(clk.str.contains(":")).then(clk.str.split(":").list.get(0, null_on_oob=True).cast(pl.Float64, strict=False)).otherwise(0.0)
+    ss = pl.when(clk.str.contains(":")).then(clk.str.split(":").list.get(1, null_on_oob=True).cast(pl.Float64, strict=False)) \
+        .otherwise(clk.cast(pl.Float64, strict=False))
+    clock_min = mm + ss / 60
+    return pl.when(pl.col("period") <= 4).then(((4 - pl.col("period")) * 12.0 + clock_min) / 48.0) \
+        .otherwise(clock_min / 48.0).clip(1e-3, 1.0)
+
+
+def nba_plays(ev: pl.DataFrame, home_id: str | None = None, first_seen: dict[str, float] | None = None,
+              delay_s: float = 0.0) -> pl.DataFrame:
+    """The game's possessions as b3_table.plays_nba + _finish_plays builds them, sorted as b4_export reads them.
+    ev: one game's ESPN rows (parse_espn) in game order. A possession is known at its end (its last row's time;
+    max with its stamp, as training). Live (first_seen: ESPN play id -> epoch s when our feed delivered it):
+    t_event = the later of that and its last row's arrival - delay_s, so it counts at max(end + delay_s, arrival)
+    once the forecaster adds delay_s; possessions whose last row hasn't arrived are left out."""
+    schema = {"end_seq": pl.Int64, "t": pl.Datetime("us", "UTC"), "t_end": pl.Datetime("us", "UTC"), "kind": pl.String,
+              "offense": pl.String, "home_pts": pl.Int64, "away_pts": pl.Int64, "wp_post": pl.Float64, "period": pl.Int64,
+              "clock": pl.String, "home_score": pl.Int64, "away_score": pl.Int64, "end_id": pl.String}
+    p = pl.DataFrame(nba_possessions(ev.sort("seq"), home_id), schema=schema, orient="row")
+    p = p.sort("t", "end_seq", nulls_last=False).with_columns(
+        pl.int_range(pl.len()).alias("seq"), pl.max_horizontal("t", "t_end").alias("t_event"), pl.col("t_end").alias("known_at"),
+        pl.col("kind").alias("play_group"), pl.col("kind").alias("play_type"), nba_tau().alias("tau"),
+        (pl.col("kind") == "period_end").alias("is_stoppage"), ((pl.col("home_pts") + pl.col("away_pts")) > 0).alias("is_scoring"),
+        pl.lit(0).alias("s1"), pl.lit(0).alias("s2"), pl.lit(0).alias("s3"))
+    if first_seen is not None:
+        seen = pl.Series([first_seen.get(i) for i in p["end_id"]], dtype=pl.Float64) - delay_s
+        arr = pl.from_epoch(seen * 1e6, time_unit="us").dt.replace_time_zone("UTC")
+        p = p.with_columns(pl.when(arr.is_null()).then(None).otherwise(pl.max_horizontal(arr, "t_event")).alias("t_event")) \
+            .filter(pl.col("t_event").is_not_null())
+    prev = lambda c: pl.col(c).shift(1)      # noqa: E731
+    p = p.sort("seq").with_columns(pl.col("wp_post").forward_fill())
+    p = p.with_columns((pl.col("wp_post") - prev("wp_post")).alias("dwp"),
+                       ((pl.col("home_score") - pl.col("away_score")) - (prev("home_score") - prev("away_score"))).fill_null(0).alias("dmargin"),
+                       ((pl.col("home_score") + pl.col("away_score")) - (prev("home_score") + prev("away_score"))).fill_null(0).alias("dpoints"),
+                       (pl.col("home_score") - pl.col("away_score")).alias("margin"),
+                       (pl.col("home_score") + pl.col("away_score")).alias("total"))
+    return p.sort("t_event", "seq")
+
+
+def nba_live_plays(doc: dict, start_utc: dt.datetime, first_seen: dict[str, float],
+                   delay_s: float = 0.0) -> tuple[pl.DataFrame, float | None]:
+    """nba_plays from a live ESPN document (rows timed outside [start - 1 h, start + 8 h] dropped, as training's
+    t_outside_window). Returns the possessions and the game's first play (epoch s): its earliest row, as
+    loaders.game_results times it, not the first possession's end."""
+    comp = ((doc.get("header") or {}).get("competitions") or [{}])[0]
+    home_id = next((c["team"]["id"] for c in comp.get("competitors", []) if c.get("homeAway") == "home"), None)
+    cols = {"seq": pl.Int64, "t": pl.Datetime("us", "UTC"), "period": pl.Int64, "clock": pl.String, "home_score": pl.Int64,
+            "away_score": pl.Int64, "event_type": pl.String, "description": pl.String, "is_scoring": pl.Boolean,
+            "score_value": pl.Int64, "team_id": pl.String, "home_wp_post": pl.Float64, "espn_play_id": pl.String}
+    ev = pl.DataFrame([{k: r.get(k) for k in cols} for r in espn_rows(doc, "NBA")], schema=cols, orient="row")
+    h = (pl.col("t") - start_utc).dt.total_seconds() / 3600
+    ev = ev.filter(h.is_between(-1, 8).fill_null(False))
+    first = epoch(ev["t"].min()) if ev.height else None
+    return nba_plays(ev, home_id, first_seen, delay_s), first
 
 
 def play_arrays(p: pl.DataFrame, league: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -525,12 +660,14 @@ class _Game:
 class Forecaster:
     """The 5 seeds of one league's model; forecast() = their average."""
 
-    def __init__(self, league: str, weights_dir: str | Path, device: str = "cpu") -> None:
+    def __init__(self, league: str, weights_dir: str | Path, device: str = "cpu", name: str | None = None) -> None:
+        """name: the run name in the weights' file names (default: the league's NAMES, the 10-s model)."""
         self.league, self.C = league, CFG[league]
         C = self.C
+        self.name = name or C["NAMES"]
         self.models, self.dev = [], torch.device(device)
         for s in SEEDS:
-            ck = torch.load(Path(weights_dir) / f"{league}_final_{C['NAMES']}_seed{s}.pt", map_location="cpu", weights_only=False)
+            ck = torch.load(Path(weights_dir) / f"{league}_final_{self.name}_seed{s}.pt", map_location="cpu", weights_only=False)
             p = ck["panel"]
             # the inputs built here must be the ones the weights were trained on
             assert p["league"] == league and (p["play_features"], p["step_market_features"], p["node_market_features"]) == \

@@ -5,10 +5,12 @@ feed delay.
 
     venv/bin/python -W ignore scripts/live_parity.py MLB 823121 [--delay 10] [--weights results/ingame/deploy]
     venv/bin/python -W ignore scripts/live_parity.py NFL 401772987 [--espn-wp]
+    venv/bin/python -W ignore scripts/live_parity.py NBA 401705000 --weights results/ingame/final
 
 NFL plays come from the stored events (stg.sports.loaders.load_pbp), whose play end times and win
 probability are nflverse's (published after the game): the check is of the code, on the training inputs.
 --espn-wp uses ESPN's win probability instead, as live, to see how much that changes the forecast.
+NBA possessions come from the stored ESPN rows, which are what the live feed gives (same parser, same win probability).
 """
 from __future__ import annotations
 
@@ -54,7 +56,7 @@ def raw_market(con: pl.DataFrame, first_play: dt.datetime) -> tuple[list[dict], 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("league", choices=["MLB", "NFL"])
+    ap.add_argument("league", choices=["MLB", "NFL", "NBA"])
     ap.add_argument("game_id")
     ap.add_argument("--espn-wp", action="store_true")
     ap.add_argument("--delay", type=float, default=10.0)
@@ -76,6 +78,9 @@ def main() -> None:
     if L_ == "MLB":
         doc = json.loads(gzip.decompress((SP / "pbp" / "raw" / "MLB" / f"{gid}.json.gz").read_bytes()))
         plays = LM.mlb_plays(doc, start)
+    elif L_ == "NBA":
+        from stg.sports.loaders import load_pbp
+        plays = LM.nba_plays(load_pbp("NBA").filter(pl.col("game_id") == gid, ~pl.col("t_outside_window")))
     else:
         from stg.sports.loaders import load_pbp
         ev = load_pbp("NFL").filter(pl.col("game_id") == gid, ~pl.col("t_outside_window")).sort("seq")
