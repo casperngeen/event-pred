@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thesis Defense</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400..700&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+/* Deck runtime. Slides below are 1920x1080 sections with inline styles; edit them directly.
+   Keys: arrows/space = next/prev, Home/End, N = speaker notes, F = fullscreen, P/Ctrl+P = print to PDF. */
+* { margin: 0; box-sizing: border-box; }
+html, body { height: 100%; background: #0c1428; overflow: hidden; }
+#stage { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: center center; }
+section { width: 1920px; height: 1080px; position: relative; overflow: hidden; display: none; }
+section.active { display: flex; }
+section[style*="display:grid"].active { display: grid; }
+ul, ol { padding-left: 1.1em; }
+table { border-collapse: collapse; }
+th, td { border-bottom: 2px solid #E2DED3; padding: 14px 18px; text-align: left; }
+aside.notes { display: none; }
+#notes { position: fixed; left: 0; right: 0; bottom: 0; max-height: 28vh; overflow: auto; background: rgba(12,20,40,.94);
+         color: #F6F4EE; font: 18px/1.5 'IBM Plex Sans', Arial, sans-serif; padding: 16px 28px; display: none; }
+#notes.on { display: block; }
+#count { position: fixed; right: 16px; top: 10px; color: #8a96ad; font: 14px 'IBM Plex Sans', Arial, sans-serif; }
+@media print {
+  @page { size: 1920px 1080px; margin: 0; }
+  html, body { height: auto; overflow: visible; background: none; }
+  #stage { position: static; transform: none !important; width: auto; height: auto; }
+  section { display: flex !important; page-break-after: always; break-after: page; }
+  #notes, #count { display: none !important; }
+}
+</style>
+</head>
+<body>
+<div id="stage">
+<!-- ======== Slide 1: cover ======== -->
+<section id="cover" data-transition="fade" style="background:#14213D;color:#F6F4EE;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;justify-content:space-between">
+<div style="position:absolute;left:1872px;top:0px;width:48px;height:1080px;background:#2F7A73"></div>
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#7FC8BF">CP4101 · B.Comp. Dissertation · Thesis Defense</p>
+<div style="display:flex;flex-direction:column;gap:32px">
+<h1 style="font-family:'Source Serif 4', Georgia, serif;font-size:96px;font-weight:600;line-height:1.1;color:#F6F4EE">Machine Learning in Prediction Markets</h1>
+<p style="font-size:40px;color:#C9D3E0;line-height:1.3">Forecasting short-horizon price changes in Kalshi sports markets</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:32px;font-weight:600">Ng E En Casper</p>
+<p style="font-size:28px;color:#C9D3E0">Advisor: Asst. Prof. Lu Yao · School of Computing, National University of Singapore</p>
+</div>
+<aside class="notes">Good afternoon. My thesis asks a simple question about a new kind of market: can a model that watches a live sports game forecast where contract prices are heading in the next one to two minutes, and can that forecast actually be traded for a profit? I will show that the first is partly yes, and the second is much harder than it looks.</aside>
+</section>
+
+<!-- ======== Slide 2: why ======== -->
+<section id="why" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:56px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Motivation</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Prediction markets price live sports</h2>
+</div>
+<div style="display:flex;gap:48px;align-items:stretch">
+<div style="flex:1;display:flex;flex-direction:column;gap:20px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:20px;padding:48px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#5C6677">One contract</p>
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:44px;font-weight:600;color:#14213D;line-height:1.2">“Home team wins tonight”</p>
+<div style="display:flex;gap:32px;align-items:center">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:120px;font-weight:600;color:#2F7A73;line-height:1">63¢</p>
+<p style="font-size:32px;line-height:1.35">pays $1 if it happens, $0 if not. Read as a <b>63% chance</b>.</p>
+</div>
+<p style="font-size:28px;color:#5C6677">Prices move after every pitch, possession or play.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:32px">
+<div style="flex:1;display:flex;gap:32px;align-items:center;background:#14213D;border-radius:20px;padding:40px 48px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:96px;font-weight:600;color:#7FC8BF;line-height:1">80%</p>
+<p style="font-size:32px;color:#F6F4EE;line-height:1.3">of Kalshi trading volume is sports</p>
+</div>
+<div style="flex:1;display:flex;gap:32px;align-items:center;background:#14213D;border-radius:20px;padding:40px 48px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:96px;font-weight:600;color:#7FC8BF;line-height:1">39%</p>
+<p style="font-size:32px;color:#F6F4EE;line-height:1.3">of Polymarket trading volume is sports</p>
+</div>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#5C6677">Source: Pew Research Center (Radde, 2026), July 2024 to April 2026</p>
+<aside class="notes">A prediction market contract pays one dollar if an event happens, so its price in cents reads as a probability. Sports now dominate these venues: Pew counts 80 percent of Kalshi volume and 39 percent of Polymarket volume. During a live game, every play changes the true probabilities, and prices have to follow. That reaction is what I study.</aside>
+</section>
+
+<!-- ======== Slide 3: question ======== -->
+<section id="question" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:56px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Research question</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Can a forecast of price moves be traded?</h2>
+</div>
+<div style="display:flex;gap:32px;align-items:center">
+<div style="flex:1;display:flex;flex-direction:column;gap:20px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:20px;padding:48px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:96px;font-weight:600;color:#2F7A73;line-height:1">1</p>
+<h3 style="font-size:40px;font-weight:600;color:#14213D">Forecast</h3>
+<p style="font-size:32px;line-height:1.35">Does the model predict price changes over the next 30 to 120 seconds better than assuming no change?</p>
+</div>
+<div style="width:88px;height:52px;background:#2F7A73;clip-path:polygon(0 25%,60% 25%,60% 0,100% 50%,60% 100%,60% 75%,0 75%);flex:none"></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:20px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:20px;padding:48px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:96px;font-weight:600;color:#B5541A;line-height:1">2</p>
+<h3 style="font-size:40px;font-weight:600;color:#14213D">Trade</h3>
+<p style="font-size:32px;line-height:1.35">Does that forecast survive fees, order fills and the delay with which live feeds report plays?</p>
+</div>
+</div>
+<p style="font-size:32px;font-weight:600;color:#14213D;background:#E4EEEC;border-radius:16px;padding:28px 40px">An accurate forecast need not be tradable, so the two are evaluated separately.</p>
+<aside class="notes">The study asks two questions in order. First, forecasting: does the model beat the simplest benchmark, which is that the price stays where it is? Second, trading: if it does, does that survive fees, whether our orders actually get filled, and the lag in live game data? I keep them separate on purpose, because the thesis shows that the first can hold while the second fails.</aside>
+</section>
+
+<!-- ======== Slide 4: gap ======== -->
+<section id="gap" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:56px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Related work and contributions</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">What is missing, and what this thesis adds</h2>
+</div>
+<div style="display:flex;gap:56px">
+<div style="flex:1;display:flex;flex-direction:column;gap:24px">
+<h3 style="font-size:36px;font-weight:600;color:#14213D">Prior work leaves open</h3>
+<ul style="font-size:32px;line-height:1.4;display:flex;flex-direction:column;gap:20px">
+<li>Game-outcome models are compared with bookmaker odds</li>
+<li>Calibration studies test price levels, not 30 to 120 s changes</li>
+<li>Predicting a stale last print is not an executable return</li>
+</ul>
+</div>
+<div style="flex:1.2;display:flex;flex-direction:column;gap:24px">
+<h3 style="font-size:36px;font-weight:600;color:#14213D">Contributions</h3>
+<div style="display:flex;gap:24px;align-items:center;background:#FDFCF9;border:2px solid #E2DED3;border-radius:16px;padding:28px 32px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;color:#2F7A73">1</p>
+<p style="font-size:30px;line-height:1.3"><b>In-game model:</b> play memory plus message passing across winner, spread and total contracts</p>
+</div>
+<div style="display:flex;gap:24px;align-items:center;background:#FDFCF9;border:2px solid #E2DED3;border-radius:16px;padding:28px 32px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;color:#2F7A73">2</p>
+<p style="font-size:30px;line-height:1.3"><b>Ablations in three sports:</b> what drives predictability, and the effect of feed delay</p>
+</div>
+<div style="display:flex;gap:24px;align-items:center;background:#FDFCF9;border:2px solid #E2DED3;border-radius:16px;padding:28px 32px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;color:#2F7A73">3</p>
+<p style="font-size:30px;line-height:1.3"><b>Historical plus live evaluation:</b> where simulated returns stop holding up</p>
+</div>
+</div>
+</div>
+<aside class="notes">Existing work either predicts who wins a game and compares against bookmaker odds, or checks whether price levels are calibrated. Neither measures how well you can forecast a contract’s price change over the next minute or two, and neither asks whether the move is still available at a price you can actually trade. I contribute a model for this, an ablation study of where its skill comes from, and an evaluation that goes from historical backtests to live paper trading.</aside>
+</section>
+
+<!-- ======== Slide 5: contracts ======== -->
+<section id="contracts" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Problem and data</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">One game, a family of contracts</h2>
+</div>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:20px;padding:36px">
+<h3 style="font-size:36px;font-weight:600;color:#14213D">Winner</h3>
+<p style="font-size:26px;color:#5C6677">Who wins the game</p>
+<p style="font-size:28px;background:#DDE6EF;color:#14213D;border-radius:12px;padding:14px 20px">Home team wins</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:20px;padding:36px">
+<h3 style="font-size:36px;font-weight:600;color:#14213D">Spread ladder</h3>
+<p style="font-size:26px;color:#5C6677">Margin of victory</p>
+<p style="font-size:28px;background:#D3E8E5;color:#14213D;border-radius:12px;padding:14px 20px">Home wins by more than 3.5</p>
+<p style="font-size:28px;background:#D3E8E5;color:#14213D;border-radius:12px;padding:14px 20px">Home wins by more than 6.5</p>
+<p style="font-size:28px;background:#D3E8E5;color:#14213D;border-radius:12px;padding:14px 20px">Home wins by more than 9.5</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:20px;padding:36px">
+<h3 style="font-size:36px;font-weight:600;color:#14213D">Total ladder</h3>
+<p style="font-size:26px;color:#5C6677">Combined score</p>
+<p style="font-size:28px;background:#F1DFD2;color:#14213D;border-radius:12px;padding:14px 20px">Total over 210.5</p>
+<p style="font-size:28px;background:#F1DFD2;color:#14213D;border-radius:12px;padding:14px 20px">Total over 220.5</p>
+<p style="font-size:28px;background:#F1DFD2;color:#14213D;border-radius:12px;padding:14px 20px">Total over 230.5</p>
+</div>
+</div>
+<p style="font-size:28px;color:#5C6677">Thresholds illustrative. All contracts settle on the same final score, so their prices are related.</p>
+<div style="display:flex;gap:24px">
+<p style="flex:1;font-size:28px;background:#14213D;color:#F6F4EE;border-radius:14px;padding:20px 28px"><b>MLB</b> · 1,289 games</p>
+<p style="flex:1;font-size:28px;background:#14213D;color:#F6F4EE;border-radius:14px;padding:20px 28px"><b>NBA</b> · 1,316 games</p>
+<p style="flex:1;font-size:28px;background:#14213D;color:#F6F4EE;border-radius:14px;padding:20px 28px"><b>NFL</b> · 282 games</p>
+<p style="flex:2;font-size:28px;background:#2F7A73;color:#FFFFFF;border-radius:14px;padding:20px 28px">Forecast all three types, trade spreads and totals</p>
+</div>
+<aside class="notes">For each game Kalshi lists a winner contract, plus ladders of spread contracts on the margin and total contracts on the combined score, so one game has many contracts that settle on the same result. I use Kalshi trades and one-minute bid and ask candles, with play-by-play from the MLB Stats API, ESPN and nflverse. The development sample is about 1,300 MLB games, 1,300 NBA games and 280 NFL games. The model forecasts all three contract types, but trading is restricted to spreads and totals, because winner contracts turned out to have almost no forecastable short-horizon move.</aside>
+</section>
+
+<!-- ======== Slide 6: task ======== -->
+<section id="task" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Forecasting task</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Predict the price change over horizon h</h2>
+</div>
+<div style="position:relative;width:1664px;height:260px">
+<p style="position:absolute;left:0px;top:0px;width:700px;font-size:26px;font-weight:600;color:#46698A">Inputs: plays, game state, contract prices</p>
+<div style="position:absolute;left:0px;top:56px;width:600px;height:76px;background:#DDE6EF;border-radius:8px"></div>
+<p style="position:absolute;left:1000px;top:0px;width:640px;font-size:26px;font-weight:600;color:#2F7A73">Future trades build the label</p>
+<div style="position:absolute;left:1100px;top:56px;width:300px;height:76px;background:#D3E8E5;border-radius:8px"></div>
+<div style="position:absolute;left:0px;top:146px;width:1664px;height:4px;background:#14213D"></div>
+<div style="position:absolute;left:598px;top:40px;width:4px;height:120px;background:#46698A"></div>
+<div style="position:absolute;left:1098px;top:40px;width:4px;height:120px;background:#2F7A73"></div>
+<div style="position:absolute;left:1398px;top:40px;width:4px;height:120px;background:#2F7A73"></div>
+<svg style="position:absolute;left:600px;top:78px" width="500" height="32" viewBox="0 0 500 32"><line x1="14" y1="16" x2="486" y2="16" stroke="#14213D" stroke-width="3"/><polygon points="0,16 16,6 16,26" fill="#14213D"/><polygon points="500,16 484,6 484,26" fill="#14213D"/></svg>
+<p style="position:absolute;left:604px;top:100px;width:494px;font-size:26px;text-align:center;color:#14213D">horizon h</p>
+<p style="position:absolute;left:400px;top:170px;width:400px;font-size:26px;text-align:center;color:#14213D"><b>t</b> decision time<br>reference price a(t)</p>
+<p style="position:absolute;left:1000px;top:170px;width:200px;font-size:26px;text-align:center;color:#14213D"><b>t + h</b></p>
+<p style="position:absolute;left:1250px;top:170px;width:300px;font-size:26px;text-align:center;color:#14213D"><b>t + h + 15 s</b></p>
+</div>
+<div style="display:flex;gap:24px">
+<div style="flex:1.2;display:flex;flex-direction:column;gap:12px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:16px;padding:32px">
+<h3 style="font-size:30px;font-weight:600;color:#14213D">Target</h3>
+<p style="font-size:30px;line-height:1.3">Δ = volume-weighted price in window − a(t), in cents</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:16px;padding:32px">
+<h3 style="font-size:30px;font-weight:600;color:#14213D">Horizons</h3>
+<p style="font-size:30px;line-height:1.3">30, 60 and 120 s; trading uses 120 s</p>
+</div>
+<div style="flex:1.2;display:flex;flex-direction:column;gap:12px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:16px;padding:32px">
+<h3 style="font-size:30px;font-weight:600;color:#14213D">Skill</h3>
+<p style="font-size:30px;line-height:1.3">1 − (model error² ÷ “no change” error²)</p>
+</div>
+</div>
+<aside class="notes">At each decision time t, on a five-second grid, the model sees the plays, game state and contract prices available by t. The target is the change from the reference price at t to the volume-weighted traded price in a fifteen-second window that starts h seconds later, with h of 30, 60 or 120 seconds. Skill is the proportional reduction in squared error compared with predicting no change, so zero means no better than the last price. Trading uses the 120-second forecast.</aside>
+</section>
+
+<!-- ======== Slide 7: asof ======== -->
+<section id="asof" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:56px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Information availability</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Use only what a live trader could know</h2>
+</div>
+<div style="display:flex;gap:56px;align-items:flex-start">
+<div style="flex:1;display:flex;flex-direction:column;gap:32px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:40px;font-weight:600;line-height:1.25;color:#F6F4EE;background:#14213D;border-radius:20px;padding:40px">A play is usable at time t only if its result time + feed delay ≤ t</p>
+<ul style="font-size:30px;line-height:1.4;display:flex;flex-direction:column;gap:14px">
+<li>Future prices and settlement are labels only</li>
+<li>Joins take the latest observation at or before t</li>
+<li>Candles enter after their minute completes</li>
+</ul>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:20px">
+<table style="font-size:30px;color:#14213D;width:100%">
+<tr><th style="width:24%;text-align:left">Sport</th><th style="width:46%;text-align:left">Live feed arrival</th><th style="width:30%;text-align:left">Model delay</th></tr>
+<tr><td style="width:24%">MLB</td><td style="width:46%">7 to 15 s</td><td style="width:30%"><b>10 s</b></td></tr>
+<tr><td style="width:24%">NBA</td><td style="width:46%">~45 s median</td><td style="width:30%"><b>60 s</b></td></tr>
+<tr><td style="width:24%">NFL</td><td style="width:46%">~43 s median</td><td style="width:30%"><b>60 s</b></td></tr>
+</table>
+<p style="font-size:26px;color:#5C6677;line-height:1.4">A 10 s delay covers 97% of MLB arrivals (53% at 5 s). A model that used a play before the feed delivers it would show skill no live runner could reproduce.</p>
+</div>
+</div>
+<aside class="notes">The most important protocol rule is the as-of principle. A play can only be used once its result has happened and the feed would have delivered it. I measured arrival times on live feeds: MLB pitches arrive seven to fifteen seconds late, while ESPN basketball and football plays arrive after about 45 seconds, in batches. So each sport is trained and evaluated with a delay its live feed can actually meet: 10 seconds for MLB and 60 for NBA and NFL. Without this, the backtest would report skill that nobody could reproduce live.</aside>
+</section>
+
+<!-- ======== Slide 8: protocol ======== -->
+<section id="protocol" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:56px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Evaluation protocol</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Three stages of evidence</h2>
+</div>
+<div style="display:flex;gap:24px;align-items:center">
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFCF9;border:2px solid #E2DED3;border-top:8px solid #46698A;border-radius:20px;padding:36px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#46698A">Stage 1</p>
+<h3 style="font-size:36px;font-weight:600;color:#14213D">Walk-forward folds</h3>
+<p style="font-size:28px;line-height:1.35">Games before 1 July 2026, three sports. Train on earlier games, test on later ones.</p>
+<p style="font-size:26px;color:#5C6677">Development evidence</p>
+</div>
+<div style="width:64px;height:40px;background:#14213D;clip-path:polygon(0 25%,60% 25%,60% 0,100% 50%,60% 100%,60% 75%,0 75%);flex:none"></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFCF9;border:2px solid #E2DED3;border-top:8px solid #2F7A73;border-radius:20px;padding:36px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Stage 2</p>
+<h3 style="font-size:36px;font-weight:600;color:#14213D">Later out-of-sample</h3>
+<p style="font-size:28px;line-height:1.35">Games from 1 July 2026, MLB and NFL. Trading rules fixed beforehand, except the NFL interval.</p>
+<p style="font-size:26px;color:#5C6677">Does it transfer?</p>
+</div>
+<div style="width:64px;height:40px;background:#14213D;clip-path:polygon(0 25%,60% 25%,60% 0,100% 50%,60% 100%,60% 75%,0 75%);flex:none"></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFCF9;border:2px solid #E2DED3;border-top:8px solid #B5541A;border-radius:20px;padding:36px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#B5541A">Stage 3</p>
+<h3 style="font-size:36px;font-weight:600;color:#14213D">Forward paper trading</h3>
+<p style="font-size:28px;line-height:1.35">12 Oct to 2 Nov 2026. Live feeds, recorded order books, no real orders.</p>
+<p style="font-size:26px;color:#5C6677">Feed and execution effects</p>
+</div>
+</div>
+<p style="font-size:28px;color:#14213D;background:#E4EEEC;border-radius:16px;padding:24px 36px">Five seeds averaged. Game-level t-statistics. Fixed 20× sizing: 20 contracts at full weight.</p>
+<aside class="notes">I use three stages. The walk-forward folds train on earlier games and test on later ones, but because I used them to choose the model and the trading rule they count as development evidence only. The later out-of-sample period starts on 1 July 2026 and covers baseball and football; entry and exit rules were fixed before I looked at it, apart from one disclosed change to the NFL decision interval. Finally, live paper trading runs the strategy against real feed arrivals and recorded order books, with no real orders. All trading results are reported at the final sizing of 20 contracts at full weight.</aside>
+</section>
+
+<!-- ======== Slide 9: model ======== -->
+<section id="model" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:56px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Proposed method</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Play memory plus cross-contract messages</h2>
+</div>
+<div style="display:flex;gap:20px;align-items:center">
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#DDE6EF;border-radius:20px;padding:32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#46698A">Inputs</p>
+<p style="font-size:28px;line-height:1.35;color:#14213D">Plays so far, game state, contract prices and quotes, structural price reference</p>
+</div>
+<div style="width:56px;height:36px;background:#14213D;clip-path:polygon(0 25%,60% 25%,60% 0,100% 50%,60% 100%,60% 75%,0 75%);flex:none"></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#DDE6EF;border-radius:20px;padding:32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#46698A">Play memory</p>
+<p style="font-size:28px;line-height:1.35;color:#14213D">A GRU summarises the plays into one game context shared by all contracts</p>
+</div>
+<div style="width:56px;height:36px;background:#14213D;clip-path:polygon(0 25%,60% 25%,60% 0,100% 50%,60% 100%,60% 75%,0 75%);flex:none"></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#D3E8E5;border-radius:20px;padding:32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Contract graph</p>
+<p style="font-size:28px;line-height:1.35;color:#14213D">Two rounds of message passing between winner, spread and total contracts</p>
+</div>
+<div style="width:56px;height:36px;background:#14213D;clip-path:polygon(0 25%,60% 25%,60% 0,100% 50%,60% 100%,60% 75%,0 75%);flex:none"></div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#F1DFD2;border-radius:20px;padding:32px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#B5541A">Two heads</p>
+<p style="font-size:28px;line-height:1.35;color:#14213D">Price change at 30, 60, 120 s; settlement probability as auxiliary task</p>
+</div>
+</div>
+<p style="font-size:28px;color:#14213D;background:#E4EEEC;border-radius:16px;padding:24px 36px">One architecture, trained separately for MLB, NBA and NFL. Hidden size 64, five seeds averaged.</p>
+<aside class="notes">Here is the model at a glance. A recurrent network, a GRU, reads the plays that have arrived and compresses them into a game context. Every contract on the game gets its own representation built from its prices and quotes plus that shared context. Then the contracts exchange information through message passing, and two output heads read the result: one forecasts the price change at three horizons, and the other predicts the final settlement as an auxiliary task. A preliminary comparison favoured the GRU over a causal transformer. The same architecture is trained separately per sport.</aside>
+</section>
+
+<!-- ======== Slide 10: graph ======== -->
+<section id="graph" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:40px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Relational processing</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Related contracts inform each other</h2>
+</div>
+<div style="display:flex;gap:56px;align-items:center">
+<div style="position:relative;width:900px;height:560px">
+<svg aria-label="Contracts grouped by type, each group averaged into a type node, with type nodes linked to each other" viewBox="0 0 900 560" width="900" height="560">
+<line x1="150" y1="250" x2="450" y2="250" stroke="#2F7A73" stroke-width="5"/>
+<line x1="450" y1="250" x2="750" y2="250" stroke="#2F7A73" stroke-width="5"/>
+<path d="M150 250 C 250 110, 650 110, 750 250" fill="none" stroke="#2F7A73" stroke-width="5"/>
+<line x1="70" y1="410" x2="150" y2="250" stroke="#8FB9B4" stroke-width="3"/>
+<line x1="230" y1="410" x2="150" y2="250" stroke="#8FB9B4" stroke-width="3"/>
+<line x1="370" y1="410" x2="450" y2="250" stroke="#8FB9B4" stroke-width="3"/>
+<line x1="450" y1="410" x2="450" y2="250" stroke="#8FB9B4" stroke-width="3"/>
+<line x1="530" y1="410" x2="450" y2="250" stroke="#8FB9B4" stroke-width="3"/>
+<line x1="670" y1="410" x2="750" y2="250" stroke="#8FB9B4" stroke-width="3"/>
+<line x1="750" y1="410" x2="750" y2="250" stroke="#8FB9B4" stroke-width="3"/>
+<line x1="830" y1="410" x2="750" y2="250" stroke="#8FB9B4" stroke-width="3"/>
+<circle cx="150" cy="250" r="44" fill="#D3E8E5" stroke="#2F7A73" stroke-width="5"/>
+<circle cx="450" cy="250" r="44" fill="#D3E8E5" stroke="#2F7A73" stroke-width="5"/>
+<circle cx="750" cy="250" r="44" fill="#D3E8E5" stroke="#2F7A73" stroke-width="5"/>
+<circle cx="70" cy="410" r="26" fill="#DDE6EF" stroke="#46698A" stroke-width="4"/>
+<circle cx="230" cy="410" r="26" fill="#DDE6EF" stroke="#46698A" stroke-width="4"/>
+<circle cx="370" cy="410" r="26" fill="#DDE6EF" stroke="#46698A" stroke-width="4"/>
+<circle cx="450" cy="410" r="26" fill="#DDE6EF" stroke="#46698A" stroke-width="4"/>
+<circle cx="530" cy="410" r="26" fill="#DDE6EF" stroke="#46698A" stroke-width="4"/>
+<circle cx="670" cy="410" r="26" fill="#DDE6EF" stroke="#46698A" stroke-width="4"/>
+<circle cx="750" cy="410" r="26" fill="#DDE6EF" stroke="#46698A" stroke-width="4"/>
+<circle cx="830" cy="410" r="26" fill="#DDE6EF" stroke="#46698A" stroke-width="4"/>
+</svg>
+<p style="position:absolute;left:50px;top:480px;width:200px;font-size:28px;font-weight:600;text-align:center;color:#14213D">Winner</p>
+<p style="position:absolute;left:350px;top:480px;width:200px;font-size:28px;font-weight:600;text-align:center;color:#14213D">Spread</p>
+<p style="position:absolute;left:650px;top:480px;width:200px;font-size:28px;font-weight:600;text-align:center;color:#14213D">Total</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:28px">
+<p style="font-size:32px;line-height:1.4">Small circles are individual contracts. Large circles are the <b>average of each contract type</b>.</p>
+<p style="font-size:32px;line-height:1.4">Each contract receives all three averages, then updates itself. This repeats for two rounds.</p>
+<p style="font-size:32px;line-height:1.4">Averaging works when the number of thresholds changes from game to game.</p>
+</div>
+</div>
+<aside class="notes">This is the relational part. Contracts on one game are the nodes of a graph. In each round, I average the representations within each contract type, so one summary for winners, one for spreads, one for totals. Every contract then receives all three summaries through learned matrices, and updates its own representation with a residual connection. I do this for two rounds. Averaging within types means the model copes with different ladder sizes per game, and the ablation later shows this is the most valuable architectural component.</aside>
+</section>
+
+<!-- ======== Slide 11: reference ======== -->
+<section id="reference" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Inputs and training</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">A structural price for every threshold</h2>
+</div>
+<p style="font-size:32px;line-height:1.4">Given the score, time left and winner price, what should each threshold contract cost? The model sees this reference <b>b</b> and its gap from the last price <b>a</b>.</p>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:20px;padding:36px">
+<h3 style="font-size:32px;font-weight:600;color:#14213D">Spread contract, margin above k</h3>
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:38px;color:#2F7A73;font-weight:600">b = 100 · Φ( s·z − k / (σ√τ) )</p>
+<p style="font-size:26px;color:#5C6677">z from the winner price; τ = fraction of game remaining</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:20px;padding:36px">
+<h3 style="font-size:32px;font-weight:600;color:#14213D">Total contract, combined score above k</h3>
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:38px;color:#2F7A73;font-weight:600">b = 100 · Φ( (S + Lτ − k) / (σ√τ) )</p>
+<p style="font-size:26px;color:#5C6677">S = score so far; L = pregame total</p>
+</div>
+</div>
+<div style="display:flex;gap:24px">
+<p style="flex:1;font-size:28px;line-height:1.35;background:#14213D;color:#F6F4EE;border-radius:14px;padding:24px 28px"><b>Loss:</b> penalise only prediction outside the 15 s trade range (Huber, 5¢)</p>
+<p style="flex:1;font-size:28px;line-height:1.35;background:#14213D;color:#F6F4EE;border-radius:14px;padding:24px 28px"><b>Auxiliary:</b> settlement log-loss, weight 0.1</p>
+<p style="flex:1;font-size:28px;line-height:1.35;background:#14213D;color:#F6F4EE;border-radius:14px;padding:24px 28px"><b>Selection:</b> early stopping on latest 15% of training games</p>
+</div>
+<aside class="notes">One key input is a structural price reference. Using a simple normal approximation of scoring, I convert the current score, time remaining and winner price into an approximate probability for each spread or total threshold, on the same scale as the market price. The model is given this reference and its gap from the last traded price, and is free to learn departures from it. For training, I use an interval loss that only penalises forecasts falling outside the range of trades in the target window, with a Huber penalty, plus a small settlement loss. Early stopping uses the latest fifteen percent of the training games.</aside>
+</section>
+
+<!-- ======== Slide 12: skill ======== -->
+<section id="skill" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Historical results: forecasting</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Spreads and totals beat “no change”</h2>
+</div>
+<div style="display:flex;gap:56px;align-items:flex-start">
+<div style="flex:1.5;display:flex;flex-direction:column;gap:18px">
+<p style="font-size:26px;font-weight:600;color:#5C6677">Two-minute forecast skill, walk-forward folds (%)</p>
+<div style="display:flex;gap:20px;align-items:center"><p style="width:230px;font-size:28px;color:#14213D">MLB spread</p><div style="width:672px;height:44px;background:#2F7A73;border-radius:6px"></div><p style="font-size:28px;font-weight:600;color:#14213D">7.5</p></div>
+<div style="display:flex;gap:20px;align-items:center"><p style="width:230px;font-size:28px;color:#14213D">MLB total</p><div style="width:601px;height:44px;background:#2F7A73;border-radius:6px"></div><p style="font-size:28px;font-weight:600;color:#14213D">6.7</p></div>
+<div style="display:flex;gap:20px;align-items:center"><p style="width:230px;font-size:28px;color:#14213D">NBA spread</p><div style="width:506px;height:44px;background:#2F7A73;border-radius:6px"></div><p style="font-size:28px;font-weight:600;color:#14213D">5.6</p></div>
+<div style="display:flex;gap:20px;align-items:center"><p style="width:230px;font-size:28px;color:#14213D">NBA total</p><div style="width:403px;height:44px;background:#2F7A73;border-radius:6px"></div><p style="font-size:28px;font-weight:600;color:#14213D">4.5</p></div>
+<div style="display:flex;gap:20px;align-items:center"><p style="width:230px;font-size:28px;color:#14213D">NFL spread</p><div style="width:563px;height:44px;background:#2F7A73;border-radius:6px"></div><p style="font-size:28px;font-weight:600;color:#14213D">6.3</p></div>
+<div style="display:flex;gap:20px;align-items:center"><p style="width:230px;font-size:28px;color:#14213D">NFL total</p><div style="width:714px;height:44px;background:#2F7A73;border-radius:6px"></div><p style="font-size:28px;font-weight:600;color:#14213D">7.9</p></div>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:20px;background:#14213D;border-radius:20px;padding:40px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#7FC8BF">Winner contracts</p>
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:72px;font-weight:600;color:#F6F4EE;line-height:1">≈ 0%</p>
+<p style="font-size:28px;line-height:1.4;color:#F6F4EE">skill at every horizon, so trading is restricted to spreads and totals</p>
+<p style="font-size:26px;line-height:1.4;color:#C9D3E0">Skill is highest at 30 s and falls with horizon.</p>
+</div>
+</div>
+<aside class="notes">On the walk-forward folds, the model beats the no-change forecast on all six spread and total groups at the two-minute horizon, with skill between 4.5 and 7.9 percent. Skill is higher at shorter horizons. Winner contracts are the exception: their skill is essentially zero, so I exclude them from trading. These are development results, since the folds informed my choices.</aside>
+</section>
+
+<!-- ======== Slide 13: transfer ======== -->
+<section id="transfer" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:44px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Historical results: forecasting</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Skill transfers in MLB, fades in NFL and NBA</h2>
+</div>
+<div style="display:flex;gap:56px;align-items:flex-start">
+<div style="flex:1.5;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;gap:28px;align-items:center">
+<p style="font-size:26px;font-weight:600;color:#5C6677">120 s skill (%)</p>
+<p style="font-size:24px;background:#46698A;color:#FFFFFF;border-radius:8px;padding:4px 14px">Development</p>
+<p style="font-size:24px;background:#2F7A73;color:#FFFFFF;border-radius:8px;padding:4px 14px">Out of sample</p>
+</div>
+<div style="display:flex;gap:20px;align-items:center"><p style="width:230px;font-size:28px;color:#14213D">MLB spread</p>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="width:600px;height:30px;background:#46698A;border-radius:5px"></div><div style="width:520px;height:30px;background:#2F7A73;border-radius:5px"></div></div><p style="font-size:26px;color:#14213D">7.5 → <b>6.5</b></p></div>
+<div style="display:flex;gap:20px;align-items:center"><p style="width:230px;font-size:28px;color:#14213D">MLB total</p>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="width:536px;height:30px;background:#46698A;border-radius:5px"></div><div style="width:384px;height:30px;background:#2F7A73;border-radius:5px"></div></div><p style="font-size:26px;color:#14213D">6.7 → <b>4.8</b></p></div>
+<div style="display:flex;gap:20px;align-items:center"><p style="width:230px;font-size:28px;color:#14213D">NFL spread</p>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="width:504px;height:30px;background:#46698A;border-radius:5px"></div><div style="width:120px;height:30px;background:#2F7A73;border-radius:5px"></div></div><p style="font-size:26px;color:#14213D">6.3 → <b>1.5</b></p></div>
+<div style="display:flex;gap:20px;align-items:center"><p style="width:230px;font-size:28px;color:#14213D">NFL total</p>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="width:632px;height:30px;background:#46698A;border-radius:5px"></div><div style="width:6px;height:30px;background:#B5541A;border-radius:3px"></div></div><p style="font-size:26px;color:#14213D">7.9 → <b style="color:#B5541A">−0.2</b></p></div>
+<p style="font-size:24px;color:#5C6677">NFL out-of-sample is only 64 games.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:20px;background:#FDFCF9;border:2px solid #E2DED3;border-top:8px solid #B5541A;border-radius:20px;padding:36px">
+<h3 style="font-size:32px;font-weight:600;color:#14213D">NBA skill decays across folds</h3>
+<p style="font-size:28px;line-height:1.4">60 s skill, fold 1 to fold 5:</p>
+<p style="font-size:30px;line-height:1.4"><b>Spreads</b> 16.4% → 3.0%</p>
+<p style="font-size:30px;line-height:1.4"><b>Totals</b> 13.3% → 4.6%</p>
+<p style="font-size:26px;line-height:1.4;color:#5C6677">despite a growing training set; the cause is not isolated</p>
+</div>
+</div>
+<aside class="notes">Skill transfers unevenly. Baseball keeps most of its skill on the later out-of-sample period: spreads go from 7.5 to 6.5 percent and totals from 6.7 to 4.8. Football deteriorates sharply: spread skill drops from 6.3 to 1.5, and totals go to about zero, though that sample is just 64 games. Basketball has no later sample, but within the development folds its skill falls in every successive fold, from 16 to 3 percent for spreads. So the full-period averages overstate what one should expect going forward.</aside>
+</section>
+
+<!-- ======== Slide 14: rule ======== -->
+<section id="rule" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Historical results: trading</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">From forecast to simulated trade</h2>
+</div>
+<div style="display:flex;gap:20px;align-items:stretch">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FDFCF9;border:2px solid #E2DED3;border-top:8px solid #46698A;border-radius:20px;padding:32px">
+<p style="font-size:24px;font-weight:600;color:#46698A">1 · Signal</p>
+<p style="font-size:28px;line-height:1.35">Every 5 s: forecast price minus last trade. Act if at least 5¢.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FDFCF9;border:2px solid #E2DED3;border-top:8px solid #2F7A73;border-radius:20px;padding:32px">
+<p style="font-size:24px;font-weight:600;color:#2F7A73">2 · Enter</p>
+<p style="font-size:28px;line-height:1.35">Resting limit order 1¢ inside the reference price, for up to 60 s.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FDFCF9;border:2px solid #E2DED3;border-top:8px solid #2F7A73;border-radius:20px;padding:32px">
+<p style="font-size:24px;font-weight:600;color:#2F7A73">3 · Exit</p>
+<p style="font-size:28px;line-height:1.35">Resting exit 120 s after entry; fall back to taking liquidity or settlement.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FDFCF9;border:2px solid #E2DED3;border-top:8px solid #B5541A;border-radius:20px;padding:32px">
+<p style="font-size:24px;font-weight:600;color:#B5541A">4 · Size</p>
+<p style="font-size:28px;line-height:1.35">20 × weight contracts. Weight grows with signal, from 5¢ to 15¢.</p>
+</div>
+</div>
+<div style="display:flex;gap:24px">
+<p style="flex:1;font-size:28px;line-height:1.35;background:#14213D;color:#F6F4EE;border-radius:14px;padding:24px 28px"><b>Why resting orders:</b> at 50¢ a taker pays 1.75¢ per contract, a maker 0.44¢</p>
+<p style="flex:1;font-size:28px;line-height:1.35;background:#14213D;color:#F6F4EE;border-radius:14px;padding:24px 28px"><b>MLB skip window:</b> no orders 15 to 60 s after the last known pitch</p>
+<p style="flex:1;font-size:28px;line-height:1.35;background:#14213D;color:#F6F4EE;border-radius:14px;padding:24px 28px"><b>20 contracts</b> is below the median trade size (25 to 49)</p>
+</div>
+<aside class="notes">Positive skill does not establish tradability, so I define a simple rule. Every five seconds I compare the 120-second forecast with the last traded price, and act when the gap is at least five cents. Entry is a resting limit order one cent inside the reference price, which matters because fees are roughly four times lower for makers at 50 cents. Exit is another resting order 120 seconds after entry, with fallbacks. Size is 20 contracts times a weight that grows with signal strength, kept below the median observed trade size. In baseball I also skip decisions when a pitch has probably been thrown but my feed has not yet shown it, since the market has already priced it.</aside>
+</section>
+
+<!-- ======== Slide 15: backtest ======== -->
+<section id="backtest" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:44px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Historical results: trading</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Positive net returns in the backtest</h2>
+</div>
+<div style="display:flex;gap:64px">
+<div style="flex:1.1;display:flex;flex-direction:column;gap:14px">
+<p style="font-size:26px;font-weight:600;color:#46698A">Development folds · net cents per contract</p>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:190px;font-size:26px;color:#14213D">MLB spread</p><div style="width:490px;height:38px;background:#46698A;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">9.8</p></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:190px;font-size:26px;color:#14213D">MLB total</p><div style="width:350px;height:38px;background:#46698A;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">7.0</p></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:190px;font-size:26px;color:#14213D">NBA spread</p><div style="width:295px;height:38px;background:#46698A;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">5.9</p></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:190px;font-size:26px;color:#14213D">NBA total</p><div style="width:115px;height:38px;background:#46698A;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">2.3</p></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:190px;font-size:26px;color:#14213D">NFL spread</p><div style="width:260px;height:38px;background:#46698A;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">5.2</p></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:190px;font-size:26px;color:#14213D">NFL total</p><div style="width:345px;height:38px;background:#46698A;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">6.9</p></div>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px">
+<p style="font-size:26px;font-weight:600;color:#2F7A73">Later out-of-sample · net cents per contract</p>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:190px;font-size:26px;color:#14213D">MLB spread</p><div style="width:270px;height:38px;background:#2F7A73;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">5.4</p></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:190px;font-size:26px;color:#14213D">MLB total</p><div style="width:250px;height:38px;background:#2F7A73;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">5.0</p></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:190px;font-size:26px;color:#14213D">NFL spread</p><div style="width:130px;height:38px;background:#2F7A73;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">2.6</p></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:190px;font-size:26px;color:#14213D">NFL total</p><div style="width:5px;height:38px;background:#B5541A;border-radius:3px"></div><p style="font-size:26px;font-weight:600;color:#14213D">0.1</p></div>
+<p style="font-size:24px;line-height:1.4;color:#5C6677">NBA has no later sample. NFL spread t = 1.2, NFL total t = 0.1.</p>
+</div>
+</div>
+<p style="font-size:28px;color:#14213D;background:#E4EEEC;border-radius:16px;padding:22px 36px">After fees, at 20× sizing, under assumed fills. Development folds informed the strategy.</p>
+<aside class="notes">Under the stated fill and fee assumptions, development returns are positive in all six groups, from about 2 cents per contract for basketball totals up to nearly 10 cents for baseball spreads. On the later out-of-sample period, baseball keeps 5.4 and 5.0 cents, football spreads are modestly positive at 2.6 cents but not clearly different from zero, and football totals earn nothing. The baseball skip window matters a lot: without it, out-of-sample baseball returns fall to about zero. These are simulated returns, not exchange profits.</aside>
+</section>
+
+<!-- ======== Slide 16: ablation ======== -->
+<section id="ablation" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:40px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Ablation study</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">What the forecast skill depends on</h2>
+</div>
+<p style="font-size:28px;color:#5C6677">Remove one component, retrain, and measure the skill lost (percentage points; bar spans the six contract groups)</p>
+<div style="display:flex;gap:32px;align-items:center">
+<p style="width:340px;font-size:30px;font-weight:600;color:#14213D">Structural reference</p>
+<div style="position:relative;width:640px;height:40px;background:#E4E0D4;border-radius:6px"><div style="position:absolute;left:152px;top:0px;width:440px;height:40px;background:#B5541A;border-radius:6px"></div></div>
+<p style="flex:1;font-size:26px;line-height:1.3">−1.9 to −7.4 pts; profit falls in all six</p>
+</div>
+<div style="display:flex;gap:32px;align-items:center">
+<p style="width:340px;font-size:30px;font-weight:600;color:#14213D">Message passing</p>
+<div style="position:relative;width:640px;height:40px;background:#E4E0D4;border-radius:6px"><div style="position:absolute;left:112px;top:0px;width:224px;height:40px;background:#B5541A;border-radius:6px"></div></div>
+<p style="flex:1;font-size:26px;line-height:1.3">−1.4 to −4.2 pts; profit falls in three of six</p>
+</div>
+<div style="display:flex;gap:32px;align-items:center">
+<p style="width:340px;font-size:30px;font-weight:600;color:#14213D">Play memory (GRU)</p>
+<div style="position:relative;width:640px;height:40px;background:#E4E0D4;border-radius:6px"><div style="position:absolute;left:0px;top:0px;width:112px;height:40px;background:#D9A27E;border-radius:6px"></div></div>
+<p style="flex:1;font-size:26px;line-height:1.3">0 to −1.4 pts, mostly MLB; small profit effect</p>
+</div>
+<div style="display:flex;gap:32px;align-items:center">
+<p style="width:340px;font-size:30px;font-weight:600;color:#14213D">Play-type labels</p>
+<div style="position:relative;width:640px;height:40px;background:#E4E0D4;border-radius:6px"><div style="position:absolute;left:0px;top:0px;width:32px;height:40px;background:#D9A27E;border-radius:6px"></div></div>
+<p style="flex:1;font-size:26px;line-height:1.3">at most 0.4 pts; no clear profit change</p>
+</div>
+<p style="font-size:28px;color:#14213D;background:#E4EEEC;border-radius:16px;padding:22px 36px">Value comes from how game state, thresholds and related contracts bear on the price, not from play history.</p>
+<aside class="notes">I retrain the model with one piece removed and compare. The biggest losses come from removing the structural reference group, which cuts skill by 2 to 7 points in all six groups; for football, skill falls from about 8 percent to about 1. Removing message passing costs 1.4 to 4.2 points in every group and significantly lowers profit in three. Play memory helps baseball but not consistently elsewhere, and play-type labels add almost nothing once score, clock and win probability are included. One caveat: the feature groups overlap, so I cannot cleanly attribute to individual inputs.</aside>
+</section>
+
+<!-- ======== Slide 17: sensitivity ======== -->
+<section id="sensitivity" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Sensitivity analysis</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Feed delay and horizon</h2>
+</div>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:20px;padding:40px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#46698A">NBA and NFL, feed delay</p>
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:72px;font-weight:600;color:#14213D;line-height:1">45 ≈ 60 s</p>
+<p style="font-size:28px;line-height:1.4">Profit stays positive at the median feed delay, close to the 60 s operating models. Remaining skill does not depend on the latest play alone.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:20px;padding:40px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#46698A">MLB, feed delay</p>
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:72px;font-weight:600;color:#14213D;line-height:1">−1.0, −1.4</p>
+<p style="font-size:28px;line-height:1.4">points of spread and total skill lost between no delay and 10 s, and a further 0.5 and 0.7 at 15 s. Faster information would matter most here.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDFCF9;border:2px solid #E2DED3;border-radius:20px;padding:40px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Prediction horizon</p>
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:72px;font-weight:600;color:#14213D;line-height:1">6 of 6</p>
+<p style="font-size:28px;line-height:1.4">groups earn more at 120 s than at 30 s (and 5 of 6 more than at 60 s), despite lower forecast skill.</p>
+</div>
+</div>
+<p style="font-size:28px;color:#14213D;background:#E4EEEC;border-radius:16px;padding:22px 36px">Skill is the cleaner measure of what is lost; returns depend on the few confident, fillable signals.</p>
+<aside class="notes">Two sensitivity checks. For feed delay, each delay is a separately trained model. For basketball and football, profit at 45 seconds is close to the 60-second operating models, so the edge does not rely on the very latest play. Baseball is more sensitive: skill falls steadily as delay grows, and the live feed is seven to fifteen seconds late. For horizon, the 120-second strategy earns more per contract than the 30-second one in all six groups, even though forecast skill is lower, because larger moves cover costs. This does not prove longer holding is the cause.</aside>
+</section>
+
+<!-- ======== Slide 18: live ======== -->
+<section id="live" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Live evaluation</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Paper trading against a replayed exchange</h2>
+</div>
+<div style="display:flex;gap:56px;align-items:center">
+<div style="flex:1.4;display:flex;flex-direction:column;gap:28px">
+<div style="display:flex;gap:16px;align-items:center">
+<p style="flex:1;font-size:26px;line-height:1.3;text-align:center;background:#DDE6EF;color:#14213D;border-radius:14px;padding:24px 16px">Game feeds and Kalshi book</p>
+<div style="width:48px;height:32px;background:#14213D;clip-path:polygon(0 25%,60% 25%,60% 0,100% 50%,60% 100%,60% 75%,0 75%);flex:none"></div>
+<p style="flex:1;font-size:26px;line-height:1.3;text-align:center;background:#D3E8E5;color:#14213D;border-radius:14px;padding:24px 16px">lum.id runner: forecasts and orders</p>
+</div>
+<div style="display:flex;gap:16px;align-items:center">
+<p style="flex:1;font-size:26px;line-height:1.3;text-align:center;background:#DDE6EF;color:#14213D;border-radius:14px;padding:24px 16px">Recorder: arrival-time log</p>
+<div style="width:48px;height:32px;background:#14213D;clip-path:polygon(0 25%,60% 25%,60% 0,100% 50%,60% 100%,60% 75%,0 75%);flex:none"></div>
+<p style="flex:1;font-size:26px;line-height:1.3;text-align:center;background:#F1DFD2;color:#14213D;border-radius:14px;padding:24px 16px">Order-book simulator</p>
+</div>
+<p style="font-size:26px;color:#5C6677">Reported returns come from the simulator, run on recorded live feeds.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:18px;background:#14213D;border-radius:20px;padding:40px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#7FC8BF">Simulator</p>
+<ul style="font-size:28px;line-height:1.4;color:#F6F4EE;display:flex;flex-direction:column;gap:12px">
+<li>Queue position at each price</li>
+<li>90 ms order latency</li>
+<li>Taker fee when crossing the book</li>
+<li>Series-specific fees</li>
+</ul>
+<p style="font-size:24px;line-height:1.4;color:#C9D3E0">Not modelled: market impact</p>
+</div>
+</div>
+<aside class="notes">Historical fill rules cannot say where an order sits in the queue or what price a taker would really pay. So I recorded live game feeds and Kalshi order books in the order they arrived, ran the forecasting model live as paper trading, and then replayed the recorded books through an event-driven exchange simulator. It models queue position, a 90 millisecond latency, taker fees when an order crosses the book, and series-specific fees. In twelve validation games, 95 percent of through-print fills were confirmed by the recorded book. It does not model market impact: other participants cannot react to our orders.</aside>
+</section>
+
+<!-- ======== Slide 19: forward ======== -->
+<section id="forward" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:40px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Forward test, 12 Oct to 2 Nov 2026</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Four of six groups earn money live</h2>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;gap:16px;align-items:center"><p style="width:380px;font-size:28px;color:#14213D">MLB spread · 10 games</p><div style="width:420px;display:flex;justify-content:flex-end;align-items:center;gap:12px"><p style="font-size:26px;color:#B5541A"> </p></div><div style="width:4px;height:44px;background:#14213D"></div><div style="width:420px;display:flex;align-items:center;gap:12px"><div style="width:296px;height:40px;background:#2F7A73;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">+6.6</p></div></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:380px;font-size:28px;color:#14213D">MLB total · 10 games</p><div style="width:420px;display:flex;justify-content:flex-end;align-items:center;gap:12px"><p style="font-size:26px;font-weight:600;color:#14213D">−1.5</p><div style="width:66px;height:40px;background:#B5541A;border-radius:5px"></div></div><div style="width:4px;height:44px;background:#14213D"></div><div style="width:420px"></div></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:380px;font-size:28px;color:#14213D">NBA spread · 107 games</p><div style="width:420px"></div><div style="width:4px;height:44px;background:#14213D"></div><div style="width:420px;display:flex;align-items:center;gap:12px"><div style="width:218px;height:40px;background:#2F7A73;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">+4.8</p></div></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:380px;font-size:28px;color:#14213D">NBA total · 107 games</p><div style="width:420px;display:flex;justify-content:flex-end;align-items:center;gap:12px"><p style="font-size:26px;font-weight:600;color:#14213D">−7.5</p><div style="width:336px;height:40px;background:#B5541A;border-radius:5px"></div></div><div style="width:4px;height:44px;background:#14213D"></div><div style="width:420px"></div></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:380px;font-size:28px;color:#14213D">NFL spread · 42 games</p><div style="width:420px"></div><div style="width:4px;height:44px;background:#14213D"></div><div style="width:420px;display:flex;align-items:center;gap:12px"><div style="width:194px;height:40px;background:#2F7A73;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">+4.3</p></div></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:380px;font-size:28px;color:#14213D">NFL total · 42 games</p><div style="width:420px"></div><div style="width:4px;height:44px;background:#14213D"></div><div style="width:420px;display:flex;align-items:center;gap:12px"><div style="width:324px;height:40px;background:#2F7A73;border-radius:5px"></div><p style="font-size:26px;font-weight:600;color:#14213D">+7.2</p></div></div>
+</div>
+<p style="font-size:26px;line-height:1.4;color:#5C6677">Net cents per contract, fees included, 20× sizing, order-book replay. MLB is only 10 postseason games, so it is descriptive. Simulated, not exchange profit.</p>
+<aside class="notes">Over three weeks of live recordings, I evaluated 10 baseball games, 107 basketball games and 42 football games. Net returns are positive in four of six groups: MLB spreads, NBA spreads, and both NFL contract types. MLB totals and NBA totals lose money, and NBA totals lose the most at about 7.5 cents per contract. Baseball was already in the postseason, leaving only ten games, so those results are descriptive. For NBA totals, the historical skill decay is consistent with a weakening edge but does not by itself explain a loss this large.</aside>
+</section>
+
+<!-- ======== Slide 20: baselines ======== -->
+<section id="baselines" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Forward test: baselines</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Versus quoting rules with no game knowledge</h2>
+</div>
+<div style="display:flex;gap:48px;align-items:stretch">
+<div style="flex:1;display:flex;flex-direction:column;gap:20px">
+<h3 style="font-size:32px;font-weight:600;color:#14213D">Three fixed baselines</h3>
+<p style="font-size:28px;line-height:1.35;background:#FDFCF9;border:2px solid #E2DED3;border-radius:14px;padding:20px 28px"><b>Symmetric quote</b> one cent either side of the last price</p>
+<p style="font-size:28px;line-height:1.35;background:#FDFCF9;border:2px solid #E2DED3;border-radius:14px;padding:20px 28px"><b>Micro-price skew</b> lean with order-book imbalance</p>
+<p style="font-size:28px;line-height:1.35;background:#FDFCF9;border:2px solid #E2DED3;border-radius:14px;padding:20px 28px"><b>Trade-flow skew</b> follow the last 60 s of net trades</p>
+<p style="font-size:24px;color:#5C6677">Same simulator, fees, games and decision times. Nothing trained.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;gap:28px;align-items:center;background:#14213D;border-radius:20px;padding:28px 36px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:72px;font-weight:600;color:#7FC8BF;line-height:1">5 / 6</p>
+<p style="font-size:28px;line-height:1.3;color:#F6F4EE">groups: model has the best net return per unit</p>
+</div>
+<div style="display:flex;gap:28px;align-items:center;background:#14213D;border-radius:20px;padding:28px 36px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:72px;font-weight:600;color:#7FC8BF;line-height:1">6 / 6</p>
+<p style="font-size:28px;line-height:1.3;color:#F6F4EE">groups: highest profit factor and Sharpe ratio</p>
+</div>
+<div style="display:flex;gap:28px;align-items:center;background:#F1DFD2;border-radius:20px;padding:28px 36px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:72px;font-weight:600;color:#B5541A;line-height:1">0</p>
+<p style="font-size:28px;line-height:1.3;color:#14213D">baselines profit after fees at these decision times</p>
+</div>
+<p style="font-size:24px;line-height:1.4;color:#5C6677">Exception: NBA totals, model −7.5¢ vs baselines −5.5 to −5.9¢ per unit.</p>
+</div>
+</div>
+<aside class="notes">A strategy that earns by quoting should be compared with quoting that has no information. I reran the recorded games with three fixed rules from the market-making literature, using the same simulator, fees, games and decision times. Every baseline loses after fees. The model has the best net return per unit in five of six groups, and the highest profit factor and Sharpe in all six. The exception is NBA totals, where the model loses more per unit than the baselines. The comparison includes the model’s signal-dependent sizing, so it doesn’t isolate the forecast from its execution policy, and the sample is small, so I treat the Sharpe ratios as descriptive.</aside>
+</section>
+
+<!-- ======== Slide 21: stale ======== -->
+<section id="stale" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Why signals shrink</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">Stale prices and adverse selection</h2>
+</div>
+<div style="display:flex;gap:40px;align-items:stretch">
+<div style="flex:1;display:flex;flex-direction:column;gap:20px;background:#FDFCF9;border:2px solid #E2DED3;border-top:8px solid #46698A;border-radius:20px;padding:40px">
+<h3 style="font-size:34px;font-weight:600;color:#14213D">1 · The reference is stale</h3>
+<div style="display:flex;gap:24px;align-items:center">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:80px;font-weight:600;color:#46698A;line-height:1">7¢</p>
+<p style="font-size:28px;line-height:1.35">of the signal was already in the order-book midpoint when the order was placed</p>
+</div>
+<div style="display:flex;gap:24px;align-items:center">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:80px;font-weight:600;color:#2F7A73;line-height:1">1.5¢</p>
+<p style="font-size:28px;line-height:1.35">is the move that remained over the next 120 s</p>
+</div>
+<p style="font-size:26px;line-height:1.4;color:#5C6677">Resting orders filled on reversals and lost 1.5¢. Taking at the touch lost 2.5¢ before fees.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:20px;background:#FDFCF9;border:2px solid #E2DED3;border-top:8px solid #B5541A;border-radius:20px;padding:40px">
+<h3 style="font-size:34px;font-weight:600;color:#14213D">2 · Fills follow better-informed traders</h3>
+<p style="font-size:26px;color:#5C6677">MLB totals trades filled within 15 s of an in-play pitch</p>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:170px;font-size:26px;color:#14213D">Losing</p><div style="width:392px;height:44px;background:#B5541A;border-radius:6px"></div><p style="font-size:28px;font-weight:600;color:#14213D">49%</p></div>
+<div style="display:flex;gap:16px;align-items:center"><p style="width:170px;font-size:26px;color:#14213D">Other</p><div style="width:40px;height:44px;background:#46698A;border-radius:6px"></div><p style="font-size:28px;font-weight:600;color:#14213D">5%</p></div>
+<p style="font-size:26px;line-height:1.4;color:#5C6677">Dropping those fills lifts simulated totals from 7.0¢ to 10.1¢, but that is a hindsight diagnostic, not a usable filter.</p>
+</div>
+</div>
+<aside class="notes">Two mechanisms explain why live returns are smaller than the historical forecast skill suggests. First, the reference price is the last trade, which can be stale. In a diagnostic baseball game, the order-book midpoint had already moved about seven cents in my favour when I placed the order, and only about one and a half cents of movement remained over the next two minutes. My resting order sat behind the market and filled when the price reversed, so filled orders lost money while unfilled signals looked good. Second, adverse selection: nearly half of the losing baseball totals trades were filled within fifteen seconds after a pitch, versus about five percent of other trades, consistent with better-informed participants hitting stale quotes. The lesson is that forecast skill, entry availability and fill-conditional returns must be judged together.</aside>
+</section>
+
+<!-- ======== Slide 22: conclusions ======== -->
+<section id="conclusions" data-transition="fade" style="background:#14213D;color:#F6F4EE;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#7FC8BF">Conclusion</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#F6F4EE">Skill is real, but it is not profit</h2>
+</div>
+<div style="display:flex;flex-direction:column;gap:20px">
+<div style="display:flex;gap:28px;align-items:center;border:2px solid #34456B;border-radius:16px;padding:26px 36px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;color:#7FC8BF;width:56px">1</p>
+<p style="font-size:30px;line-height:1.35"><b>Predictable:</b> spread and total prices beat “no change”; winner prices do not.</p>
+</div>
+<div style="display:flex;gap:28px;align-items:center;border:2px solid #34456B;border-radius:16px;padding:26px 36px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;color:#7FC8BF;width:56px">2</p>
+<p style="font-size:30px;line-height:1.35"><b>Why:</b> the structural price reference and message passing drive the skill.</p>
+</div>
+<div style="display:flex;gap:28px;align-items:center;border:2px solid #34456B;border-radius:16px;padding:26px 36px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;color:#7FC8BF;width:56px">3</p>
+<p style="font-size:30px;line-height:1.35"><b>Returns:</b> positive in development; less uniform later; four of six groups live.</p>
+</div>
+<div style="display:flex;gap:28px;align-items:center;border:2px solid #34456B;border-radius:16px;padding:26px 36px">
+<p style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;color:#7FC8BF;width:56px">4</p>
+<p style="font-size:30px;line-height:1.35"><b>Limits:</b> stale prices, feed delay and adverse selection cap executable returns.</p>
+</div>
+</div>
+<aside class="notes">To summarise. First, spread and total prices are predictable over 30 to 120 seconds relative to no change; winner prices are not. Second, the structural reference and cross-contract message passing are what the skill depends on, while play-type labels add little. Third, historical simulated returns are positive, but later out-of-sample results are less uniform, and live paper trading is positive in four of six groups, losing on MLB and NBA totals. Fourth, and most important, accuracy does not equal tradability: stale reference prices, delayed feeds and adverse selection limit what can be captured. The evaluation framework that makes these gaps visible is as much a contribution as the model.</aside>
+</section>
+
+<!-- ======== Slide 23: future ======== -->
+<section id="future" data-transition="fade" style="background:#F6F4EE;color:#3B4658;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:56px">
+<div style="display:flex;flex-direction:column;gap:8px">
+<p style="font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#2F7A73">Limitations and future work</p>
+<h2 style="font-family:'Source Serif 4', Georgia, serif;font-size:56px;font-weight:600;line-height:1.15;color:#14213D">What this study cannot yet claim</h2>
+</div>
+<div style="display:flex;gap:48px">
+<div style="flex:1;display:flex;flex-direction:column;gap:24px">
+<h3 style="font-size:36px;font-weight:600;color:#B5541A">Limitations</h3>
+<ul style="font-size:30px;line-height:1.4;display:flex;flex-direction:column;gap:18px">
+<li>Development folds informed the model and rules</li>
+<li>Forward sample is short: three weeks, and only 10 MLB games</li>
+<li>Replay cannot model market impact</li>
+<li>NBA skill decays; the cause is unknown</li>
+</ul>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:24px">
+<h3 style="font-size:36px;font-weight:600;color:#2F7A73">Future work</h3>
+<ul style="font-size:30px;line-height:1.4;display:flex;flex-direction:column;gap:18px">
+<li>Train on bid, ask and midpoint, not only the last trade</li>
+<li>Model fill probability and fill-conditional returns</li>
+<li>Longer prospective test with the specification fixed in advance</li>
+<li>Faster feeds, to test whether less delay raises executable returns</li>
+</ul>
+</div>
+</div>
+<aside class="notes">The main limitations: the walk-forward folds shaped the design, so they are development evidence; the forward sample is only three weeks and baseball was already in the postseason; the simulator cannot capture market impact; and NBA skill decays without a clear cause. For future work, the most natural step is to bring the training target closer to executable prices, using bid, ask and midpoint, and to model fill probability so that stale signals can be told apart from real opportunities. A longer prospective study with a specification fixed in advance would settle whether the positive live groups persist.</aside>
+</section>
+
+<!-- ======== Slide 24: questions ======== -->
+<section id="questions" data-transition="fade" style="background:#14213D;color:#F6F4EE;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;justify-content:space-between">
+<div style="position:absolute;left:1872px;top:0px;width:48px;height:1080px;background:#2F7A73"></div>
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#7FC8BF">Thesis Defense</p>
+<div style="display:flex;flex-direction:column;gap:28px">
+<h1 style="font-family:'Source Serif 4', Georgia, serif;font-size:120px;font-weight:600;line-height:1.1;color:#F6F4EE">Thank you</h1>
+<p style="font-size:44px;color:#C9D3E0">Questions and discussion</p>
+</div>
+<p style="font-size:28px;color:#C9D3E0">Ng E En Casper · Advisor: Asst. Prof. Lu Yao</p>
+<aside class="notes">Thank you. I am happy to take questions.</aside>
+</section>
+</div>
+<div id="count"></div>
+<div id="notes"></div>
+<script>
+(function () {
+  var stage = document.getElementById('stage');
+  var slides = Array.prototype.slice.call(stage.querySelectorAll('section'));
+  var notes = document.getElementById('notes');
+  var count = document.getElementById('count');
+  var cur = 0;
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    stage.style.transform = 'translate(-50%,-50%) scale(' + s + ')';
+  }
+  function show(n) {
+    cur = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function (s, i) { s.classList.toggle('active', i === cur); });
+    var a = slides[cur].querySelector('aside.notes');
+    notes.textContent = a ? a.textContent : '';
+    count.textContent = (cur + 1) + ' / ' + slides.length;
+    history.replaceState(null, '', '#' + (cur + 1));
+  }
+  document.addEventListener('keydown', function (e) {
+    var k = e.key;
+    if (k === 'ArrowRight' || k === 'ArrowDown' || k === ' ' || k === 'PageDown') { show(cur + 1); e.preventDefault(); }
+    else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') { show(cur - 1); e.preventDefault(); }
+    else if (k === 'Home') show(0);
+    else if (k === 'End') show(slides.length - 1);
+    else if (k === 'n' || k === 'N') notes.classList.toggle('on');
+    else if (k === 'f' || k === 'F') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); }
+  });
+  stage.addEventListener('click', function (e) { show(e.clientX < window.innerWidth / 3 ? cur - 1 : cur + 1); });
+  window.addEventListener('resize', fit);
+  fit();
+  show((parseInt(location.hash.slice(1), 10) || 1) - 1);
+})();
+</script>
+</body>
+</html>
