@@ -12,7 +12,8 @@ NUS final-year project: do Kalshi sports prediction markets (MLB, NBA, NFL) reac
 | `cluster/` | Slurm scripts for training on the SoC GPU cluster (`cluster/README.md`). |
 | `deploy/` | Daily live-run deployment (Lumid sandbox, backup VM). |
 | `reports/` | Journals and results; `ingame_journal.md`, `holdout_spec.md`, `ablation_results.md`, `forward_test_log.md`. |
-| `thesis/` | LaTeX source (`main.tex`). |
+| `thesis/` | LaTeX source (`main.tex`); `thesis/defense/` holds the defense slides. |
+| `data/` (not in git) | Raw and recorded data. The irreplaceable parts are archived on Google Drive: see `reports/data_archive.md` for the folder link, contents, checksums and restore commands. |
 
 ## Setup
 
